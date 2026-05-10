@@ -43,7 +43,7 @@ function Users() {
         const res =
           await axios.get(
 
-            "http://localhost:5000/users",
+            "http://https://safety-backend-h2y7.onrender.com/users",
 
             {
               headers: {
@@ -126,7 +126,7 @@ function Users() {
 
         await axios.post(
 
-          "http://localhost:5000/register",
+          "http://https://safety-backend-h2y7.onrender.com/register",
 
           form,
 
@@ -170,7 +170,7 @@ function Users() {
 
         await axios.put(
 
-          `http://localhost:5000/users/${editId}`,
+          `http://https://safety-backend-h2y7.onrender.com/users/${editId}`,
 
           form,
 
@@ -219,7 +219,7 @@ function Users() {
 
         await axios.delete(
 
-          `http://localhost:5000/users/${id}`,
+          `http://https://safety-backend-h2y7.onrender.com/users/${id}`,
 
           {
             headers: {

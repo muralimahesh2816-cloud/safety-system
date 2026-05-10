@@ -45,7 +45,7 @@ function Login({ setUser }) {
       const res =
         await axios.post(
 
-          "http://localhost:5000/login",
+          "http://https://safety-backend-h2y7.onrender.com/login",
 
           {
             email,

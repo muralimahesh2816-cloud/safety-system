@@ -26,7 +26,7 @@ function Reports() {
       if (type === "work") {
 
         const res = await axios.get(
-          "http://localhost:5000/reports/work"
+          "http://https://safety-backend-h2y7.onrender.com/reports/work"
         );
 
         const filtered = res.data.filter((item) => {
@@ -50,7 +50,7 @@ function Reports() {
       else if (type === "hazard") {
 
         const res = await axios.get(
-          "http://localhost:5000/reports/hazard"
+          "http://https://safety-backend-h2y7.onrender.com/reports/hazard"
         );
 
         const filtered = res.data.filter((item) => {
@@ -74,7 +74,7 @@ function Reports() {
       else if (type === "date") {
 
         const res = await axios.get(
-          "http://localhost:5000/reports/hazard"
+          "http://https://safety-backend-h2y7.onrender.com/reports/hazard"
         );
 
         const filtered = res.data.filter((item) => {
@@ -125,7 +125,7 @@ function Reports() {
       else if (type === "user") {
 
         const res = await axios.get(
-          "http://localhost:5000/reports/hazard"
+          "http://https://safety-backend-h2y7.onrender.com/reports/hazard"
         );
 
         const userMap = {};
@@ -169,7 +169,7 @@ function Reports() {
       else if (type === "approved") {
 
         const res = await axios.get(
-          "http://localhost:5000/reports/work"
+          "http://https://safety-backend-h2y7.onrender.com/reports/work"
         );
 
         const filtered = res.data.filter((item) => {
@@ -784,12 +784,12 @@ function Reports() {
                     </p>
 
                     <img
-                      src={`http://localhost:5000/uploads/${item.beforeImage}`}
+                      src={`http://https://safety-backend-h2y7.onrender.com/uploads/${item.beforeImage}`}
                       alt="Before"
                       className="w-28 h-28 object-cover rounded hover:scale-105 transition cursor-pointer"
                       onClick={() =>
                         window.open(
-                          `http://localhost:5000/uploads/${item.beforeImage}`
+                          `http://https://safety-backend-h2y7.onrender.com/uploads/${item.beforeImage}`
                         )
                       }
                     />
@@ -807,12 +807,12 @@ function Reports() {
                     </p>
 
                     <img
-                      src={`http://localhost:5000/uploads/${item.afterImage}`}
+                      src={`http://https://safety-backend-h2y7.onrender.com/uploads/${item.afterImage}`}
                       alt="After"
                       className="w-28 h-28 object-cover rounded hover:scale-105 transition cursor-pointer"
                       onClick={() =>
                         window.open(
-                          `http://localhost:5000/uploads/${item.afterImage}`
+                          `http://https://safety-backend-h2y7.onrender.com/uploads/${item.afterImage}`
                         )
                       }
                     />

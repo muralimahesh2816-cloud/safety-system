@@ -52,12 +52,12 @@ function DashboardNew({ setPage }) {
 
         const workRes =
           await axios.get(
-            "http://localhost:5000/work"
+            "http://https://safety-backend-h2y7.onrender.com/work"
           );
 
         const hazardRes =
           await axios.get(
-            "http://localhost:5000/hazard"
+            "http://https://safety-backend-h2y7.onrender.com/hazard"
           );
 
         setWork(

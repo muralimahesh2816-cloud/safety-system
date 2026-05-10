@@ -29,7 +29,7 @@ function Hazard() {
   const fetchData = async () => {
 
     const res = await axios.get(
-      'http://localhost:5000/hazard'
+      'http://https://safety-backend-h2y7.onrender.com/hazard'
     );
 
     setData(res.data);
@@ -49,7 +49,7 @@ function Hazard() {
     )) return;
 
     await axios.delete(
-      `http://localhost:5000/hazard/${id}`
+      `http://https://safety-backend-h2y7.onrender.com/hazard/${id}`
     );
 
     alert("🗑️ Deleted");
@@ -90,7 +90,7 @@ function Hazard() {
     );
 
     await axios.post(
-      'http://localhost:5000/hazard',
+      'http://https://safety-backend-h2y7.onrender.com/hazard',
       dataForm,
       {
         headers: {
@@ -131,7 +131,7 @@ function Hazard() {
     );
 
     await axios.put(
-      `http://localhost:5000/hazard/close/${id}`,
+      `http://https://safety-backend-h2y7.onrender.com/hazard/close/${id}`,
       formData
     );
 
@@ -516,7 +516,7 @@ function Hazard() {
 
                   <img
 
-                    src={`http://localhost:5000/uploads/${item.beforeImage}`}
+                    src={`http://https://safety-backend-h2y7.onrender.com/uploads/${item.beforeImage}`}
 
                     alt="Before"
 
@@ -525,7 +525,7 @@ function Hazard() {
                     onClick={() =>
                       setSelectedImage({
                         url:
-                          `http://localhost:5000/uploads/${item.beforeImage}`,
+                          `http://https://safety-backend-h2y7.onrender.com/uploads/${item.beforeImage}`,
                         location:
                           item.location,
                         type: "Before"
@@ -550,7 +550,7 @@ function Hazard() {
 
                   <img
 
-                    src={`http://localhost:5000/uploads/${item.afterImage}`}
+                    src={`http://https://safety-backend-h2y7.onrender.com/uploads/${item.afterImage}`}
 
                     alt="After"
 
@@ -559,7 +559,7 @@ function Hazard() {
                     onClick={() =>
                       setSelectedImage({
                         url:
-                          `http://localhost:5000/uploads/${item.afterImage}`,
+                          `http://https://safety-backend-h2y7.onrender.com/uploads/${item.afterImage}`,
                         location:
                           item.location,
                         type: "After"
