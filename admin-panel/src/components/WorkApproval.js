@@ -118,7 +118,7 @@ function WorkApproval() {
     ) return;
 
     await axios.delete(
-      `http://localhost:5000/work/${id}`
+      `https://safety-backend-h2y7.onrender.com/work/${id}`
     );
 
     fetchData();
