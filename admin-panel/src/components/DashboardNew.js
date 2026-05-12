@@ -50,15 +50,15 @@ function DashboardNew({ setPage }) {
 
       try {
 
-        const workRes =
-          await axios.get(
-            "http://https://safety-backend-h2y7.onrender.com/work"
-          );
+const workRes =
+  await axios.get(
+    "https://safety-backend-h2y7.onrender.com/work"
+  );
 
-        const hazardRes =
-          await axios.get(
-            "http://https://safety-backend-h2y7.onrender.com/hazard"
-          );
+const hazardRes =
+  await axios.get(
+    "https://safety-backend-h2y7.onrender.com/hazard"
+  );
 
         setWork(
           workRes.data

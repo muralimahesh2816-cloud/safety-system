@@ -29,7 +29,7 @@ function WorkApproval() {
   const fetchData = async () => {
 
     const res = await axios.get(
-      'http://https://safety-backend-h2y7.onrender.com/work'
+      'https://safety-backend-h2y7.onrender.com/work'
     );
 
     setData(res.data);
@@ -68,7 +68,7 @@ function WorkApproval() {
     );
 
     await axios.post(
-      'http://https://safety-backend-h2y7.onrender.com/work',
+      'https://safety-backend-h2y7.onrender.com/work',
       dataForm
     );
 
@@ -94,7 +94,7 @@ function WorkApproval() {
   ) => {
 
     await axios.put(
-      `http://https://safety-backend-h2y7.onrender.com/work/${id}`,
+      `https://safety-backend-h2y7.onrender.com/work/${id}`,
       {
         status,
         approvedBy:
@@ -140,7 +140,7 @@ function WorkApproval() {
     );
 
     await axios.put(
-      `http://https://safety-backend-h2y7.onrender.com/work/complete/${id}`,
+      `https://safety-backend-h2y7.onrender.com/work/complete/${id}`,
       formData
     );
 
@@ -539,7 +539,7 @@ function WorkApproval() {
 
                 <img
 
-                  src={`http://https://safety-backend-h2y7.onrender.com/uploads/${item.beforeImage}`}
+                  src={`https://safety-backend-h2y7.onrender.com/uploads/${item.beforeImage}`}
 
                   alt="before"
 
@@ -559,7 +559,7 @@ function WorkApproval() {
 
                 <img
 
-                  src={`http://https://safety-backend-h2y7.onrender.com/uploads/${item.afterImage}`}
+                  src={`https://safety-backend-h2y7.onrender.com/uploads/${item.afterImage}`}
 
                   alt="after"
 
@@ -607,7 +607,7 @@ function WorkApproval() {
 
             <img
 
-              src={`http://https://safety-backend-h2y7.onrender.com/uploads/${selectedImage}`}
+              src={`https://safety-backend-h2y7.onrender.com/uploads/${selectedImage}`}
 
               alt="preview"
 

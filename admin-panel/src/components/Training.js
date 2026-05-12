@@ -40,7 +40,7 @@ function Training() {
     try {
 
       const res = await axios.get(
-        'http://https://safety-backend-h2y7.onrender.com/training'
+        'https://safety-backend-h2y7.onrender.com/training'
       );
 
       setTrainings(res.data);
@@ -82,7 +82,7 @@ function Training() {
     formData.append('banner', banner);
 
     await axios.post(
-      'http://https://safety-backend-h2y7.onrender.com/training',
+      'https://safety-backend-h2y7.onrender.com/training',
       formData
     );
 
@@ -125,7 +125,7 @@ function Training() {
         >
 
           <img
-            src={`http://https://safety-backend-h2y7.onrender.com/uploads/${activeTraining.banner}`}
+            src={`https://safety-backend-h2y7.onrender.com/uploads/${activeTraining.banner}`}
             alt="banner"
             className="absolute inset-0 w-full h-full object-cover"
           />
@@ -197,7 +197,7 @@ function Training() {
 
       <video
 
-        src={`http://https://safety-backend-h2y7.onrender.com/uploads/${activeTraining.video}`}
+        src={`https://safety-backend-h2y7.onrender.com/uploads/${activeTraining.video}`}
 
         autoPlay
 
@@ -215,7 +215,7 @@ function Training() {
 
       <img
 
-        src={`http://https://safety-backend-h2y7.onrender.com/uploads/${activeTraining.banner}`}
+        src={`https://safety-backend-h2y7.onrender.com/uploads/${activeTraining.banner}`}
 
         alt="training"
 
@@ -301,7 +301,7 @@ function Training() {
               <div className="relative h-[180px] overflow-hidden">
 
                 <img
-                  src={`http://https://safety-backend-h2y7.onrender.com/uploads/${item.banner}`}
+                  src={`https://safety-backend-h2y7.onrender.com/uploads/${item.banner}`}
                   alt="training"
                   className="w-full h-full object-cover"
                 />
@@ -536,7 +536,7 @@ onClick={() => {
 
       <video
 
-        src={`http://https://safety-backend-h2y7.onrender.com/uploads/${activeTraining.video}`}
+        src={`https://safety-backend-h2y7.onrender.com/uploads/${activeTraining.video}`}
 
         controls
 

@@ -29,7 +29,7 @@ function Hazard() {
   const fetchData = async () => {
 
     const res = await axios.get(
-      'http://https://safety-backend-h2y7.onrender.com/hazard'
+      'https://safety-backend-h2y7.onrender.com/hazard'
     );
 
     setData(res.data);
@@ -49,7 +49,7 @@ function Hazard() {
     )) return;
 
     await axios.delete(
-      `http://https://safety-backend-h2y7.onrender.com/hazard/${id}`
+      `https://safety-backend-h2y7.onrender.com/hazard/${id}`
     );
 
     alert("🗑️ Deleted");
@@ -90,7 +90,7 @@ function Hazard() {
     );
 
     await axios.post(
-      'http://https://safety-backend-h2y7.onrender.com/hazard',
+      'https://safety-backend-h2y7.onrender.com/hazard',
       dataForm,
       {
         headers: {
@@ -131,7 +131,7 @@ function Hazard() {
     );
 
     await axios.put(
-      `http://https://safety-backend-h2y7.onrender.com/hazard/close/${id}`,
+      `https://safety-backend-h2y7.onrender.com/hazard/close/${id}`,
       formData
     );
 
@@ -516,7 +516,7 @@ function Hazard() {
 
                   <img
 
-                    src={`http://https://safety-backend-h2y7.onrender.com/uploads/${item.beforeImage}`}
+                    src={`https://safety-backend-h2y7.onrender.com/uploads/${item.beforeImage}`}
 
                     alt="Before"
 
@@ -525,7 +525,7 @@ function Hazard() {
                     onClick={() =>
                       setSelectedImage({
                         url:
-                          `http://https://safety-backend-h2y7.onrender.com/uploads/${item.beforeImage}`,
+                          `https://safety-backend-h2y7.onrender.com/uploads/${item.beforeImage}`,
                         location:
                           item.location,
                         type: "Before"
@@ -550,7 +550,7 @@ function Hazard() {
 
                   <img
 
-                    src={`http://https://safety-backend-h2y7.onrender.com/uploads/${item.afterImage}`}
+                    src={`https://safety-backend-h2y7.onrender.com/uploads/${item.afterImage}`}
 
                     alt="After"
 
@@ -559,7 +559,7 @@ function Hazard() {
                     onClick={() =>
                       setSelectedImage({
                         url:
-                          `http://https://safety-backend-h2y7.onrender.com/uploads/${item.afterImage}`,
+                          `https://safety-backend-h2y7.onrender.com/uploads/${item.afterImage}`,
                         location:
                           item.location,
                         type: "After"
