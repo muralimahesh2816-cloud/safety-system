@@ -197,7 +197,7 @@ function Training() {
 
       <video
 
-        src={`https://safety-backend-h2y7.onrender.com/uploads/${activeTraining.video}`}
+        src={`http://localhost:3000//uploads/${activeTraining.video}`}
 
         autoPlay
 
@@ -215,7 +215,7 @@ function Training() {
 
       <img
 
-        src={`https://safety-backend-h2y7.onrender.com/uploads/${activeTraining.banner}`}
+        src={`https://localhost:3000/uploads/${activeTraining.banner}`}
 
         alt="training"
 

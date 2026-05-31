@@ -1,0 +1,532 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Clock3, UploadCloud } from "lucide-react";
+import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import GlassCard from "../components/common/GlassCard";
+import SectionHeader from "../components/common/SectionHeader";
+import MediaStudioModal from "../components/common/MediaStudioModal";
+import { workService } from "../api/services";
+import { showSuccessPopup } from "../utils/alerts";
+import { formatDateTime } from "../utils/format";
+import { getMediaUrl } from "../utils/media";
+
+const legacyWorkTypes = [
+  "Road Work",
+  "Lights Changing",
+  "Height Work",
+  "Grass Cutting",
+  "Watering Plants",
+  "Plaza Maintenance"
+];
+
+const statusList = ["Pending", "Approved", "Rejected", "Completed"];
+
+const initialForm = {
+  title: "",
+  workType: "",
+  category: "General",
+  location: "",
+  chainage: "",
+  workersCount: "",
+  priority: "Medium",
+  assignedTo: "",
+  startDate: "",
+  dueDate: ""
+};
+
+const WorkApprovalsPage = ({ user }) => {
+  const [records, setRecords] = useState([]);
+  const [form, setForm] = useState(initialForm);
+  const [beforeImages, setBeforeImages] = useState([]);
+  const [beforePreview, setBeforePreview] = useState("");
+  const [afterImages, setAfterImages] = useState({});
+  const [afterPreviewMap, setAfterPreviewMap] = useState({});
+  const [modal, setModal] = useState({ open: false, items: [], index: 0, compare: null });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("All");
+
+  const canDelete = ["super_admin", "admin"].includes(user?.role);
+  const canApprove = ["super_admin", "admin"].includes(user?.role);
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const workRes = await workService.list();
+      setRecords(workRes.records || []);
+    } catch (fetchError) {
+      setError(fetchError?.response?.data?.message || "Unable to load work approvals");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
+
+  const submitWork = async (event) => {
+    event.preventDefault();
+    setError("");
+
+    if (
+      !form.workType ||
+      !form.location ||
+      !form.chainage ||
+      !form.workersCount ||
+      beforeImages.length === 0
+    ) {
+      setError("Fill all required fields from legacy workflow");
+      return;
+    }
+
+    try {
+      await workService.create({
+        ...form,
+        title: form.title || `${form.workType} - ${form.location}`,
+        workersCount: Number(form.workersCount),
+        beforeImages
+      });
+      setForm(initialForm);
+      setBeforeImages([]);
+      if (beforePreview?.startsWith("blob:")) URL.revokeObjectURL(beforePreview);
+      setBeforePreview("");
+      await showSuccessPopup("Work Approval Submitted Successfully");
+      fetchAll();
+    } catch (submitError) {
+      setError(submitError?.response?.data?.message || "Failed to submit work");
+    }
+  };
+
+  const updateStatus = async (id, status) => {
+    const approvedBy = user?.name || localStorage.getItem("name") || "Admin";
+    try {
+      await workService.updateStatus(id, {
+        status,
+        approvedBy
+      });
+      await showSuccessPopup(`Work ${status} Successfully`);
+      fetchAll();
+    } catch (statusError) {
+      setError(statusError?.response?.data?.message || "Status update failed");
+    }
+  };
+
+  const uploadCompletion = async (id) => {
+    const files = afterImages[id] || [];
+    if (!files.length) {
+      setError("Upload completion image");
+      return;
+    }
+    try {
+      await workService.uploadAfterImages(id, files);
+      await workService.updateStatus(id, {
+        status: "Completed",
+        approvedBy: user?.name || localStorage.getItem("name") || "Admin"
+      });
+      setAfterImages((prev) => ({ ...prev, [id]: [] }));
+      if (afterPreviewMap[id]?.startsWith("blob:")) URL.revokeObjectURL(afterPreviewMap[id]);
+      setAfterPreviewMap((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      await showSuccessPopup("Work Marked Completed Successfully");
+      fetchAll();
+    } catch (uploadError) {
+      setError(uploadError?.response?.data?.message || "Image upload failed");
+    }
+  };
+
+  const deleteWork = async (id) => {
+    if (!window.confirm("Delete this work?")) return;
+    try {
+      await workService.remove(id);
+      fetchAll();
+    } catch (deleteError) {
+      setError(deleteError?.response?.data?.message || "Delete failed");
+    }
+  };
+
+  const openGallery = (work, startAt = 0) => {
+    const before = (work.beforeImages?.length ? work.beforeImages : work.beforeImage ? [work.beforeImage] : [])
+      .map((item) => ({ url: getMediaUrl(item) }))
+      .filter((item) => Boolean(item.url));
+    const after = (work.afterImages?.length ? work.afterImages : work.afterImage ? [work.afterImage] : [])
+      .map((item) => ({ url: getMediaUrl(item) }))
+      .filter((item) => Boolean(item.url));
+    const combined = [...before, ...after];
+    setModal({
+      open: true,
+      items: combined,
+      index: Math.min(Math.max(startAt, 0), Math.max(0, combined.length - 1)),
+      compare: null
+    });
+  };
+
+  const filteredRecords = useMemo(() => {
+    if (statusFilter === "All") return records;
+    return records.filter((item) => (item.status || "Pending") === statusFilter);
+  }, [records, statusFilter]);
+
+  const chartData = useMemo(
+    () => [
+      { name: "Approved", value: records.filter((item) => item.status === "Approved").length },
+      {
+        name: "Pending",
+        value: records.filter((item) => item.status === "Pending" || !item.status).length
+      },
+      { name: "Completed", value: records.filter((item) => item.status === "Completed").length },
+      { name: "Rejected", value: records.filter((item) => item.status === "Rejected").length }
+    ],
+    [records]
+  );
+
+  const statusTone = (status) => {
+    if (status === "Approved") return "text-green-300";
+    if (status === "Rejected") return "text-rose-300";
+    if (status === "Completed") return "text-blue-300";
+    return "text-amber-300";
+  };
+
+  return (
+    <div className="safety-bg-overlay safety-bg-work space-y-5">
+      <SectionHeader
+        title="Work Approval Workflow"
+        subtitle="Legacy fields restored with single-admin approval lifecycle and image evidence"
+      />
+
+      <div className="grid grid-cols-1 gap-4 xl:h-[calc(100vh-180px)] xl:grid-cols-3">
+        <GlassCard className="module-sticky-card p-5 xl:col-span-1">
+          <h3 className="mb-3 text-lg font-semibold text-white">Submit Work Approval</h3>
+          <form className="space-y-3" onSubmit={submitWork}>
+            <select
+              value={form.workType}
+              onChange={(event) => setForm((prev) => ({ ...prev, workType: event.target.value }))}
+              className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+              required
+            >
+              <option value="" className="bg-slate-900 text-white">
+                Select Work Type
+              </option>
+              {legacyWorkTypes.map((item) => (
+                <option key={item} value={item} className="bg-slate-900 text-white">
+                  {item}
+                </option>
+              ))}
+            </select>
+            <input
+              placeholder="Location"
+              value={form.location}
+              onChange={(event) => setForm((prev) => ({ ...prev, location: event.target.value }))}
+              className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+              required
+            />
+            <input
+              placeholder="Chainage No"
+              value={form.chainage}
+              onChange={(event) => setForm((prev) => ({ ...prev, chainage: event.target.value }))}
+              className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+              required
+            />
+            <input
+              type="number"
+              min="1"
+              placeholder="Workers Count"
+              value={form.workersCount}
+              onChange={(event) => setForm((prev) => ({ ...prev, workersCount: event.target.value }))}
+              className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+              required
+            />
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                const selected = event.target.files?.[0] || null;
+                setBeforeImages(selected ? [selected] : []);
+                if (beforePreview?.startsWith("blob:")) URL.revokeObjectURL(beforePreview);
+                setBeforePreview(selected ? URL.createObjectURL(selected) : "");
+              }}
+              className="w-full rounded-xl border border-dashed border-white/20 bg-white/5 px-3 py-2 text-xs text-slate-300"
+            />
+            {beforePreview ? (
+              <img
+                src={beforePreview}
+                alt="Before Work Preview"
+                className="h-28 w-full rounded-xl border border-white/10 object-contain"
+              />
+            ) : null}
+            <button
+              type="submit"
+              className="w-full rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-3 py-2.5 text-sm font-semibold text-white"
+            >
+              Submit Work
+            </button>
+          </form>
+
+          <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-3">
+            <p className="mb-2 text-sm text-slate-200">Work Status Overview</p>
+            <div className="h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart margin={{ top: 0, right: 6, left: 6, bottom: 8 }}>
+                  <Pie data={chartData} dataKey="value" outerRadius={58} labelLine={false}>
+                    {chartData.map((entry, index) => (
+                      <Cell
+                        key={entry.name}
+                        fill={["#22c55e", "#facc15", "#60a5fa", "#f43f5e"][index % 4]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend
+                    verticalAlign="bottom"
+                    align="center"
+                    iconSize={10}
+                    wrapperStyle={{ fontSize: "12px", paddingTop: 8 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
+        </GlassCard>
+
+        <GlassCard className="p-5 xl:col-span-2 xl:max-h-[calc(100vh-180px)] xl:overflow-hidden">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-lg font-semibold text-white">Work List</h3>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-white"
+            >
+              {["All", "Pending", "Approved", "Rejected", "Completed"].map((status) => (
+                <option key={status} value={status} className="bg-slate-900 text-white">
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
+          {loading ? (
+            <p className="text-sm text-slate-300">Loading work approvals...</p>
+          ) : (
+            <div className="module-list-scroll space-y-4 xl:max-h-[calc(100vh-250px)] xl:overflow-y-auto xl:pr-1">
+              {filteredRecords.map((work) => {
+                const beforeItems = (
+                  work.beforeImages?.length ? work.beforeImages : work.beforeImage ? [work.beforeImage] : []
+                )
+                  .map((item) => ({ url: getMediaUrl(item) }))
+                  .filter((item) => Boolean(item.url));
+                const afterItems = (
+                  work.afterImages?.length ? work.afterImages : work.afterImage ? [work.afterImage] : []
+                )
+                  .map((item) => ({ url: getMediaUrl(item) }))
+                  .filter((item) => Boolean(item.url));
+                const beforePreview = beforeItems[0]?.url || "";
+                const afterPreview = afterItems[0]?.url || "";
+                const timeline = (work.timeline || [])
+                  .filter((item) => {
+                    const payload = `${item?.label || ""} ${item?.description || ""}`.toLowerCase();
+                    return ![
+                      "comment",
+                      "note",
+                      "signature",
+                      "level 1",
+                      "level 2",
+                      "level 3"
+                    ].some((keyword) => payload.includes(keyword));
+                  })
+                  .slice(-4);
+
+                return (
+                  <div key={work._id} className="rounded-2xl border border-white/12 bg-white/5 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-base font-semibold text-white">{work.workType || work.title}</p>
+                        <p className="mt-1 text-xs text-slate-300">
+                          {work.location} | {work.chainage}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-300">Workers: {work.workersCount || "-"}</p>
+                        <p className={`mt-1 text-xs font-semibold ${statusTone(work.status)}`}>
+                          {work.status || "Pending"}
+                        </p>
+                        {work.approvedBy ? (
+                          <p className="mt-1 text-xs text-slate-300">Approved By: {work.approvedBy}</p>
+                        ) : null}
+                        <p className="mt-1 text-xs text-slate-400">{formatDateTime(work.createdAt)}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openGallery(work, 0)}
+                          className="rounded-xl border border-white/20 px-2.5 py-1.5 text-xs text-white"
+                        >
+                          Image Gallery
+                        </button>
+                        {canDelete ? (
+                          <button
+                            type="button"
+                            onClick={() => deleteWork(work._id)}
+                            className="rounded-xl border border-rose-400/40 bg-rose-500/20 px-2.5 py-1.5 text-xs text-rose-100"
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-2">
+                        <p className="mb-2 text-xs font-semibold text-teal-200">Before Work</p>
+                        {beforePreview ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openGallery(work, 0);
+                            }}
+                            className="w-full overflow-hidden rounded-xl border border-white/10 bg-slate-900/60"
+                          >
+                            <img
+                              src={beforePreview}
+                              alt="Before Work"
+                              loading="lazy"
+                              className="h-36 w-full object-cover transition duration-300 hover:scale-105"
+                            />
+                          </button>
+                        ) : (
+                          <div className="flex h-36 w-full items-center justify-center rounded-xl border border-dashed border-white/15 bg-slate-900/50 text-xs text-slate-400">
+                            Before image not available
+                          </div>
+                        )}
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-2">
+                        <p className="mb-2 text-xs font-semibold text-cyan-200">After Work</p>
+                        {afterPreview ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openGallery(work, Math.max(beforeItems.length, 0));
+                            }}
+                            className="w-full overflow-hidden rounded-xl border border-white/10 bg-slate-900/60"
+                          >
+                            <img
+                              src={afterPreview}
+                              alt="After Work"
+                              loading="lazy"
+                              className="h-36 w-full object-cover transition duration-300 hover:scale-105"
+                            />
+                          </button>
+                        ) : (
+                          <div className="flex h-36 w-full items-center justify-center rounded-xl border border-dashed border-white/15 bg-slate-900/50 text-xs text-slate-400">
+                            After image not uploaded
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {canApprove ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {statusList.map((status) => (
+                          <button
+                            key={`${work._id}-${status}`}
+                            type="button"
+                            onClick={() => updateStatus(work._id, status)}
+                            className="rounded-lg border border-white/15 bg-white/10 px-2.5 py-1 text-xs text-slate-100"
+                          >
+                            {status}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {work.status === "Approved" ? (
+                      <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-2.5">
+                        <p className="mb-1 text-xs text-slate-300">Upload Completion Image</p>
+                        <div className="flex flex-wrap gap-2">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => {
+                              const selected = event.target.files?.[0] || null;
+                              setAfterImages((prev) => ({
+                                ...prev,
+                                [work._id]: selected ? [selected] : []
+                              }));
+                              if (afterPreviewMap[work._id]?.startsWith("blob:")) {
+                                URL.revokeObjectURL(afterPreviewMap[work._id]);
+                              }
+                              setAfterPreviewMap((prev) => ({
+                                ...prev,
+                                [work._id]: selected ? URL.createObjectURL(selected) : ""
+                              }));
+                            }}
+                            className="flex-1 rounded-lg border border-dashed border-white/20 bg-slate-900/70 px-2 py-1.5 text-xs text-slate-300"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => uploadCompletion(work._id)}
+                            className="rounded-lg bg-indigo-500/25 px-3 py-1.5 text-xs text-indigo-100"
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              <UploadCloud size={12} />
+                              Upload
+                            </span>
+                          </button>
+                        </div>
+                        {afterPreviewMap[work._id] ? (
+                          <img
+                            src={afterPreviewMap[work._id]}
+                            alt="After Work Preview"
+                            className="mt-2 h-24 w-full rounded-xl border border-white/10 object-contain"
+                          />
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-2.5">
+                      <p className="mb-1 text-xs text-slate-300">Timeline</p>
+                      <div className="max-h-24 space-y-1 overflow-y-auto pr-1">
+                        {timeline.map((item, index) => (
+                          <p key={`${work._id}-timeline-${index}`} className="text-xs text-slate-300">
+                            <span className="text-teal-300">{item.label}</span> - {item.description} (
+                            {formatDateTime(item.at)})
+                          </p>
+                        ))}
+                        {!timeline.length ? (
+                          <p className="text-xs text-slate-400">Status history will appear here.</p>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-xs text-slate-400">
+                        <span className="inline-flex items-center gap-1">
+                          <Clock3 size={12} />
+                          {work.approvalHistory?.length || 0} history events
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+              {filteredRecords.length === 0 ? (
+                <p className="text-sm text-slate-300">
+                  No work approval records available for the selected filter.
+                </p>
+              ) : null}
+            </div>
+          )}
+        </GlassCard>
+      </div>
+
+      <MediaStudioModal
+        open={modal.open}
+        onClose={() => setModal((prev) => ({ ...prev, open: false }))}
+        items={modal.items}
+        activeIndex={modal.index}
+        onIndexChange={(index) => setModal((prev) => ({ ...prev, index }))}
+        compare={modal.compare}
+      />
+    </div>
+  );
+};
+
+export default WorkApprovalsPage;

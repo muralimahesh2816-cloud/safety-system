@@ -1,314 +1,289 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { AuthProvider } from "./contexts/AuthContext";
+import { ThemeProvider } from "./contexts/ThemeContext";
+import { useAuth } from "./hooks/useAuth";
+import ErrorBoundary from "./components/common/ErrorBoundary";
+import Sidebar from "./components/layout/Sidebar";
+import Topbar from "./components/layout/Topbar";
+import ParticleBackground from "./components/common/ParticleBackground";
+import LoginPage from "./pages/LoginPage";
+import DashboardPage from "./pages/DashboardPage";
+import WorkApprovalsPage from "./pages/WorkApprovalsPage";
+import HazardsPage from "./pages/HazardsPage";
+import TrainingPage from "./pages/TrainingPage";
+import UsersPage from "./pages/UsersPage";
+import ReportsPage from "./pages/ReportsPage";
+import SettingsPage from "./pages/SettingsPage";
+import { settingsService } from "./api/services";
+import { canAccessModule } from "./utils/permissions";
 
-import Login from "./components/Login";
-import Sidebar from "./components/Sidebar";
+const moduleTitles = {
+  dashboard: "Executive Dashboard",
+  work: "Work Approval Center",
+  hazards: "Hazard Control Hub",
+  training: "Training Streaming Portal",
+  users: "User Governance",
+  reports: "Enterprise Reporting",
+  settings: "System Configuration"
+};
 
-import WorkApproval from "./components/WorkApproval";
-import WorkAdmin from "./components/WorkAdmin";
-import Hazard from "./components/Hazard";
-import Training from "./components/Training";
-import Users from "./components/Users";
-import Reports from "./components/Reports";
-import SettingsPage from "./components/SettingsPage";
-import DashboardNew from "./components/DashboardNew";
+const SIDEBAR_STORAGE_KEY = "sidebarCollapsed";
+const DESKTOP_BREAKPOINT = 768;
 
-function App() {
+const getInitialSidebarCollapsed = () => {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
+};
 
-  // ================= USER =================
+const ModuleGuard = ({ user, moduleKey, children }) => {
+  const canView = canAccessModule(user, moduleKey);
+  if (canView) return children;
+  return (
+    <div className="rounded-3xl border border-amber-400/30 bg-amber-500/10 p-8 text-center">
+      <h3 className="text-xl font-semibold text-amber-100">Access Denied</h3>
+      <p className="mt-2 text-sm text-amber-50/80">
+        Your role does not have permission to view this module.
+      </p>
+    </div>
+  );
+};
 
-  const [user, setUser] =
-    useState(
-      localStorage.getItem("role")
-    );
+const AppContent = () => {
+  const { user, loading, isAuthenticated, login, logout } = useAuth();
+  const [activeModule, setActiveModule] = useState("dashboard");
+  const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(30);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsed);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
+  const [countdown, setCountdown] = useState(60);
 
-  const [page, setPage] =
-    useState("dashboard");
-
-  // ================= SESSION =================
-
-  const [showTimeout, setShowTimeout] =
-    useState(false);
-
-  const [countdown, setCountdown] =
-    useState(60);
-
-  // ================= LOGIN CHECK =================
-
-  const isLoggedIn =
-    localStorage.getItem("token");
-
-  // ================= AUTO LOGOUT =================
+  const page = useMemo(() => {
+    switch (activeModule) {
+      case "work":
+        return <WorkApprovalsPage user={user} />;
+      case "hazards":
+        return <HazardsPage user={user} />;
+      case "training":
+        return <TrainingPage user={user} />;
+      case "users":
+        return <UsersPage currentUser={user} />;
+      case "reports":
+        return <ReportsPage />;
+      case "settings":
+        return <SettingsPage user={user} />;
+      case "dashboard":
+      default:
+        return <DashboardPage onModuleSelect={setActiveModule} />;
+    }
+  }, [activeModule, user]);
 
   useEffect(() => {
+    const fetchTimeout = async () => {
+      if (!user) return;
+      try {
+        const response = await settingsService.get();
+        const timeout = response?.settings?.security?.sessionTimeout;
+        if (timeout) setSessionTimeoutMinutes(timeout);
+      } catch (_error) {
+        setSessionTimeoutMinutes(30);
+      }
+    };
+    fetchTimeout();
+  }, [user]);
 
-    let inactivityTimer;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
-    let countdownTimer;
+  useEffect(() => {
+    let inactivityTimer = null;
+    let countdownTimer = null;
+    const timeoutMs = sessionTimeoutMinutes * 60 * 1000;
 
-    const resetTimer = () => {
-
-      clearTimeout(inactivityTimer);
-
-      clearInterval(countdownTimer);
-
-      setShowTimeout(false);
-
-      setCountdown(60);
-
-      inactivityTimer =
-        setTimeout(() => {
-
-          setShowTimeout(true);
-
-          let timeLeft = 60;
-
-          countdownTimer =
-            setInterval(() => {
-
-              timeLeft--;
-
-              setCountdown(timeLeft);
-
-              if (timeLeft <= 0) {
-
-                clearInterval(
-                  countdownTimer
-                );
-
-                localStorage.clear();
-
-                window.location.reload();
-
-              }
-
-            }, 1000);
-
-        }, 10 * 60 * 1000);
-
+    const clearTimers = () => {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      if (countdownTimer) clearInterval(countdownTimer);
     };
 
-    // EVENTS
+    const schedule = () => {
+      clearTimers();
+      setShowTimeoutWarning(false);
+      setCountdown(60);
+      inactivityTimer = setTimeout(() => {
+        setShowTimeoutWarning(true);
+        let remaining = 60;
+        countdownTimer = setInterval(() => {
+          remaining -= 1;
+          setCountdown(remaining);
+          if (remaining <= 0) {
+            clearTimers();
+            logout();
+          }
+        }, 1000);
+      }, timeoutMs);
+    };
 
-    window.addEventListener(
-      "mousemove",
-      resetTimer
+    const listener = () => schedule();
+    ["mousemove", "keydown", "click", "scroll", "touchstart"].forEach((eventName) =>
+      window.addEventListener(eventName, listener)
     );
-
-    window.addEventListener(
-      "keydown",
-      resetTimer
-    );
-
-    window.addEventListener(
-      "click",
-      resetTimer
-    );
-
-    window.addEventListener(
-      "scroll",
-      resetTimer
-    );
-
-    resetTimer();
+    schedule();
 
     return () => {
-
-      clearTimeout(inactivityTimer);
-
-      clearInterval(countdownTimer);
-
-      window.removeEventListener(
-        "mousemove",
-        resetTimer
+      clearTimers();
+      ["mousemove", "keydown", "click", "scroll", "touchstart"].forEach((eventName) =>
+        window.removeEventListener(eventName, listener)
       );
-
-      window.removeEventListener(
-        "keydown",
-        resetTimer
-      );
-
-      window.removeEventListener(
-        "click",
-        resetTimer
-      );
-
-      window.removeEventListener(
-        "scroll",
-        resetTimer
-      );
-
     };
+  }, [logout, sessionTimeoutMinutes]);
 
-  }, []);
+  const handleSidebarToggle = () => {
+    if (typeof window !== "undefined" && window.innerWidth < DESKTOP_BREAKPOINT) {
+      setMobileSidebarOpen((prev) => !prev);
+      return;
+    }
+    setSidebarCollapsed((prev) => !prev);
+  };
 
-  // ================= LOGIN PAGE =================
+  const handleModuleSelect = (moduleKey) => {
+    setActiveModule(moduleKey);
+    setMobileSidebarOpen(false);
+  };
 
-  if (!user || !isLoggedIn) {
-
+  if (loading) {
     return (
-      <Login setUser={setUser} />
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-100">
+        <div className="rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm">
+          Booting enterprise dashboard...
+        </div>
+      </div>
     );
-
   }
 
-  // ================= MAIN APP =================
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={login} />;
+  }
 
   return (
+    <div className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-50">
+      <ParticleBackground />
+      <div className="relative z-10 app-layout">
+        <motion.aside
+          animate={{ width: sidebarCollapsed ? 80 : 280 }}
+          transition={{ duration: 0.25, ease: "easeInOut" }}
+          className="hidden h-full shrink-0 overflow-hidden md:block"
+        >
+          <Sidebar
+            user={user}
+            collapsed={sidebarCollapsed}
+            activeModule={activeModule}
+            onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+            onSelectModule={handleModuleSelect}
+          />
+        </motion.aside>
 
-    <div className="flex h-screen overflow-hidden bg-[#020617] text-white">
-
-      {/* SIDEBAR */}
-
-      <div className="w-60 h-screen fixed left-0 top-0 bg-[#020617] border-r border-white/10">
-
-        <Sidebar setPage={setPage} />
-
-      </div>
-
-      {/* MAIN CONTENT */}
-
-      <div className="flex-1 ml-60 h-screen overflow-y-auto p-6">
-
-        {/* HEADER */}
-
-        <div className="flex justify-between items-center mb-2 sticky top-0 bg-[#020617]/90 backdrop-blur-2xl z-20 py-6 px-6 border-b border-white/10">
-
-          {/* LEFT */}
-
-          <div>
-
-            <h2 className="text-3xl font-bold text-cyan-400">
-
-              📊 Safety HSE Management System
-
-            </h2>
-
-            <p className="text-gray-400 mt-1">
-
-              Welcome,
-              {" "}
-              {localStorage.getItem("name")}
-
-            </p>
-
-          </div>
-
-          {/* RIGHT */}
-
-          <button
-
-            className="bg-red-500 hover:bg-red-600 px-5 py-3 rounded-2xl transition shadow-xl"
-
-            onClick={() => {
-
-              localStorage.clear();
-
-              setUser(null);
-
-            }}
-
-          >
-
-            🚪 Logout
-
-          </button>
-
-        </div>
-
-        {/* PAGES */}
-
-           {page === "dashboard" && (
-           <DashboardNew setPage={setPage} />
-           )}
-
-        {page === "work" && (
-          <WorkApproval />
-        )}
-
-        {page === "hazard" && (
-          <Hazard />
-        )}
-
-        {page === "workAdmin" && (
-          <WorkAdmin />
-        )}
-
-        {page === "training" && (
-          <Training />
-        )}
-
-        {page === "users" && (
-          <Users />
-        )}
-
-        {page === "reports" && (
-          <Reports />
-        )}
-
-        {page === "settings" && (
-          <SettingsPage />
-        )}
-
-      </div>
-
-      {/* AUTO LOGOUT POPUP */}
-
-      {showTimeout && (
-
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-
-          <div className="bg-slate-900 border border-red-500/20 rounded-3xl p-8 w-[420px] shadow-2xl text-center">
-
-            <h2 className="text-3xl font-bold text-red-400 mb-4">
-
-              ⚠ Session Timeout
-
-            </h2>
-
-            <p className="text-gray-300 mb-6">
-
-              No activity detected.
-
-              <br />
-
-              App will logout automatically.
-
-            </p>
-
-            <div className="text-6xl font-bold text-white mb-6">
-
-              {countdown}s
-
-            </div>
-
-            <button
-
-              onClick={() => {
-
-                setShowTimeout(false);
-
-                setCountdown(60);
-
-              }}
-
-              className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 py-3 rounded-2xl font-semibold"
-
+        <AnimatePresence>
+          {mobileSidebarOpen ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-40 bg-black/60 md:hidden"
+              onClick={() => setMobileSidebarOpen(false)}
             >
+              <motion.aside
+                initial={{ x: -320 }}
+                animate={{ x: 0 }}
+                exit={{ x: -320 }}
+                transition={{ duration: 0.25, ease: "easeInOut" }}
+                className="absolute inset-y-0 left-0 h-full w-[280px] max-w-[86vw]"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Sidebar
+                  user={user}
+                  mobile
+                  activeModule={activeModule}
+                  onToggleCollapse={() => setMobileSidebarOpen(false)}
+                  onSelectModule={handleModuleSelect}
+                />
+              </motion.aside>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
-              ✅ Continue Session
-
-            </button>
-
+        <main className="main-content">
+          <Topbar
+            user={user}
+            onLogout={logout}
+            onToggleSidebar={handleSidebarToggle}
+            sidebarCollapsed={sidebarCollapsed}
+            title={moduleTitles[activeModule]}
+          />
+          <div className="page-content">
+            <ModuleGuard user={user} moduleKey={activeModule}>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeModule}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.24 }}
+                >
+                  {page}
+                </motion.div>
+              </AnimatePresence>
+            </ModuleGuard>
           </div>
+        </main>
+      </div>
 
-        </div>
-
-      )}
-
+      <AnimatePresence>
+        {showTimeoutWarning ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/90 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="w-full max-w-md rounded-3xl border border-amber-400/35 bg-amber-500/10 p-7 text-center"
+            >
+              <h3 className="font-display text-2xl font-semibold text-amber-100">
+                Session Timeout Warning
+              </h3>
+              <p className="mt-3 text-sm text-amber-50/85">
+                No activity detected. Your session ends in {countdown} seconds.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTimeoutWarning(false);
+                  setCountdown(60);
+                }}
+                className="mt-6 rounded-2xl bg-gradient-to-r from-teal-500 to-cyan-500 px-5 py-3 text-sm font-semibold text-white"
+              >
+                Continue Session
+              </button>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
-
   );
+};
 
-}
+const App = () => (
+  <ErrorBoundary>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ThemeProvider>
+  </ErrorBoundary>
+);
 
 export default App;

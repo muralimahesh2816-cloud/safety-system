@@ -1,0 +1,668 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import jsPDF from "jspdf";
+import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import GlassCard from "../components/common/GlassCard";
+import SectionHeader from "../components/common/SectionHeader";
+import MediaStudioModal from "../components/common/MediaStudioModal";
+import { hazardService, userService } from "../api/services";
+import { showSuccessPopup } from "../utils/alerts";
+import { formatDateTime } from "../utils/format";
+import { getMediaUrl } from "../utils/media";
+
+const severityWeight = {
+  Low: 1,
+  Medium: 2,
+  High: 3,
+  Critical: 4
+};
+
+const likelihoodWeight = {
+  Rare: 1,
+  Possible: 2,
+  Likely: 3,
+  "Almost Certain": 4
+};
+
+const legacyPlazas = ["Sasthan Plaza", "Hejamadi Plaza", "Talapady Plaza", "Site"];
+const legacyCategories = ["Hazard", "Near Miss"];
+const legacyActionTeams = [
+  "Maintenance Team",
+  "Operation Team",
+  "Kent Team",
+  "Electrician Team",
+  "RP Team",
+  "Paramedical Team",
+  "IT Team",
+  "Housekeeping Team"
+];
+
+const initialForm = {
+  title: "",
+  description: "",
+  date: "",
+  plaza: "",
+  location: "",
+  reportedBy: "",
+  category: "",
+  action: "",
+  severity: "Medium",
+  likelihood: "Possible",
+  assignedTo: ""
+};
+
+const HazardsPage = ({ user }) => {
+  const [records, setRecords] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [form, setForm] = useState(initialForm);
+  const [images, setImages] = useState([]);
+  const [evidencePreview, setEvidencePreview] = useState("");
+  const [actionMap, setActionMap] = useState({});
+  const [closureMap, setClosureMap] = useState({});
+  const [closurePreviewMap, setClosurePreviewMap] = useState({});
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState({ open: false, items: [], index: 0, compare: null });
+  const [statusFilter, setStatusFilter] = useState("All");
+
+  const canDelete = ["super_admin", "admin"].includes(user?.role);
+  const riskScore = useMemo(
+    () => severityWeight[form.severity] * likelihoodWeight[form.likelihood],
+    [form.severity, form.likelihood]
+  );
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [hazardRes, userRes] = await Promise.all([hazardService.list(), userService.list()]);
+      setRecords(hazardRes.records || []);
+      setUsers(userRes.users || []);
+    } catch (fetchError) {
+      setError(fetchError?.response?.data?.message || "Unable to fetch hazards");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setError("");
+
+    if (
+      !form.date ||
+      !form.plaza ||
+      !form.location ||
+      !form.reportedBy ||
+      !form.category ||
+      !form.action ||
+      images.length === 0
+    ) {
+      setError("Fill all required legacy hazard fields");
+      return;
+    }
+
+    try {
+      await hazardService.create({
+        ...form,
+        title: form.title || `${form.category} - ${form.plaza}`,
+        description:
+          form.description || `${form.category} reported at ${form.location} by ${form.reportedBy}`,
+        riskScore,
+        evidenceImages: images
+      });
+      setForm(initialForm);
+      setImages([]);
+      if (evidencePreview?.startsWith("blob:")) URL.revokeObjectURL(evidencePreview);
+      setEvidencePreview("");
+      await showSuccessPopup("Hazard Submitted Successfully");
+      fetchAll();
+    } catch (submitError) {
+      setError(submitError?.response?.data?.message || "Failed to submit hazard");
+    }
+  };
+
+  const addAction = async (hazard) => {
+    const action = actionMap[hazard._id];
+    if (!action?.text) return;
+    try {
+      await hazardService.addAction(hazard._id, {
+        action: action.text,
+        owner: action.owner || "",
+        targetDate: action.targetDate || "",
+        status: "Open"
+      });
+      setActionMap((prev) => ({ ...prev, [hazard._id]: { text: "", owner: "", targetDate: "" } }));
+      fetchAll();
+    } catch (actionError) {
+      setError(actionError?.response?.data?.message || "Action update failed");
+    }
+  };
+
+  const closeHazard = async (hazard) => {
+    const closure = closureMap[hazard._id] || {};
+    if (!(closure.images || []).length) {
+      setError("Upload after image to close hazard");
+      return;
+    }
+    try {
+      await hazardService.close(hazard._id, {
+        closureNotes: "",
+        closureImages: closure.images || []
+      });
+      setClosureMap((prev) => ({ ...prev, [hazard._id]: { images: [] } }));
+      if (closurePreviewMap[hazard._id]?.startsWith("blob:")) {
+        URL.revokeObjectURL(closurePreviewMap[hazard._id]);
+      }
+      setClosurePreviewMap((prev) => {
+        const next = { ...prev };
+        delete next[hazard._id];
+        return next;
+      });
+      await showSuccessPopup("Hazard Closed Successfully");
+      fetchAll();
+    } catch (closeError) {
+      setError(closeError?.response?.data?.message || "Hazard closure failed");
+    }
+  };
+
+  const assignHazard = async (hazardId, assignedTo) => {
+    if (!assignedTo) return;
+    try {
+      await hazardService.assign(hazardId, assignedTo);
+      fetchAll();
+    } catch (_error) {
+      // Legacy endpoints may not support assignment; keep silent.
+    }
+  };
+
+  const exportPdf = (hazard) => {
+    const doc = new jsPDF();
+    doc.setFontSize(14);
+    doc.text("Hazard Closure Report", 14, 18);
+    doc.setFontSize(10);
+    doc.text(`Date: ${hazard.date || "-"}`, 14, 30);
+    doc.text(`Plaza: ${hazard.plaza || "-"}`, 14, 38);
+    doc.text(`Location: ${hazard.location || "-"}`, 14, 46);
+    doc.text(`Reported By: ${hazard.reportedBy || "-"}`, 14, 54);
+    doc.text(`Category: ${hazard.category || "-"}`, 14, 62);
+    doc.text(`Action Team: ${hazard.action || "-"}`, 14, 70);
+    doc.text(`Severity: ${hazard.severity || "-"}`, 14, 78);
+    doc.text(`Risk Score: ${hazard.riskScore || 0}`, 14, 86);
+    doc.text(`Status: ${hazard.status || "Open"}`, 14, 94);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 102);
+    doc.save(`hazard-${hazard._id}.pdf`);
+  };
+
+  const openGallery = (hazard, startAt = 0) => {
+    const evidence = (
+      hazard.evidenceImages?.length
+        ? hazard.evidenceImages
+        : hazard.beforeImage
+        ? [hazard.beforeImage]
+        : []
+    )
+      .map((item) => ({ url: getMediaUrl(item) }))
+      .filter((item) => Boolean(item.url));
+    const closure = (
+      hazard.closureImages?.length
+        ? hazard.closureImages
+        : hazard.afterImage
+        ? [hazard.afterImage]
+        : []
+    )
+      .map((item) => ({ url: getMediaUrl(item) }))
+      .filter((item) => Boolean(item.url));
+    const assets = [...evidence, ...closure];
+    setModal({
+      open: true,
+      items: assets,
+      index: Math.min(Math.max(startAt, 0), Math.max(0, assets.length - 1)),
+      compare: null
+    });
+  };
+
+  const filteredRecords = useMemo(() => {
+    if (statusFilter === "All") return records;
+    return records.filter((item) => (item.status || "Open") === statusFilter);
+  }, [records, statusFilter]);
+
+  const deleteHazard = async (id) => {
+    if (!window.confirm("Delete this hazard?")) return;
+    try {
+      await hazardService.remove(id);
+      fetchAll();
+    } catch (deleteError) {
+      setError(deleteError?.response?.data?.message || "Delete failed");
+    }
+  };
+
+  const chartData = useMemo(
+    () => [
+      { name: "Closed", value: records.filter((item) => item.status === "Closed").length },
+      {
+        name: "Open",
+        value: records.filter((item) => item.status === "Open" || !item.status).length
+      }
+    ],
+    [records]
+  );
+
+  return (
+    <div className="safety-bg-overlay safety-bg-hazard space-y-5">
+      <SectionHeader
+        title="Hazard & Risk Management"
+        subtitle="Legacy hazard fields and workflows restored with enterprise risk operations UX"
+      />
+
+      <div className="grid grid-cols-1 gap-4 xl:h-[calc(100vh-180px)] xl:grid-cols-3">
+        <GlassCard className="module-sticky-card p-5 xl:col-span-1">
+          <h3 className="mb-3 text-lg font-semibold text-white">Report Hazard</h3>
+          <form className="space-y-3" onSubmit={submit}>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="date"
+                value={form.date}
+                onChange={(event) => setForm((prev) => ({ ...prev, date: event.target.value }))}
+                className="rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                required
+              />
+              <select
+                value={form.plaza}
+                onChange={(event) => setForm((prev) => ({ ...prev, plaza: event.target.value }))}
+                className="rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                required
+              >
+                <option value="" className="bg-slate-900 text-white">
+                  Select Plaza
+                </option>
+                {legacyPlazas.map((item) => (
+                  <option key={item} value={item} className="bg-slate-900 text-white">
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <input
+              value={form.location}
+              onChange={(event) => setForm((prev) => ({ ...prev, location: event.target.value }))}
+              placeholder="Location & Chainage"
+              className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+              required
+            />
+            <input
+              value={form.reportedBy}
+              onChange={(event) => setForm((prev) => ({ ...prev, reportedBy: event.target.value }))}
+              placeholder="Reported By"
+              className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+              required
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={form.category}
+                onChange={(event) => setForm((prev) => ({ ...prev, category: event.target.value }))}
+                className="rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                required
+              >
+                <option value="" className="bg-slate-900 text-white">
+                  Category
+                </option>
+                {legacyCategories.map((item) => (
+                  <option key={item} value={item} className="bg-slate-900 text-white">
+                    {item}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={form.action}
+                onChange={(event) => setForm((prev) => ({ ...prev, action: event.target.value }))}
+                className="rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                required
+              >
+                <option value="" className="bg-slate-900 text-white">
+                  Action Team
+                </option>
+                {legacyActionTeams.map((item) => (
+                  <option key={item} value={item} className="bg-slate-900 text-white">
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={form.severity}
+                onChange={(event) => setForm((prev) => ({ ...prev, severity: event.target.value }))}
+                className="rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+              >
+                {Object.keys(severityWeight).map((item) => (
+                  <option key={item} value={item} className="bg-slate-900 text-white">
+                    {item}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={form.likelihood}
+                onChange={(event) => setForm((prev) => ({ ...prev, likelihood: event.target.value }))}
+                className="rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+              >
+                {Object.keys(likelihoodWeight).map((item) => (
+                  <option key={item} value={item} className="bg-slate-900 text-white">
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <select
+              value={form.assignedTo}
+              onChange={(event) => setForm((prev) => ({ ...prev, assignedTo: event.target.value }))}
+              className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+            >
+              <option value="" className="bg-slate-900 text-white">
+                Assign To (Optional)
+              </option>
+              {users.map((item) => (
+                <option key={item._id} value={item._id} className="bg-slate-900 text-white">
+                  {item.name}
+                </option>
+              ))}
+            </select>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-2 text-xs text-slate-300">
+              Risk Matrix Score: <span className="font-semibold text-teal-300">{riskScore}</span>
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                const selected = event.target.files?.[0] || null;
+                setImages(selected ? [selected] : []);
+                if (evidencePreview?.startsWith("blob:")) URL.revokeObjectURL(evidencePreview);
+                setEvidencePreview(selected ? URL.createObjectURL(selected) : "");
+              }}
+              className="w-full rounded-xl border border-dashed border-white/20 bg-white/5 px-3 py-2 text-xs text-slate-300"
+            />
+            {evidencePreview ? (
+              <img
+                src={evidencePreview}
+                alt="Evidence Preview"
+                className="h-28 w-full rounded-xl border border-white/10 object-contain"
+              />
+            ) : null}
+            <button
+              type="submit"
+              className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-2.5 text-sm font-semibold text-white"
+            >
+              Submit Hazard
+            </button>
+          </form>
+          <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-3">
+            <p className="mb-2 text-sm text-slate-200">Hazard Status Overview</p>
+            <div className="h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart margin={{ top: 0, right: 6, left: 6, bottom: 8 }}>
+                  <Pie data={chartData} dataKey="value" outerRadius={58} labelLine={false}>
+                    {chartData.map((entry, index) => (
+                      <Cell key={entry.name} fill={["#22c55e", "#facc15"][index % 2]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend
+                    verticalAlign="bottom"
+                    align="center"
+                    iconSize={10}
+                    wrapperStyle={{ fontSize: "12px", paddingTop: 8 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
+        </GlassCard>
+
+        <GlassCard className="p-5 xl:col-span-2 xl:max-h-[calc(100vh-180px)] xl:overflow-hidden">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-lg font-semibold text-white">Hazard Log</h3>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-white"
+            >
+              {["All", "Open", "In Progress", "Closed"].map((status) => (
+                <option key={status} value={status} className="bg-slate-900 text-white">
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
+          {loading ? (
+            <p className="text-sm text-slate-300">Loading hazards...</p>
+          ) : (
+            <div className="module-list-scroll space-y-4 xl:max-h-[calc(100vh-250px)] xl:overflow-y-auto xl:pr-1">
+              {filteredRecords.map((hazard) => {
+                const evidenceItems = (
+                  hazard.evidenceImages?.length
+                    ? hazard.evidenceImages
+                    : hazard.beforeImage
+                    ? [hazard.beforeImage]
+                    : []
+                )
+                  .map((item) => ({ url: getMediaUrl(item) }))
+                  .filter((item) => Boolean(item.url));
+                const closureItems = (
+                  hazard.closureImages?.length
+                    ? hazard.closureImages
+                    : hazard.afterImage
+                    ? [hazard.afterImage]
+                    : []
+                )
+                  .map((item) => ({ url: getMediaUrl(item) }))
+                  .filter((item) => Boolean(item.url));
+                const evidencePreview = evidenceItems[0]?.url || "";
+                const closurePreview = closureItems[0]?.url || "";
+
+                return (
+                  <div key={hazard._id} className="rounded-2xl border border-white/12 bg-white/5 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-base font-semibold text-white">{hazard.plaza || hazard.title}</p>
+                      <p className="mt-1 text-xs text-slate-300">📍 {hazard.location || "-"}</p>
+                      <p className="mt-1 text-xs text-slate-300">👤 {hazard.reportedBy || "-"}</p>
+                      <p className="mt-1 text-xs text-slate-300">
+                        {hazard.category || "-"} | {hazard.action || "-"}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-300">
+                        Severity {hazard.severity || "-"} • Risk {hazard.riskScore || 0}
+                      </p>
+                      <p
+                        className={`mt-1 text-xs font-semibold ${
+                          hazard.status === "Closed" ? "text-green-300" : "text-amber-300"
+                        }`}
+                      >
+                        {hazard.status || "Open"}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {formatDateTime(hazard.date || hazard.createdAt)}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openGallery(hazard, 0)}
+                        className="rounded-xl border border-white/20 px-2.5 py-1.5 text-xs text-white"
+                      >
+                        Evidence
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => exportPdf(hazard)}
+                        className="rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-2.5 py-1.5 text-xs text-cyan-100"
+                      >
+                        PDF
+                      </button>
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          onClick={() => deleteHazard(hazard._id)}
+                          className="rounded-xl border border-rose-400/40 bg-rose-500/15 px-2.5 py-1.5 text-xs text-rose-100"
+                        >
+                          Delete
+                        </button>
+                      ) : null}
+                    </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-2">
+                        <p className="mb-2 text-xs font-semibold text-amber-200">Evidence Image</p>
+                        {evidencePreview ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openGallery(hazard, 0);
+                            }}
+                            className="w-full overflow-hidden rounded-xl border border-white/10 bg-slate-900/60"
+                          >
+                            <img
+                              src={evidencePreview}
+                              alt="Evidence"
+                              loading="lazy"
+                              className="h-36 w-full object-cover transition duration-300 hover:scale-105"
+                            />
+                          </button>
+                        ) : (
+                          <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-white/15 bg-slate-900/50 text-xs text-slate-400">
+                            Evidence image not available
+                          </div>
+                        )}
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-2">
+                        <p className="mb-2 text-xs font-semibold text-emerald-200">Closure Image</p>
+                        {closurePreview ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openGallery(hazard, Math.max(evidenceItems.length, 0));
+                            }}
+                            className="w-full overflow-hidden rounded-xl border border-white/10 bg-slate-900/60"
+                          >
+                            <img
+                              src={closurePreview}
+                              alt="Closure"
+                              loading="lazy"
+                              className="h-36 w-full object-cover transition duration-300 hover:scale-105"
+                            />
+                          </button>
+                        ) : (
+                          <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-white/15 bg-slate-900/50 text-xs text-slate-400">
+                            Closure image not uploaded
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                  <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+                    <select
+                      value={hazard.assignedTo?._id || hazard.assignedTo || ""}
+                      onChange={(event) => assignHazard(hazard._id, event.target.value)}
+                      className="rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-xs text-white"
+                    >
+                      <option value="" className="bg-slate-900 text-white">
+                        Assign user
+                      </option>
+                      {users.map((item) => (
+                        <option key={item._id} value={item._id} className="bg-slate-900 text-white">
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={actionMap[hazard._id]?.text || ""}
+                      onChange={(event) =>
+                        setActionMap((prev) => ({
+                          ...prev,
+                          [hazard._id]: { ...(prev[hazard._id] || {}), text: event.target.value }
+                        }))
+                      }
+                      placeholder="Corrective action"
+                      className="rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-xs text-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => addAction(hazard)}
+                      className="rounded-xl bg-teal-500/20 px-3 py-2 text-xs text-teal-100"
+                    >
+                      Add Action
+                    </button>
+                  </div>
+
+                  {hazard.status === "Open" ? (
+                    <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => {
+                          const selected = event.target.files?.[0] || null;
+                          setClosureMap((prev) => ({
+                            ...prev,
+                            [hazard._id]: {
+                              ...(prev[hazard._id] || {}),
+                              images: selected ? [selected] : []
+                            }
+                          }));
+                          if (closurePreviewMap[hazard._id]?.startsWith("blob:")) {
+                            URL.revokeObjectURL(closurePreviewMap[hazard._id]);
+                          }
+                          setClosurePreviewMap((prev) => ({
+                            ...prev,
+                            [hazard._id]: selected ? URL.createObjectURL(selected) : ""
+                          }));
+                        }}
+                        className="rounded-xl border border-dashed border-white/20 bg-slate-900/70 px-3 py-2 text-xs text-slate-300"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => closeHazard(hazard)}
+                        className="rounded-xl bg-emerald-500/20 px-3 py-2 text-xs text-emerald-100"
+                      >
+                        Close Hazard
+                      </button>
+                      {closurePreviewMap[hazard._id] ? (
+                        <img
+                          src={closurePreviewMap[hazard._id]}
+                          alt="Closure Preview"
+                          className="h-24 w-full rounded-xl border border-white/10 object-contain md:col-span-2"
+                        />
+                      ) : null}
+                    </div>
+                  ) : null}
+                  </div>
+                );
+              })}
+              {filteredRecords.length === 0 ? (
+                <p className="text-sm text-slate-300">
+                  No hazards found for the selected filter.
+                </p>
+              ) : null}
+            </div>
+          )}
+        </GlassCard>
+      </div>
+
+      <MediaStudioModal
+        open={modal.open}
+        onClose={() => setModal((prev) => ({ ...prev, open: false }))}
+        items={modal.items}
+        activeIndex={modal.index}
+        onIndexChange={(index) => setModal((prev) => ({ ...prev, index }))}
+        compare={modal.compare}
+      />
+    </div>
+  );
+};
+
+export default HazardsPage;
