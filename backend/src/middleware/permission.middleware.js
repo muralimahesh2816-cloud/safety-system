@@ -1,4 +1,4 @@
-const { ROLES, ROLE_DEFAULT_PERMISSIONS } = require("../constants/roles");
+const { ROLES, ROLE_DEFAULT_PERMISSIONS, normalizeRole } = require("../constants/roles");
 
 const PAGE_KEYS = [
   "dashboard",
@@ -38,7 +38,8 @@ const allTruePermissions = () =>
   }, {});
 
 const roleDefaultsFromLegacy = (role = ROLES.USER) => {
-  if (role === ROLES.SUPER_ADMIN || role === ROLES.ADMIN) {
+  const resolvedRole = normalizeRole(role);
+  if (resolvedRole === ROLES.SUPER_ADMIN || resolvedRole === ROLES.ADMIN) {
     return allTruePermissions();
   }
 
@@ -47,7 +48,7 @@ const roleDefaultsFromLegacy = (role = ROLES.USER) => {
     return acc;
   }, {});
 
-  const legacy = ROLE_DEFAULT_PERMISSIONS[role] || ROLE_DEFAULT_PERMISSIONS[ROLES.USER] || {};
+  const legacy = ROLE_DEFAULT_PERMISSIONS[resolvedRole] || ROLE_DEFAULT_PERMISSIONS[ROLES.USER] || {};
   PAGE_KEYS.forEach((key) => {
     const legacyKey = key === "hazard" ? "hazards" : key;
     defaults[key] = Boolean(legacy?.[legacyKey]?.view);
@@ -56,7 +57,8 @@ const roleDefaultsFromLegacy = (role = ROLES.USER) => {
 };
 
 const normalizePagePermissions = (permissions = {}, role = ROLES.USER) => {
-  const normalized = roleDefaultsFromLegacy(role);
+  const resolvedRole = normalizeRole(role);
+  const normalized = roleDefaultsFromLegacy(resolvedRole);
   if (!permissions || typeof permissions !== "object") {
     return normalized;
   }
@@ -73,7 +75,7 @@ const normalizePagePermissions = (permissions = {}, role = ROLES.USER) => {
     }
   });
 
-  if (role === ROLES.SUPER_ADMIN) {
+  if (resolvedRole === ROLES.SUPER_ADMIN) {
     return allTruePermissions();
   }
 
@@ -81,7 +83,8 @@ const normalizePagePermissions = (permissions = {}, role = ROLES.USER) => {
 };
 
 const toActionPermissions = (permissions = {}, role = ROLES.USER) => {
-  const legacyDefaults = ROLE_DEFAULT_PERMISSIONS[role] || ROLE_DEFAULT_PERMISSIONS[ROLES.USER] || {};
+  const resolvedRole = normalizeRole(role);
+  const legacyDefaults = ROLE_DEFAULT_PERMISSIONS[resolvedRole] || ROLE_DEFAULT_PERMISSIONS[ROLES.USER] || {};
   const modules = {
     dashboard: "dashboard",
     work: "work",
@@ -138,7 +141,7 @@ const toActionPermissions = (permissions = {}, role = ROLES.USER) => {
     return acc;
   }, {});
 
-  if (role === ROLES.SUPER_ADMIN) {
+  if (resolvedRole === ROLES.SUPER_ADMIN) {
     Object.keys(resolved).forEach((moduleName) => {
       resolved[moduleName] = {
         view: true,

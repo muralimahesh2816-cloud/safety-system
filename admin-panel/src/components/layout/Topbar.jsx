@@ -59,12 +59,26 @@ const toInitials = (name = "User") =>
 const Topbar = ({ user, onLogout, title }) => {
   const [logoHovered, setLogoHovered] = useState(false);
   const [userHovered, setUserHovered] = useState(false);
-  const profilePhotoUrl = getMediaUrl(user?.profilePhoto?.url || user?.profilePhoto || user?.profileImage);
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
+  const profilePhotoUrl = getMediaUrl(
+    user?.profilePhoto?.url ||
+      user?.profilePhoto?.path ||
+      user?.profilePhoto?.filename ||
+      user?.profilePhoto ||
+      user?.profileImage ||
+      user?.photo ||
+      user?.photoUrl ||
+      user?.avatar
+  );
   const userName = user?.name || "User";
   const userRole = toTitleRole(user?.role);
   const userEmail = user?.email || "No email";
   const userMobile = user?.mobile || "Not provided";
   const userInitials = toInitials(userName);
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [profilePhotoUrl]);
 
   return (
     <header className="sticky top-0 z-30 mb-5 flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/65 px-3 py-3 backdrop-blur-2xl md:px-5">
@@ -152,12 +166,13 @@ const Topbar = ({ user, onLogout, title }) => {
         >
           <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-3 py-2">
             <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-white/15 bg-slate-900/70 text-xs font-semibold text-teal-100">
-              {profilePhotoUrl ? (
+              {profilePhotoUrl && !avatarLoadFailed ? (
                 <img
                   src={profilePhotoUrl}
                   alt={`${userName} profile`}
                   className="h-full w-full object-cover"
                   loading="lazy"
+                  onError={() => setAvatarLoadFailed(true)}
                 />
               ) : (
                 userInitials
@@ -183,12 +198,13 @@ const Topbar = ({ user, onLogout, title }) => {
                 <div className="px-4 py-4">
                   <div className="mb-3 flex items-center gap-3">
                     <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-slate-900/80 text-base font-semibold text-teal-100">
-                      {profilePhotoUrl ? (
+                      {profilePhotoUrl && !avatarLoadFailed ? (
                         <img
                           src={profilePhotoUrl}
                           alt={`${userName} profile`}
                           className="h-full w-full object-cover"
                           loading="lazy"
+                          onError={() => setAvatarLoadFailed(true)}
                         />
                       ) : (
                         userInitials

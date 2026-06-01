@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { motion } from "framer-motion";
+import { hazardService, workService } from "../api/services";
 
 import {
   PieChart,
@@ -50,22 +50,17 @@ function DashboardNew({ setPage }) {
 
       try {
 
-const workRes =
-  await axios.get(
-    "https://safety-backend-h2y7.onrender.com/work"
-  );
-
-const hazardRes =
-  await axios.get(
-    "https://safety-backend-h2y7.onrender.com/hazard"
-  );
+const [workRes, hazardRes] = await Promise.all([
+  workService.list(),
+  hazardService.list()
+]);
 
         setWork(
-          workRes.data
+          workRes.records || []
         );
 
         setHazard(
-          hazardRes.data
+          hazardRes.records || []
         );
 
       } catch (err) {
@@ -445,9 +440,9 @@ const hazardRes =
 
           </h3>
 
-          <div className="w-full h-[320px]">
+          <div className="w-full h-[320px] min-h-[320px] min-w-0">
 
-            <ResponsiveContainer>
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
 
               <PieChart>
 
@@ -507,9 +502,9 @@ const hazardRes =
 
           </h3>
 
-          <div className="w-full h-[320px]">
+          <div className="w-full h-[320px] min-h-[320px] min-w-0">
 
-            <ResponsiveContainer>
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
 
               <BarChart
                 data={

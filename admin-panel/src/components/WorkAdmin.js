@@ -1,13 +1,13 @@
-import axios from 'axios';
 import { useEffect, useState } from 'react';
+import { workService } from '../api/services';
 
 function WorkAdmin() {
   const [data, setData] = useState([]);
 
   // Fetch work data
   const fetchData = async () => {
-    const res = await axios.get('http://127.0.0.1:5000/work');
-    setData(res.data);
+    const res = await workService.list();
+    setData(res.records || []);
   };
 
   useEffect(() => {
@@ -16,7 +16,10 @@ function WorkAdmin() {
 
   // Update status
   const updateStatus = async (id, status) => {
-    await axios.put(`http://127.0.0.1:5000/work/${id}`, { status });
+    await workService.updateStatus(id, {
+      status,
+      approvedBy: localStorage.getItem("name") || "Admin"
+    });
     fetchData();
   };
 

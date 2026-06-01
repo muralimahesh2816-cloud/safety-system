@@ -77,9 +77,25 @@ function checkValidServiceWorker(swUrl, config) {
 
 export function unregister() {
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.ready
-      .then((registration) => {
-        registration.unregister();
+    let registrationCount = 0;
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations) => {
+        registrationCount = registrations.length;
+        return Promise.all(registrations.map((registration) => registration.unregister()));
+      })
+      .then(() => {
+        if ("caches" in window) {
+          return caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key))));
+        }
+        return null;
+      })
+      .then(() => {
+        const cleanupKey = "safety_hse_sw_cleanup_done";
+        if (registrationCount && !sessionStorage.getItem(cleanupKey)) {
+          sessionStorage.setItem(cleanupKey, "true");
+          window.location.reload();
+        }
       })
       .catch(() => {});
   }

@@ -5,7 +5,7 @@ import GlassCard from "../components/common/GlassCard";
 import SectionHeader from "../components/common/SectionHeader";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import { hazardService, userService } from "../api/services";
-import { showSuccessPopup } from "../utils/alerts";
+import { showSuccessPopup, showValidationPopup } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
 
@@ -102,6 +102,7 @@ const HazardsPage = ({ user }) => {
       images.length === 0
     ) {
       setError("Fill all required legacy hazard fields");
+      showValidationPopup("Please fill all required Hazard fields.");
       return;
     }
 
@@ -146,6 +147,7 @@ const HazardsPage = ({ user }) => {
     const closure = closureMap[hazard._id] || {};
     if (!(closure.images || []).length) {
       setError("Upload after image to close hazard");
+      showValidationPopup("Please upload a closure image before closing this hazard.");
       return;
     }
     try {
@@ -400,8 +402,8 @@ const HazardsPage = ({ user }) => {
           </form>
           <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-3">
             <p className="mb-2 text-sm text-slate-200">Hazard Status Overview</p>
-            <div className="h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-[250px] min-h-[250px] min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                 <PieChart margin={{ top: 0, right: 6, left: 6, bottom: 8 }}>
                   <Pie data={chartData} dataKey="value" outerRadius={58} labelLine={false}>
                     {chartData.map((entry, index) => (

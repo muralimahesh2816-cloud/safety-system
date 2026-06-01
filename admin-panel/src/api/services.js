@@ -3,10 +3,8 @@ import { client } from "./client";
 import { API_BASE_URL } from "../config/appConfig";
 import { normalizePermissions, toPermissionPayload } from "../utils/permissions";
 
-const LEGACY_BASE_URL =
-  process.env.REACT_APP_LEGACY_API_URL || "https://safety-backend-h2y7.onrender.com";
-
 const LOCAL_BACKEND_ROOT = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
+const LEGACY_BASE_URL = process.env.REACT_APP_LEGACY_API_URL || LOCAL_BACKEND_ROOT;
 
 const legacyClient = axios.create({
   baseURL: LEGACY_BASE_URL
@@ -298,7 +296,13 @@ const toLegacySecurityPayload = (payload = {}) => ({
 const toAbsoluteLegacyUpload = (value) => {
   if (!value) return "";
   if (value.startsWith("http://") || value.startsWith("https://")) return value;
-  return `${LEGACY_BASE_URL}/uploads/${value}`;
+  let normalized = String(value || "").replace(/\\/g, "/");
+  const splitByUploads = normalized.split("/uploads/");
+  if (splitByUploads.length > 1) {
+    normalized = splitByUploads.pop() || "";
+  }
+  normalized = normalized.replace(/^\/+/, "").replace(/^uploads\//i, "");
+  return `${LOCAL_BACKEND_ROOT}/uploads/${normalized}`;
 };
 
 const mapWorkRecord = (item = {}) => {
@@ -688,112 +692,48 @@ export const userService = {
 };
 
 export const workService = {
-  list: async () =>
-    withLegacyFallback(
-      async () => {
-        const res = await client.get("/work-approvals");
-        return {
-          success: true,
-          records: (res.data.records || []).map(mapWorkRecord)
-        };
-      },
-      async () => {
-        const legacy = await legacyClient.get("/work");
-        return {
-          success: true,
-          records: (legacy.data || []).map(mapWorkRecord)
-        };
+  list: async () => {
+    const res = await client.get("/work-approvals");
+    return {
+      success: true,
+      records: (res.data.records || []).map(mapWorkRecord)
+    };
+  },
+  details: async (id) => {
+    const res = await client.get(`/work-approvals/${id}`);
+    return { success: true, work: mapWorkRecord(res.data.work) };
+  },
+  create: async (payload) => {
+    const formData = new FormData();
+    Object.entries(payload).forEach(([key, value]) => {
+      if (key === "beforeImages") return;
+      if (value !== undefined && value !== null) {
+        formData.append(key, value);
       }
-    ),
-  details: async (id) =>
-    withLegacyFallback(
-      async () => {
-        const res = await client.get(`/work-approvals/${id}`);
-        return { success: true, work: mapWorkRecord(res.data.work) };
-      },
-      async () => {
-        const legacy = await legacyClient.get("/work");
-        const work = (legacy.data || []).find((item) => item._id === id);
-        return { success: true, work: mapWorkRecord(work || {}) };
-      }
-    ),
-  create: async (payload) =>
-    withLegacyFallback(
-      async () => {
-        const formData = new FormData();
-        Object.entries(payload).forEach(([key, value]) => {
-          if (key === "beforeImages") return;
-          if (value !== undefined && value !== null) {
-            formData.append(key, value);
-          }
-        });
-        (payload.beforeImages || []).forEach((file) => formData.append("beforeImages", file));
-        const res = await client.post("/work-approvals", formData);
-        return { success: true, work: mapWorkRecord(res.data.work) };
-      },
-      async () => {
-        const formData = new FormData();
-        formData.append("workType", payload.workType || "");
-        formData.append("location", payload.location || "");
-        formData.append("chainage", payload.chainage || "");
-        formData.append("workersCount", payload.workersCount || 0);
-        if (payload.beforeImages?.[0]) {
-          formData.append("beforeImage", payload.beforeImages[0]);
-        }
-        const res = await legacyClient.post("/work", formData);
-        return { success: true, message: res.data };
-      }
-    ),
+    });
+    (payload.beforeImages || []).forEach((file) => formData.append("beforeImages", file));
+    const res = await client.post("/work-approvals", formData);
+    return { success: true, work: mapWorkRecord(res.data.work) };
+  },
   updateWorkflow: async (id, payload) =>
-    withLegacyFallback(
-      async () => (await client.patch(`/work-approvals/${id}/workflow`, payload)).data,
-      async () =>
-        (await legacyClient.put(`/work/${id}`, { status: payload.status === "approved" ? "Approved" : "Rejected" }))
-          .data
-    ),
+    (await client.patch(`/work-approvals/${id}/workflow`, payload)).data,
   updateStatus: async (id, payload) =>
-    withLegacyFallback(
-      async () => (await client.patch(`/work-approvals/${id}/status`, payload)).data,
-      async () =>
-        (
-          await legacyClient.put(`/work/${id}`, {
-            status: payload.status,
-            approvedBy: payload.approvedBy
-          })
-        ).data
-    ),
+    (await client.patch(`/work-approvals/${id}/status`, payload)).data,
   addComment: async (id, payload) =>
-    withLegacyFallback(
-      async () => (await client.post(`/work-approvals/${id}/comments`, payload)).data,
-      async () => ({ success: true, message: "Comment not supported on legacy endpoint" })
-    ),
+    (await client.post(`/work-approvals/${id}/comments`, payload)).data,
   addSignature: async (id, payload) =>
-    withLegacyFallback(
-      async () => (await client.post(`/work-approvals/${id}/signatures`, payload)).data,
-      async () => ({ success: true, message: "Signature not supported on legacy endpoint" })
-    ),
-  uploadAfterImages: async (id, files) =>
-    withLegacyFallback(
-      async () => {
-        const formData = new FormData();
-        files.forEach((file) => formData.append("afterImages", file));
-        return (await client.post(`/work-approvals/${id}/images/after`, formData)).data;
-      },
-      async () => {
-        const formData = new FormData();
-        if (files?.[0]) formData.append("afterImage", files[0]);
-        const res = await legacyClient.put(`/work/complete/${id}`, formData);
-        return { success: true, message: res.data };
-      }
-    ),
-  remove: async (id) =>
-    withLegacyFallback(
-      async () => (await client.delete(`/work-approvals/${id}`)).data,
-      async () => {
-        const res = await legacyClient.delete(`/work/${id}`);
-        return { success: true, message: res.data };
-      }
-    )
+    (await client.post(`/work-approvals/${id}/signatures`, payload)).data,
+  uploadAfterImages: async (id, files) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("afterImages", file));
+    return (await client.post(`/work-approvals/${id}/images/after`, formData)).data;
+  },
+  remove: async (id) => {
+    if (!id) {
+      throw new Error("Work approval id is required");
+    }
+    return (await client.delete(`/work-approvals/${id}`)).data;
+  }
 };
 
 export const hazardService = {

@@ -333,9 +333,9 @@ function Hazard() {
 
           </h3>
 
-          <div className="w-full h-[280px]">
+          <div className="w-full h-[280px] min-h-[280px] min-w-0">
 
-            <ResponsiveContainer>
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
 
               <PieChart>
 

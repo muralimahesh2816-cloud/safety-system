@@ -7,6 +7,29 @@ const ROLES = {
   VIEWER: "viewer"
 };
 
+const ROLE_ALIASES = {
+  super_admin: ROLES.SUPER_ADMIN,
+  superadmin: ROLES.SUPER_ADMIN,
+  "super admin": ROLES.SUPER_ADMIN,
+  admin: ROLES.ADMIN,
+  administrator: ROLES.ADMIN,
+  safety_manager: ROLES.SAFETY_MANAGER,
+  "safety manager": ROLES.SAFETY_MANAGER,
+  supervisor: ROLES.SUPERVISOR,
+  user: ROLES.USER,
+  viewer: ROLES.VIEWER
+};
+
+const normalizeRole = (role = ROLES.USER) => {
+  const normalized = String(role || "")
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, "_")
+    .replace(/\s+/g, " ");
+  const snakeCase = normalized.replace(/\s+/g, "_");
+  return ROLE_ALIASES[normalized] || ROLE_ALIASES[snakeCase] || ROLES.USER;
+};
+
 const MODULES = [
   "dashboard",
   "users",
@@ -52,13 +75,13 @@ const ROLE_DEFAULT_PERMISSIONS = {
       view: true,
       create: true,
       update: true,
-      remove: false
+      remove: true
     }),
     hazards: createPermissionSet({
       view: true,
       create: true,
       update: true,
-      remove: false
+      remove: true
     }),
     training: createPermissionSet({
       view: true,
@@ -290,5 +313,6 @@ const ROLE_DEFAULT_PERMISSIONS = {
 module.exports = {
   ROLES,
   MODULES,
-  ROLE_DEFAULT_PERMISSIONS
+  ROLE_DEFAULT_PERMISSIONS,
+  normalizeRole
 };

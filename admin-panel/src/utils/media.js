@@ -1,7 +1,7 @@
-const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000/api/v1";
+import { API_BASE_URL } from "../config/appConfig";
 
 export const getBackendBaseUrl = () => {
-  return API_BASE_URL.replace("/api/v1", "");
+  return API_BASE_URL.replace(/\/api\/v1\/?$/i, "").replace(/\/+$/, "");
 };
 
 const isDirectPreview = (value = "") => value.startsWith("blob:") || value.startsWith("data:");
@@ -39,16 +39,69 @@ const toUploadsUrl = (value) => {
   return `${getBackendBaseUrl()}/uploads/${encodeURI(safePath)}`;
 };
 
+const isLocalHostName = (hostname = "") => ["localhost", "127.0.0.1", "0.0.0.0"].includes(hostname);
+
 const normalizeBackendUploadUrl = (value = "") => {
   if (!value || typeof value !== "string") return value;
   if (!value.startsWith("http")) return value;
-  return value.replace(/\/api\/v1\/uploads\//i, "/uploads/");
+
+  try {
+    const parsed = new URL(value);
+    const backend = new URL(getBackendBaseUrl());
+    const rawPath = parsed.pathname.replace(/\/api\/v1\/uploads\//i, "/uploads/");
+    const uploadPath = normalizeUploadPath(rawPath);
+    const isUploadPath =
+      parsed.pathname.toLowerCase().includes("/uploads/") ||
+      parsed.pathname.toLowerCase().includes("/api/v1/uploads/");
+
+    if (!isUploadPath || !uploadPath) return value;
+
+    const forceBackendUploadPath =
+      parsed.pathname.toLowerCase().includes("/api/v1/uploads/") ||
+      isLocalHostName(parsed.hostname.toLowerCase()) ||
+      parsed.origin !== backend.origin;
+
+    if (forceBackendUploadPath) {
+      return `${backend.origin}/uploads/${encodeURI(uploadPath)}`;
+    }
+
+    return `${parsed.origin}/uploads/${encodeURI(uploadPath)}`;
+  } catch {
+    return value.replace(/\/api\/v1\/uploads\//i, "/uploads/");
+  }
 };
 
 export const getMediaUrl = (file) => {
   if (!file) return "";
 
-  if (typeof file === "string" && isDirectPreview(file)) return file;
+  if (typeof file === "string") {
+    const trimmed = file.trim();
+    if (!trimmed || trimmed === "[object Object]") return "";
+
+    if (isDirectPreview(trimmed)) return trimmed;
+
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return getMediaUrl(parsed[0]);
+        }
+      } catch (_error) {
+        // Keep original handling if not valid JSON.
+      }
+    }
+
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed?.url || parsed?.path || parsed?.filename || parsed?.name || parsed?.secure_url) {
+          return getMediaUrl(parsed);
+        }
+      } catch (_error) {
+        // Keep original handling if not valid JSON.
+      }
+    }
+  }
 
   if (typeof file === "string" && file.startsWith("http")) return normalizeBackendUploadUrl(file);
 

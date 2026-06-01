@@ -4,6 +4,7 @@ const { env, isProduction } = require("./config/env");
 const applySecurityMiddleware = require("./middleware/security.middleware");
 const { csrfProtection } = require("./middleware/csrf.middleware");
 const apiRoutes = require("./routes");
+const workRoutes = require("./routes/work.routes");
 const { notFoundHandler, errorHandler } = require("./middleware/error.middleware");
 
 const app = express();
@@ -67,6 +68,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/v1", apiRoutes);
+app.use("/work", workRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

@@ -26,8 +26,14 @@ const csrfProtection = (req, _res, next) => {
 
   const cookieToken = req.cookies?.[CSRF_COOKIE_NAME];
   const headerToken = req.headers["x-csrf-token"];
+  const hasBearerToken = String(req.headers.authorization || "").startsWith("Bearer ");
 
-  if (!cookieToken || !headerToken || cookieToken !== headerToken) {
+  if (hasBearerToken) {
+    next();
+    return;
+  }
+
+  if (!headerToken || !cookieToken || cookieToken !== headerToken) {
     next(new ApiError(403, "CSRF token validation failed"));
     return;
   }

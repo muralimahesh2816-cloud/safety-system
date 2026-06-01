@@ -72,6 +72,33 @@ export const showSuccessPopup = async (title, text = "") => {
   });
 };
 
+export const showValidationPopup = async (text = "Please fill all required fields.") => {
+  const Swal = await ensureSweetAlert();
+  if (!Swal) {
+    window.alert(text);
+    return;
+  }
+
+  await Swal.fire({
+    icon: "warning",
+    title: "Please fill required fields",
+    text,
+    confirmButtonText: "OK",
+    backdrop: "rgba(2, 6, 23, 0.72)",
+    customClass: {
+      popup: "hse-swal-popup",
+      title: "hse-swal-title",
+      htmlContainer: "hse-swal-text"
+    },
+    showClass: {
+      popup: "hse-swal-show"
+    },
+    hideClass: {
+      popup: "hse-swal-hide"
+    }
+  });
+};
+
 export const showConfirmPopup = async ({
   title = "Are you sure?",
   text = "",

@@ -2,6 +2,7 @@ const ApiError = require("../utils/api-error");
 const { verifyAccessToken } = require("../utils/tokens");
 const User = require("../models/User");
 const { toActionPermissions } = require("./permission.middleware");
+const { normalizeRole } = require("../constants/roles");
 
 const authMiddleware = async (req, _res, next) => {
   const authHeader = req.headers.authorization || "";
@@ -28,12 +29,14 @@ const authMiddleware = async (req, _res, next) => {
       return;
     }
 
+    const role = normalizeRole(user.role);
+
     req.user = {
       id: user._id.toString(),
-      role: user.role,
+      role,
       email: user.email,
       name: user.name,
-      permissions: toActionPermissions(user.permissions || {}, user.role)
+      permissions: toActionPermissions(user.permissions || {}, role)
     };
     next();
   } catch (error) {

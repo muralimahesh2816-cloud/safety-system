@@ -66,6 +66,7 @@ const LoginPage = ({ onLogin }) => {
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
+            autoComplete="email"
             className="mb-4 w-full rounded-2xl border border-white/20 bg-slate-900/70 px-4 py-3 text-sm outline-none ring-0 transition focus:border-teal-300"
             required
           />
@@ -78,6 +79,7 @@ const LoginPage = ({ onLogin }) => {
               type={showPassword ? "text" : "password"}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
               className="mb-2 w-full rounded-2xl border border-white/20 bg-slate-900/70 px-4 py-3 pr-12 text-sm outline-none ring-0 transition focus:border-teal-300"
               required
             />

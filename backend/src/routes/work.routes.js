@@ -1,12 +1,14 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const multer = require("multer");
 const asyncHandler = require("../utils/async-handler");
 const ApiError = require("../utils/api-error");
 const authMiddleware = require("../middleware/auth.middleware");
-const { authorizePermission } = require("../middleware/rbac.middleware");
+const { authorizePermission, authorizeRoles } = require("../middleware/rbac.middleware");
 const validate = require("../middleware/validate.middleware");
 const audit = require("../middleware/audit.middleware");
 const WorkApproval = require("../models/WorkApproval");
+const { ROLES } = require("../constants/roles");
 const {
   createWorkSchema,
   workflowActionSchema,
@@ -295,8 +297,12 @@ router.post(
 router.delete(
   "/:id",
   authMiddleware,
-  authorizePermission("work", "delete"),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.ADMIN),
   asyncHandler(async (req, res) => {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      throw new ApiError(400, "Invalid work approval id");
+    }
+
     const work = await WorkApproval.findById(req.params.id);
     if (!work) throw new ApiError(404, "Work approval not found");
     await WorkApproval.findByIdAndDelete(req.params.id);

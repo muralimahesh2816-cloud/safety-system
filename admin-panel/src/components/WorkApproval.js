@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import axios from 'axios';
 import { motion } from "framer-motion";
+import { workService } from "../api/services";
+import { showConfirmPopup, showSuccessPopup, showValidationPopup } from "../utils/alerts";
+import { getMediaUrl } from "../utils/media";
 
 import {
   PieChart,
@@ -19,6 +21,8 @@ function WorkApproval() {
   const [selectedImage, setSelectedImage] = useState(null);
 
   const role = localStorage.getItem("role");
+  const canManageWork = ["super_admin", "admin"].includes(role);
+  const getWorkId = (item = {}) => item._id || item.id || item.workId || "";
 
   // ================= PIE COLORS =================
 
@@ -28,11 +32,9 @@ function WorkApproval() {
 
   const fetchData = async () => {
 
-    const res = await axios.get(
-      'https://safety-backend-h2y7.onrender.com/work'
-    );
+    const res = await workService.list();
 
-    setData(res.data);
+    setData(res.records || []);
 
   };
 
@@ -52,27 +54,19 @@ function WorkApproval() {
       !beforeImage
     ) {
 
-      return alert("⚠️ Fill all fields");
+      showValidationPopup("Please fill all Work Approval fields.");
+      return;
 
     }
 
-    const dataForm = new FormData();
+    await workService.create({
+      ...form,
+      title: form.title || `${form.workType} - ${form.location}`,
+      workersCount: Number(form.workersCount || 0),
+      beforeImages: [beforeImage]
+    });
 
-    Object.keys(form).forEach((k) =>
-      dataForm.append(k, form[k])
-    );
-
-    dataForm.append(
-      'beforeImage',
-      beforeImage
-    );
-
-    await axios.post(
-      'https://safety-backend-h2y7.onrender.com/work',
-      dataForm
-    );
-
-    alert("✅ Work Submitted");
+    await showSuccessPopup("Work Submitted Successfully");
 
     setForm({});
 
@@ -93,15 +87,12 @@ function WorkApproval() {
     status
   ) => {
 
-    await axios.put(
-      `https://safety-backend-h2y7.onrender.com/work/${id}`,
-      {
-        status,
-        approvedBy:
-          localStorage.getItem("name")
-          || "Admin"
-      }
-    );
+    await workService.updateStatus(id, {
+      status,
+      approvedBy:
+        localStorage.getItem("name")
+        || "Admin"
+    });
 
     fetchData();
 
@@ -109,17 +100,30 @@ function WorkApproval() {
 
   // ================= DELETE =================
 
-  const deleteWork = async (id) => {
+  const deleteWork = async (item) => {
 
-    if (
-      !window.confirm(
-        "Delete this work?"
-      )
-    ) return;
+    const id = getWorkId(item);
+    if (!id) {
+      showValidationPopup("Unable to delete this work record because its id is missing.");
+      return;
+    }
 
-    await axios.delete(
-      `https://safety-backend-h2y7.onrender.com/work/${id}`
-    );
+    const confirmed = await showConfirmPopup({
+      title: "Delete Work Approval?",
+      text: "This work approval will be removed from the list.",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      icon: "warning"
+    });
+    if (!confirmed) return;
+
+    try {
+      await workService.remove(id);
+      setData((prev) => prev.filter((record) => getWorkId(record) !== id));
+      await showSuccessPopup("Work Approval Deleted Successfully");
+    } catch (deleteError) {
+      showValidationPopup(deleteError?.response?.data?.message || "Delete failed");
+    }
 
     fetchData();
 
@@ -132,19 +136,14 @@ function WorkApproval() {
     file
   ) => {
 
-    const formData = new FormData();
+    if (!file) {
+      showValidationPopup("Please upload a completion image.");
+      return;
+    }
 
-    formData.append(
-      "afterImage",
-      file
-    );
+    await workService.uploadAfterImages(id, [file]);
 
-    await axios.put(
-      `https://safety-backend-h2y7.onrender.com/work/complete/${id}`,
-      formData
-    );
-
-    alert("✅ Completion Uploaded");
+    await showSuccessPopup("Completion Uploaded Successfully");
 
     fetchData();
 
@@ -322,9 +321,9 @@ function WorkApproval() {
 
           </h3>
 
-          <div className="w-full h-[280px]">
+          <div className="w-full h-[280px] min-h-[280px] min-w-0">
 
-            <ResponsiveContainer>
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
 
               <PieChart>
 
@@ -390,7 +389,7 @@ function WorkApproval() {
 
           <motion.div
 
-            key={item._id}
+            key={getWorkId(item)}
 
             whileHover={{
               scale: 1.01
@@ -462,7 +461,7 @@ function WorkApproval() {
 
               {/* ADMIN */}
 
-              {role === "admin" && (
+              {canManageWork && (
 
                 <div className="mt-3 flex gap-2 flex-wrap">
 
@@ -470,7 +469,7 @@ function WorkApproval() {
                     color="green"
                     onClick={() =>
                       updateStatus(
-                        item._id,
+                        getWorkId(item),
                         "Approved"
                       )
                     }
@@ -482,7 +481,7 @@ function WorkApproval() {
                     color="red"
                     onClick={() =>
                       updateStatus(
-                        item._id,
+                        getWorkId(item),
                         "Rejected"
                       )
                     }
@@ -493,7 +492,7 @@ function WorkApproval() {
                   <Btn
                     color="gray"
                     onClick={() =>
-                      deleteWork(item._id)
+                      deleteWork(item)
                     }
                   >
                     Delete
@@ -519,7 +518,7 @@ function WorkApproval() {
                     type="file"
                     onChange={(e) =>
                       uploadCompletion(
-                        item._id,
+                        getWorkId(item),
                         e.target.files[0]
                       )
                     }
@@ -535,11 +534,11 @@ function WorkApproval() {
 
             <div className="w-1/3 flex flex-col gap-2 items-end">
 
-              {item.beforeImage && (
+              {getMediaUrl(item.beforeImage || item.beforeImages?.[0]) && (
 
                 <img
 
-                  src={`https://safety-backend-h2y7.onrender.com/uploads/${item.beforeImage}`}
+                  src={getMediaUrl(item.beforeImage || item.beforeImages?.[0])}
 
                   alt="before"
 
@@ -547,7 +546,7 @@ function WorkApproval() {
 
                   onClick={() =>
                     setSelectedImage(
-                      item.beforeImage
+                      getMediaUrl(item.beforeImage || item.beforeImages?.[0])
                     )
                   }
 
@@ -555,11 +554,11 @@ function WorkApproval() {
 
               )}
 
-              {item.afterImage && (
+              {getMediaUrl(item.afterImage || item.afterImages?.[0]) && (
 
                 <img
 
-                  src={`https://safety-backend-h2y7.onrender.com/uploads/${item.afterImage}`}
+                  src={getMediaUrl(item.afterImage || item.afterImages?.[0])}
 
                   alt="after"
 
@@ -567,7 +566,7 @@ function WorkApproval() {
 
                   onClick={() =>
                     setSelectedImage(
-                      item.afterImage
+                      getMediaUrl(item.afterImage || item.afterImages?.[0])
                     )
                   }
 
@@ -607,7 +606,7 @@ function WorkApproval() {
 
             <img
 
-              src={`https://safety-backend-h2y7.onrender.com/uploads/${selectedImage}`}
+              src={selectedImage}
 
               alt="preview"
 

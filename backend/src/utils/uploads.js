@@ -16,7 +16,7 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const toPublicLocalPath = (filename) => `${env.backendPublicUrl}/uploads/${filename}`;
+const toPublicLocalPath = (filename) => `/uploads/${filename}`;
 
 const saveLocally = async (file) => {
   const ext = path.extname(file.originalname || "").toLowerCase() || ".bin";

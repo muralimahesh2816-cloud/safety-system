@@ -5,7 +5,7 @@ import GlassCard from "../components/common/GlassCard";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import SectionHeader from "../components/common/SectionHeader";
 import { trainingService } from "../api/services";
-import { showConfirmPopup, showSuccessPopup } from "../utils/alerts";
+import { showConfirmPopup, showSuccessPopup, showValidationPopup } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
 
@@ -181,6 +181,7 @@ const TrainingPage = ({ user }) => {
     setError("");
     if (!form.title || !form.description || !form.category || !video) {
       setError("Fill all required training fields");
+      showValidationPopup("Please fill all required Training fields.");
       return;
     }
     try {

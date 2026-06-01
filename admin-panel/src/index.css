@@ -260,6 +260,13 @@ html.light .hse-swal-text {
 
 .safety-bg-dashboard .recharts-responsive-container {
   width: 100% !important;
+  min-width: 1px;
+  min-height: 1px;
+}
+
+.recharts-responsive-container {
+  min-width: 1px;
+  min-height: 1px;
 }
 
 .module-list-scroll {

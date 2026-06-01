@@ -6,8 +6,14 @@ import { normalizePermissions } from "../utils/permissions";
 const ACCESS_TOKEN_KEY = "hse_access_token";
 const USER_KEY = "hse_user";
 const CSRF_KEY = "hse_csrf_token";
+const MUTATING_METHODS = ["post", "put", "patch", "delete"];
 
 const client = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true
+});
+
+const csrfClient = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true
 });
@@ -20,9 +26,16 @@ const setSession = ({ token, user, csrfToken }) => {
       }
     : null;
   const normalizedUserId = normalizedUser?.id || normalizedUser?._id || "";
-  const profileImageUrl = normalizedUser?.profilePhoto
-    ? getMediaUrl(normalizedUser.profilePhoto?.url || normalizedUser.profilePhoto)
-    : "";
+  const profileImageUrl = getMediaUrl(
+    normalizedUser?.profilePhoto?.url ||
+      normalizedUser?.profilePhoto?.path ||
+      normalizedUser?.profilePhoto?.filename ||
+      normalizedUser?.profilePhoto ||
+      normalizedUser?.profileImage ||
+      normalizedUser?.photo ||
+      normalizedUser?.photoUrl ||
+      normalizedUser?.avatar
+  );
 
   if (token) localStorage.setItem(ACCESS_TOKEN_KEY, token);
   if (normalizedUser) localStorage.setItem(USER_KEY, JSON.stringify(normalizedUser));
@@ -36,7 +49,11 @@ const setSession = ({ token, user, csrfToken }) => {
   if (normalizedUser?.email) localStorage.setItem("email", normalizedUser.email);
   if (normalizedUser?.mobile) localStorage.setItem("mobile", normalizedUser.mobile);
   if (normalizedUser?.role) localStorage.setItem("role", normalizedUser.role);
-  if (profileImageUrl) localStorage.setItem("profileImage", profileImageUrl);
+  if (profileImageUrl) {
+    localStorage.setItem("profileImage", profileImageUrl);
+  } else {
+    localStorage.removeItem("profileImage");
+  }
   localStorage.setItem("loginTime", new Date().toLocaleString());
   localStorage.setItem("lastLogin", new Date().toLocaleString());
 };
@@ -71,21 +88,48 @@ const getStoredUser = () => {
   }
 };
 
-client.interceptors.request.use((config) => {
+client.interceptors.request.use(async (config) => {
   const token = localStorage.getItem(ACCESS_TOKEN_KEY);
-  const csrfToken = localStorage.getItem(CSRF_KEY);
+  const method = (config.method || "get").toLowerCase();
+  const isMutating = MUTATING_METHODS.includes(method);
+  let csrfToken = localStorage.getItem(CSRF_KEY);
+  config.headers = config.headers || {};
+
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  if (!["get", "head", "options"].includes((config.method || "get").toLowerCase())) {
-    if (csrfToken) {
-      config.headers["x-csrf-token"] = csrfToken;
-    }
+
+  if (isMutating && token && !csrfToken && !config._skipCsrfFetch) {
+    csrfToken = await refreshCsrfToken();
+  }
+
+  if (isMutating && csrfToken) {
+    config.headers["x-csrf-token"] = csrfToken;
   }
   return config;
 });
 
 let refreshPromise = null;
+let csrfPromise = null;
+
+const refreshCsrfToken = async () => {
+  if (!csrfPromise) {
+    csrfPromise = csrfClient
+      .get("/auth/csrf", { _skipCsrfRetry: true })
+      .then((res) => {
+        const csrfToken = res.data?.csrfToken || "";
+        if (csrfToken) {
+          localStorage.setItem(CSRF_KEY, csrfToken);
+        }
+        return csrfToken;
+      })
+      .finally(() => {
+        csrfPromise = null;
+      });
+  }
+  return csrfPromise;
+};
+
 const refreshToken = async () => {
   if (!refreshPromise) {
     refreshPromise = client
@@ -113,15 +157,41 @@ client.interceptors.response.use(
   async (error) => {
     const original = error.config;
     const status = error.response?.status;
+    const message = error.response?.data?.message || "";
+    const method = (original?.method || "get").toLowerCase();
+
+    if (
+      status === 403 &&
+      original &&
+      !original?._csrfRetry &&
+      !original?._skipCsrfRetry &&
+      MUTATING_METHODS.includes(method) &&
+      message.toLowerCase().includes("csrf")
+    ) {
+      original._csrfRetry = true;
+      try {
+        const csrfToken = await refreshCsrfToken();
+        if (csrfToken) {
+          original.headers = original.headers || {};
+          original.headers["x-csrf-token"] = csrfToken;
+        }
+        return client(original);
+      } catch (_csrfError) {
+        return Promise.reject(error);
+      }
+    }
+
     if (
       status === 401 &&
-      !original._retry &&
-      !original.url?.includes("/auth/login") &&
-      !original.url?.includes("/auth/refresh")
+      original &&
+      !original?._retry &&
+      !original?.url?.includes("/auth/login") &&
+      !original?.url?.includes("/auth/refresh")
     ) {
       original._retry = true;
       try {
         const newToken = await refreshToken();
+        original.headers = original.headers || {};
         original.headers.Authorization = `Bearer ${newToken}`;
         return client(original);
       } catch (_refreshError) {

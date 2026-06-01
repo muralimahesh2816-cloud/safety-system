@@ -5,7 +5,7 @@ import GlassCard from "../components/common/GlassCard";
 import SectionHeader from "../components/common/SectionHeader";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import { workService } from "../api/services";
-import { showSuccessPopup } from "../utils/alerts";
+import { showConfirmPopup, showSuccessPopup, showValidationPopup } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
 
@@ -32,6 +32,8 @@ const initialForm = {
   startDate: "",
   dueDate: ""
 };
+
+const getWorkRecordId = (work = {}) => work._id || work.id || work.workId || "";
 
 const WorkApprovalsPage = ({ user }) => {
   const [records, setRecords] = useState([]);
@@ -77,6 +79,7 @@ const WorkApprovalsPage = ({ user }) => {
       beforeImages.length === 0
     ) {
       setError("Fill all required fields from legacy workflow");
+      showValidationPopup("Please fill all required Work Approval fields.");
       return;
     }
 
@@ -116,6 +119,7 @@ const WorkApprovalsPage = ({ user }) => {
     const files = afterImages[id] || [];
     if (!files.length) {
       setError("Upload completion image");
+      showValidationPopup("Please upload a completion image before marking work completed.");
       return;
     }
     try {
@@ -138,13 +142,32 @@ const WorkApprovalsPage = ({ user }) => {
     }
   };
 
-  const deleteWork = async (id) => {
-    if (!window.confirm("Delete this work?")) return;
+  const deleteWork = async (work) => {
+    const id = getWorkRecordId(work);
+    setError("");
+
+    if (!id) {
+      showValidationPopup("Unable to delete this work record because its id is missing.");
+      return;
+    }
+
+    const confirmed = await showConfirmPopup({
+      title: "Delete Work Approval?",
+      text: "This work approval will be removed from the list.",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      icon: "warning"
+    });
+    if (!confirmed) return;
     try {
       await workService.remove(id);
-      fetchAll();
+      setRecords((prev) => prev.filter((item) => getWorkRecordId(item) !== id));
+      await showSuccessPopup("Work Approval Deleted Successfully");
+      await fetchAll();
     } catch (deleteError) {
-      setError(deleteError?.response?.data?.message || "Delete failed");
+      const message = deleteError?.response?.data?.message || "Delete failed";
+      setError(message);
+      showValidationPopup(message);
     }
   };
 
@@ -266,8 +289,8 @@ const WorkApprovalsPage = ({ user }) => {
 
           <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-3">
             <p className="mb-2 text-sm text-slate-200">Work Status Overview</p>
-            <div className="h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-[250px] min-h-[250px] min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                 <PieChart margin={{ top: 0, right: 6, left: 6, bottom: 8 }}>
                   <Pie data={chartData} dataKey="value" outerRadius={58} labelLine={false}>
                     {chartData.map((entry, index) => (
@@ -365,7 +388,7 @@ const WorkApprovalsPage = ({ user }) => {
                         {canDelete ? (
                           <button
                             type="button"
-                            onClick={() => deleteWork(work._id)}
+                            onClick={() => deleteWork(work)}
                             className="rounded-xl border border-rose-400/40 bg-rose-500/20 px-2.5 py-1.5 text-xs text-rose-100"
                           >
                             Delete

@@ -5,7 +5,7 @@ import ImageStudioModal from "../components/common/ImageStudioModal";
 import SectionHeader from "../components/common/SectionHeader";
 import { userService } from "../api/services";
 import { ROLE_LABELS, ROLES } from "../constants/roles";
-import { showSuccessPopup } from "../utils/alerts";
+import { showSuccessPopup, showValidationPopup } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { resolveAssetUrl } from "../utils/media";
 
@@ -61,6 +61,18 @@ const UsersPage = ({ currentUser }) => {
     [currentUser?.role]
   );
 
+  const getUserPhoto = (userRecord) =>
+    resolveAssetUrl(
+      userRecord?.profilePhoto?.url ||
+        userRecord?.profilePhoto?.path ||
+        userRecord?.profilePhoto?.filename ||
+        userRecord?.profilePhoto ||
+        userRecord?.profileImage ||
+        userRecord?.photo ||
+        userRecord?.photoUrl ||
+        userRecord?.avatar
+    );
+
   const resetForm = () => {
     setForm(initialForm);
     setEditId("");
@@ -87,6 +99,7 @@ const UsersPage = ({ currentUser }) => {
     }
     if (!form.name || !form.email || !form.mobile || !form.role || (!editId && !form.password)) {
       setError("Fill all user fields");
+      showValidationPopup("Please fill all required User fields.");
       return;
     }
     try {
@@ -272,41 +285,42 @@ const UsersPage = ({ currentUser }) => {
             ) : users.length === 0 ? (
               <p className="text-sm text-slate-300">No users found.</p>
             ) : (
-              users.map((user) => (
-                <div
-                  key={user._id}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-3 md:p-4"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
+              users.map((user) => {
+                const photoUrl = getUserPhoto(user);
+                return (
+                  <div
+                    key={user._id}
+                    className="rounded-2xl border border-white/10 bg-white/5 p-3 md:p-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
                         <button
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            const photoUrl = resolveAssetUrl(user?.profilePhoto?.url || user?.profileImage);
                             if (!photoUrl) return;
                             setImageModal({
-                            open: true,
-                            items: [{ url: photoUrl }],
-                            index: 0,
-                            compare: null
-                          });
-                        }}
-                        className="h-12 w-12 overflow-hidden rounded-full border border-white/15 bg-white/10"
-                      >
-                        {resolveAssetUrl(user?.profilePhoto?.url || user?.profileImage) ? (
-                          <img
-                            src={resolveAssetUrl(user?.profilePhoto?.url || user?.profileImage)}
-                            alt={user.name}
-                            loading="lazy"
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-teal-200">
-                            {(user.name || "U").charAt(0)}
-                          </div>
-                        )}
-                      </button>
+                              open: true,
+                              items: [{ url: photoUrl }],
+                              index: 0,
+                              compare: null
+                            });
+                          }}
+                          className="h-12 w-12 overflow-hidden rounded-full border border-white/15 bg-white/10"
+                        >
+                          {photoUrl ? (
+                            <img
+                              src={photoUrl}
+                              alt={user.name}
+                              loading="lazy"
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-teal-200">
+                              {(user.name || "U").charAt(0)}
+                            </div>
+                          )}
+                        </button>
                       <div>
                       <p className="text-sm font-semibold text-white">{user.name}</p>
                       <p className="text-xs text-slate-300">{user.email}</p>
@@ -364,7 +378,8 @@ const UsersPage = ({ currentUser }) => {
                     </div>
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </GlassCard>

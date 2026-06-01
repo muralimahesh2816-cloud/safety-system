@@ -362,8 +362,8 @@ const ReportsPage = () => {
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <GlassCard className="p-5">
               <h3 className="mb-3 text-lg font-semibold text-white">Work Status Distribution</h3>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
+              <div className="h-72 min-h-[18rem] min-w-0">
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                   <BarChart data={workStatusData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                     <XAxis dataKey="name" stroke="#cbd5e1" />
@@ -377,8 +377,8 @@ const ReportsPage = () => {
 
             <GlassCard className="p-5">
               <h3 className="mb-3 text-lg font-semibold text-white">Hazard Severity Trend</h3>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
+              <div className="h-72 min-h-[18rem] min-w-0">
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                   <LineChart data={analytics.hazardTrends || []}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                     <XAxis
