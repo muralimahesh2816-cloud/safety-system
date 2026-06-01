@@ -1,5 +1,28 @@
 import { API_BASE_URL } from "../config/appConfig";
 
+const placeholderSvg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="52%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#083344"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="760" rx="42" fill="url(#bg)"/>
+  <circle cx="260" cy="190" r="120" fill="#14b8a6" opacity="0.14"/>
+  <circle cx="960" cy="590" r="170" fill="#38bdf8" opacity="0.12"/>
+  <rect x="260" y="190" width="680" height="380" rx="34" fill="#ffffff" opacity="0.06" stroke="#ffffff" stroke-opacity="0.18"/>
+  <path d="M410 485l132-148 92 102 62-70 104 116H410z" fill="#5eead4" opacity="0.82"/>
+  <circle cx="747" cy="310" r="45" fill="#f8fafc" opacity="0.72"/>
+  <text x="600" y="625" text-anchor="middle" fill="#ecfeff" font-family="Arial, sans-serif" font-size="34" font-weight="700">Image Preview Unavailable</text>
+  <text x="600" y="670" text-anchor="middle" fill="#94a3b8" font-family="Arial, sans-serif" font-size="22">Upload the image again or enable persistent storage</text>
+</svg>`;
+
+export const IMAGE_PLACEHOLDER_URL = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+  placeholderSvg
+)}`;
+
 export const getBackendBaseUrl = () => {
   return API_BASE_URL.replace(/\/api\/v1\/?$/i, "").replace(/\/+$/, "");
 };

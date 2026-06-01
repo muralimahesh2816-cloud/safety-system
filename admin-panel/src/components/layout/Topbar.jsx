@@ -81,7 +81,7 @@ const Topbar = ({ user, onLogout, title }) => {
   }, [profilePhotoUrl]);
 
   return (
-    <header className="sticky top-0 z-30 mb-5 flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/65 px-3 py-3 backdrop-blur-2xl md:px-5">
+    <header className="relative z-[80] mb-5 flex items-center justify-between overflow-visible rounded-2xl border border-white/10 bg-slate-950/65 px-3 py-3 backdrop-blur-2xl md:px-5">
       <div className="flex items-center gap-3">
         <div
           className="relative hidden sm:block"
@@ -130,7 +130,7 @@ const Topbar = ({ user, onLogout, title }) => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 8 }}
                 transition={{ duration: 0.22, ease: "easeOut" }}
-                className="pointer-events-none absolute left-1 top-full z-40 mt-3 w-72 overflow-hidden rounded-2xl border border-white/20 bg-slate-900/70 shadow-[0_18px_44px_rgba(2,6,23,0.65)] backdrop-blur-2xl"
+                className="pointer-events-none absolute left-1 top-full z-[999] mt-3 w-72 overflow-hidden rounded-2xl border border-white/20 bg-slate-900/70 shadow-[0_18px_44px_rgba(2,6,23,0.65)] backdrop-blur-2xl"
               >
                 <video
                   src={vertisVideo}
@@ -190,7 +190,7 @@ const Topbar = ({ user, onLogout, title }) => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 8 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
-                className="pointer-events-none absolute right-0 top-full z-40 mt-3 w-72 overflow-hidden rounded-2xl border border-white/20 bg-slate-900/75 shadow-[0_18px_44px_rgba(2,6,23,0.65)] backdrop-blur-2xl"
+                className="pointer-events-none absolute right-0 top-full z-[999] mt-3 w-72 overflow-hidden rounded-2xl border border-white/20 bg-slate-900/75 shadow-[0_18px_44px_rgba(2,6,23,0.65)] backdrop-blur-2xl"
               >
                 <div className="border-b border-white/10 bg-white/5 px-4 py-3">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-teal-200">User Profile</p>

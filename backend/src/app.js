@@ -29,6 +29,47 @@ const allowedOrigins = env.frontendUrl
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+const uploadDirectories = Array.from(
+  new Set([
+    path.resolve(process.cwd(), "uploads"),
+    path.resolve(__dirname, "../../uploads"),
+    path.resolve(__dirname, "../uploads")
+  ])
+);
+
+const missingImagePlaceholder = (filename = "missing-file") => {
+  const safeName = String(filename || "missing-file")
+    .replace(/[<>&'"]/g, "")
+    .slice(0, 80);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="52%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#083344"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="1200" height="760" rx="42" fill="url(#bg)"/>
+  <circle cx="260" cy="190" r="120" fill="#14b8a6" opacity="0.12" filter="url(#glow)"/>
+  <circle cx="960" cy="590" r="170" fill="#38bdf8" opacity="0.10" filter="url(#glow)"/>
+  <rect x="260" y="190" width="680" height="380" rx="34" fill="#ffffff" opacity="0.06" stroke="#ffffff" stroke-opacity="0.18"/>
+  <path d="M410 485l132-148 92 102 62-70 104 116H410z" fill="#5eead4" opacity="0.82"/>
+  <circle cx="747" cy="310" r="45" fill="#f8fafc" opacity="0.72"/>
+  <text x="600" y="625" text-anchor="middle" fill="#ecfeff" font-family="Arial, sans-serif" font-size="34" font-weight="700">Image Preview Unavailable</text>
+  <text x="600" y="670" text-anchor="middle" fill="#94a3b8" font-family="Arial, sans-serif" font-size="22">${safeName}</text>
+</svg>`;
+};
+
+const isImageRequest = (url = "") => /\.(png|jpe?g|webp|gif|avif|svg)$/i.test(url);
+
 app.use(
   "/uploads",
   (req, res, next) => {
@@ -40,7 +81,20 @@ app.use(
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     next();
   },
-  express.static(path.resolve(process.cwd(), "uploads"))
+  ...uploadDirectories.map((directory) =>
+    express.static(directory, {
+      fallthrough: true,
+      index: false,
+      maxAge: isProduction ? "7d" : 0
+    })
+  ),
+  (req, res, next) => {
+    if (!isImageRequest(req.path)) {
+      next();
+      return;
+    }
+    res.status(200).type("image/svg+xml").send(missingImagePlaceholder(path.basename(req.path)));
+  }
 );
 
 const csrfExemptPaths = [

@@ -16,6 +16,7 @@ import UsersPage from "./pages/UsersPage";
 import ReportsPage from "./pages/ReportsPage";
 import SettingsPage from "./pages/SettingsPage";
 import { settingsService } from "./api/services";
+import { IMAGE_PLACEHOLDER_URL } from "./utils/media";
 import { canAccessModule } from "./utils/permissions";
 
 const moduleTitles = {
@@ -61,7 +62,7 @@ const AppContent = () => {
   const pageContentRef = useRef(null);
   const lastScrollTopRef = useRef(0);
   const scrollStopTimerRef = useRef(null);
-  const isTrainingFullView = activeModule === "training";
+  const shouldHideTopbarForModule = ["work", "hazards", "training"].includes(activeModule);
 
   const page = useMemo(() => {
     switch (activeModule) {
@@ -108,11 +109,11 @@ const AppContent = () => {
       scrollStopTimerRef.current = null;
     }
     lastScrollTopRef.current = 0;
-    setTopbarVisible(!isTrainingFullView);
+    setTopbarVisible(!shouldHideTopbarForModule);
     if (pageContentRef.current) {
       pageContentRef.current.scrollTop = 0;
     }
-  }, [activeModule, isTrainingFullView]);
+  }, [activeModule, shouldHideTopbarForModule]);
 
   useEffect(
     () => () => {
@@ -120,6 +121,21 @@ const AppContent = () => {
     },
     []
   );
+
+  useEffect(() => {
+    const handleUploadImageError = (event) => {
+      const image = event.target;
+      if (!(image instanceof HTMLImageElement)) return;
+      const source = image.currentSrc || image.src || "";
+      if (!source.includes("/uploads/")) return;
+      if (image.dataset.hseFallbackApplied === "true") return;
+      image.dataset.hseFallbackApplied = "true";
+      image.src = IMAGE_PLACEHOLDER_URL;
+    };
+
+    window.addEventListener("error", handleUploadImageError, true);
+    return () => window.removeEventListener("error", handleUploadImageError, true);
+  }, []);
 
   useEffect(() => {
     let inactivityTimer = null;
@@ -177,7 +193,7 @@ const AppContent = () => {
   };
 
   const handlePageScroll = (event) => {
-    if (isTrainingFullView) {
+    if (shouldHideTopbarForModule) {
       setTopbarVisible(false);
       return;
     }
@@ -262,7 +278,7 @@ const AppContent = () => {
 
         <main className="main-content">
           <AnimatePresence initial={false}>
-            {!isTrainingFullView && topbarVisible ? (
+            {!shouldHideTopbarForModule && topbarVisible ? (
               <motion.div
                 key="enterprise-topbar"
                 initial={{ opacity: 0, y: -18, height: 0 }}
@@ -283,7 +299,9 @@ const AppContent = () => {
           </AnimatePresence>
           <div
             ref={pageContentRef}
-            className={`page-content ${isTrainingFullView ? "page-content-fullscreen" : ""}`}
+            className={`page-content ${
+              shouldHideTopbarForModule ? "page-content-fullscreen" : "page-content-with-floating-topbar"
+            }`}
             onScroll={handlePageScroll}
           >
             <ModuleGuard user={user} moduleKey={activeModule}>

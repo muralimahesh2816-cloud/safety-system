@@ -50,6 +50,7 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .page-content {
@@ -61,7 +62,22 @@ body {
 
 .topbar-motion-shell {
   flex-shrink: 0;
-  overflow: hidden;
+  overflow: visible;
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  right: 24px;
+  z-index: 80;
+  pointer-events: none;
+}
+
+.topbar-motion-shell > header {
+  pointer-events: auto;
+  margin-bottom: 0;
+}
+
+.page-content-with-floating-topbar {
+  padding-top: 122px;
 }
 
 .page-content-fullscreen {
@@ -309,8 +325,18 @@ html.light .hse-swal-text {
 }
 
 @media (max-width: 767px) {
+  .topbar-motion-shell {
+    top: 12px;
+    left: 12px;
+    right: 12px;
+  }
+
   .page-content {
     padding: 12px;
+  }
+
+  .page-content-with-floating-topbar {
+    padding: 110px 12px 12px;
   }
 }
 

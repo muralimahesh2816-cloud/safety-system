@@ -3,7 +3,8 @@ const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 const { Readable } = require("stream");
 const cloudinary = require("cloudinary").v2;
-const { env, hasCloudinary } = require("../config/env");
+const { env, hasCloudinary, isProduction } = require("../config/env");
+const ApiError = require("./api-error");
 
 cloudinary.config({
   cloud_name: env.cloudinary.cloudName,
@@ -59,6 +60,9 @@ const uploadAsset = async (file, folder, resourceType = "auto") => {
     try {
       return await uploadToCloudinary(file, folder, resourceType);
     } catch (error) {
+      if (isProduction) {
+        throw new ApiError(502, "Cloudinary upload failed. Check Cloudinary environment variables.");
+      }
       return saveLocally(file);
     }
   }
