@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -57,6 +57,11 @@ const AppContent = () => {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
   const [countdown, setCountdown] = useState(60);
+  const [topbarVisible, setTopbarVisible] = useState(true);
+  const pageContentRef = useRef(null);
+  const lastScrollTopRef = useRef(0);
+  const scrollStopTimerRef = useRef(null);
+  const isTrainingFullView = activeModule === "training";
 
   const page = useMemo(() => {
     switch (activeModule) {
@@ -96,6 +101,25 @@ const AppContent = () => {
     if (typeof window === "undefined") return;
     localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (scrollStopTimerRef.current) {
+      clearTimeout(scrollStopTimerRef.current);
+      scrollStopTimerRef.current = null;
+    }
+    lastScrollTopRef.current = 0;
+    setTopbarVisible(!isTrainingFullView);
+    if (pageContentRef.current) {
+      pageContentRef.current.scrollTop = 0;
+    }
+  }, [activeModule, isTrainingFullView]);
+
+  useEffect(
+    () => () => {
+      if (scrollStopTimerRef.current) clearTimeout(scrollStopTimerRef.current);
+    },
+    []
+  );
 
   useEffect(() => {
     let inactivityTimer = null;
@@ -150,6 +174,29 @@ const AppContent = () => {
   const handleModuleSelect = (moduleKey) => {
     setActiveModule(moduleKey);
     setMobileSidebarOpen(false);
+  };
+
+  const handlePageScroll = (event) => {
+    if (isTrainingFullView) {
+      setTopbarVisible(false);
+      return;
+    }
+
+    const nextScrollTop = Math.max(0, event.currentTarget.scrollTop);
+    const delta = nextScrollTop - lastScrollTopRef.current;
+
+    if (delta > 4 && nextScrollTop > 20) {
+      setTopbarVisible(false);
+    } else if (delta < -4) {
+      setTopbarVisible(true);
+    }
+
+    lastScrollTopRef.current = nextScrollTop;
+
+    if (scrollStopTimerRef.current) clearTimeout(scrollStopTimerRef.current);
+    scrollStopTimerRef.current = setTimeout(() => {
+      setTopbarVisible(true);
+    }, 650);
   };
 
   if (loading) {
@@ -214,14 +261,31 @@ const AppContent = () => {
         </AnimatePresence>
 
         <main className="main-content">
-          <Topbar
-            user={user}
-            onLogout={logout}
-            onToggleSidebar={handleSidebarToggle}
-            sidebarCollapsed={sidebarCollapsed}
-            title={moduleTitles[activeModule]}
-          />
-          <div className="page-content">
+          <AnimatePresence initial={false}>
+            {!isTrainingFullView && topbarVisible ? (
+              <motion.div
+                key="enterprise-topbar"
+                initial={{ opacity: 0, y: -18, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: "auto" }}
+                exit={{ opacity: 0, y: -18, height: 0 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+                className="topbar-motion-shell"
+              >
+                <Topbar
+                  user={user}
+                  onLogout={logout}
+                  onToggleSidebar={handleSidebarToggle}
+                  sidebarCollapsed={sidebarCollapsed}
+                  title={moduleTitles[activeModule]}
+                />
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+          <div
+            ref={pageContentRef}
+            className={`page-content ${isTrainingFullView ? "page-content-fullscreen" : ""}`}
+            onScroll={handlePageScroll}
+          >
             <ModuleGuard user={user} moduleKey={activeModule}>
               <AnimatePresence mode="wait">
                 <motion.div
