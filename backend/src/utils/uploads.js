@@ -19,6 +19,57 @@ if (!fs.existsSync(uploadsDir)) {
 
 const toPublicLocalPath = (filename) => `/uploads/${filename}`;
 
+const cleanCloudinaryFolderPart = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "")
+    .replace(/^safety-hse\//i, "")
+    .replace(/^uploads\//i, "");
+
+const resolveCloudinaryFolder = (folder = "") => {
+  const rootFolder = cleanCloudinaryFolderPart(env.cloudinary.uploadFolder || "uploads") || "uploads";
+  const childFolder = cleanCloudinaryFolderPart(folder);
+  return [rootFolder, childFolder].filter(Boolean).join("/");
+};
+
+const getFilenameStem = (filename = "") => {
+  const safeName = path
+    .basename(String(filename || "").replace(/\\/g, "/"))
+    .replace(/[^\w.-]/g, "");
+  const ext = path.extname(safeName);
+  return ext ? safeName.slice(0, -ext.length) : safeName;
+};
+
+const findCloudinaryAssetByFilename = async (filename, resourceType = "image") => {
+  if (!hasCloudinary) return null;
+
+  const stem = getFilenameStem(filename);
+  if (!stem) return null;
+
+  const rootFolder = cleanCloudinaryFolderPart(env.cloudinary.uploadFolder || "uploads");
+  const prefixes = Array.from(
+    new Set([rootFolder ? `${rootFolder}/${stem}` : "", stem].filter(Boolean))
+  );
+
+  for (let index = 0; index < prefixes.length; index += 1) {
+    try {
+      const result = await cloudinary.api.resources({
+        type: "upload",
+        resource_type: resourceType,
+        prefix: prefixes[index],
+        max_results: 1
+      });
+      const asset = result?.resources?.[0];
+      if (asset?.secure_url) return asset.secure_url;
+    } catch (_error) {
+      // Try the next prefix before giving up.
+    }
+  }
+
+  return null;
+};
+
 const saveLocally = async (file) => {
   const ext = path.extname(file.originalname || "").toLowerCase() || ".bin";
   const filename = `${Date.now()}-${uuidv4()}${ext}`;
@@ -35,7 +86,7 @@ const uploadToCloudinary = (file, folder, resourceType = "auto") =>
   new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        folder,
+        folder: resolveCloudinaryFolder(folder),
         resource_type: resourceType
       },
       (error, result) => {
@@ -46,6 +97,7 @@ const uploadToCloudinary = (file, folder, resourceType = "auto") =>
         resolve({
           url: result.secure_url,
           publicId: result.public_id,
+          folder: resolveCloudinaryFolder(folder),
           storage: "cloudinary"
         });
       }
@@ -80,5 +132,6 @@ const uploadManyAssets = async (files, folder, resourceType = "auto") => {
 
 module.exports = {
   uploadAsset,
-  uploadManyAssets
+  uploadManyAssets,
+  findCloudinaryAssetByFilename
 };

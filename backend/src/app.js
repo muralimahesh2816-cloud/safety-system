@@ -5,6 +5,7 @@ const applySecurityMiddleware = require("./middleware/security.middleware");
 const { csrfProtection } = require("./middleware/csrf.middleware");
 const apiRoutes = require("./routes");
 const workRoutes = require("./routes/work.routes");
+const { findCloudinaryAssetByFilename } = require("./utils/uploads");
 const { notFoundHandler, errorHandler } = require("./middleware/error.middleware");
 
 const app = express();
@@ -69,6 +70,28 @@ const missingImagePlaceholder = (filename = "missing-file") => {
 };
 
 const isImageRequest = (url = "") => /\.(png|jpe?g|webp|gif|avif|svg)$/i.test(url);
+const isVideoRequest = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(url);
+const cloudinaryLookupCache = new Map();
+
+const cloudinaryImageFallbackUrl = (filename = "") => {
+  if (!env.cloudinary.cloudName) return "";
+  const rootFolder = String(env.cloudinary.uploadFolder || "uploads")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "") || "uploads";
+  const safeName = String(filename || "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .pop();
+  if (!safeName) return "";
+  const encodedFolder = rootFolder
+    .split("/")
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  return `https://res.cloudinary.com/${env.cloudinary.cloudName}/image/upload/${encodedFolder}/${encodeURIComponent(safeName)}`;
+};
 
 app.use(
   "/uploads",
@@ -88,12 +111,38 @@ app.use(
       maxAge: isProduction ? "7d" : 0
     })
   ),
-  (req, res, next) => {
-    if (!isImageRequest(req.path)) {
+  async (req, res, next) => {
+    const isImage = isImageRequest(req.path);
+    const isVideo = isVideoRequest(req.path);
+    if (!isImage && !isVideo) {
       next();
       return;
     }
-    res.status(200).type("image/svg+xml").send(missingImagePlaceholder(path.basename(req.path)));
+
+    const resourceType = isVideo ? "video" : "image";
+    const cacheKey = `${resourceType}:${req.path}`;
+    let cloudinaryUrl = cloudinaryLookupCache.get(cacheKey);
+
+    if (cloudinaryUrl === undefined) {
+      cloudinaryUrl = await findCloudinaryAssetByFilename(req.path, resourceType);
+      cloudinaryLookupCache.set(cacheKey, cloudinaryUrl || "");
+    }
+
+    if (!cloudinaryUrl && isImage) {
+      cloudinaryUrl = cloudinaryImageFallbackUrl(req.path);
+    }
+
+    if (cloudinaryUrl) {
+      res.redirect(302, cloudinaryUrl);
+      return;
+    }
+
+    if (isImage) {
+      res.status(200).type("image/svg+xml").send(missingImagePlaceholder(path.basename(req.path)));
+      return;
+    }
+
+    next();
   }
 );
 

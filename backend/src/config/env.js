@@ -21,7 +21,8 @@ const env = {
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || "",
     apiKey: process.env.CLOUDINARY_API_KEY || "",
-    apiSecret: process.env.CLOUDINARY_API_SECRET || ""
+    apiSecret: process.env.CLOUDINARY_API_SECRET || "",
+    uploadFolder: process.env.CLOUDINARY_UPLOAD_FOLDER || "uploads"
   },
   sessionTimeoutMinutes: Number(process.env.SESSION_TIMEOUT_MINUTES || 30)
 };
