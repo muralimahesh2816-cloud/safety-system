@@ -33,24 +33,44 @@ const resolveCloudinaryFolder = (folder = "") => {
   return [rootFolder, childFolder].filter(Boolean).join("/");
 };
 
-const getFilenameStem = (filename = "") => {
-  const safeName = path
-    .basename(String(filename || "").replace(/\\/g, "/"))
-    .replace(/[^\w.-]/g, "");
-  const ext = path.extname(safeName);
-  return ext ? safeName.slice(0, -ext.length) : safeName;
+const cleanUploadRelativePath = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/^uploads\//i, "")
+    .replace(/[^\w./-]/g, "");
+
+const removeExtension = (value = "") => {
+  const ext = path.extname(value);
+  return ext ? value.slice(0, -ext.length) : value;
+};
+
+const getCloudinaryPrefixCandidates = (filename = "") => {
+  const relativePath = cleanUploadRelativePath(filename);
+  if (!relativePath) return [];
+
+  const relativeStem = removeExtension(relativePath);
+  const basenameStem = removeExtension(path.basename(relativePath));
+  const rootFolder = cleanCloudinaryFolderPart(env.cloudinary.uploadFolder || "uploads");
+
+  return Array.from(
+    new Set(
+      [
+        rootFolder && relativeStem ? `${rootFolder}/${relativeStem}` : "",
+        relativeStem,
+        rootFolder && basenameStem ? `${rootFolder}/${basenameStem}` : "",
+        basenameStem
+      ].filter(Boolean)
+    )
+  );
 };
 
 const findCloudinaryAssetByFilename = async (filename, resourceType = "image") => {
   if (!hasCloudinary) return null;
 
-  const stem = getFilenameStem(filename);
-  if (!stem) return null;
-
-  const rootFolder = cleanCloudinaryFolderPart(env.cloudinary.uploadFolder || "uploads");
-  const prefixes = Array.from(
-    new Set([rootFolder ? `${rootFolder}/${stem}` : "", stem].filter(Boolean))
-  );
+  const prefixes = getCloudinaryPrefixCandidates(filename);
+  if (!prefixes.length) return null;
 
   for (let index = 0; index < prefixes.length; index += 1) {
     try {

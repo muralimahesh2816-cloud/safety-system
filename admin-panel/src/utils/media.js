@@ -64,12 +64,19 @@ const toUploadsUrl = (value) => {
 
 const isLocalHostName = (hostname = "") => ["localhost", "127.0.0.1", "0.0.0.0"].includes(hostname);
 
+const isCloudinaryUrl = (parsedUrl) =>
+  parsedUrl.hostname.toLowerCase() === "res.cloudinary.com" ||
+  parsedUrl.pathname.toLowerCase().includes("/image/upload/") ||
+  parsedUrl.pathname.toLowerCase().includes("/video/upload/");
+
 const normalizeBackendUploadUrl = (value = "") => {
   if (!value || typeof value !== "string") return value;
   if (!value.startsWith("http")) return value;
 
   try {
     const parsed = new URL(value);
+    if (isCloudinaryUrl(parsed)) return value;
+
     const backend = new URL(getBackendBaseUrl());
     const rawPath = parsed.pathname.replace(/\/api\/v1\/uploads\//i, "/uploads/");
     const uploadPath = normalizeUploadPath(rawPath);

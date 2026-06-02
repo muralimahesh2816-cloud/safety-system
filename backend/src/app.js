@@ -73,24 +73,29 @@ const isImageRequest = (url = "") => /\.(png|jpe?g|webp|gif|avif|svg)$/i.test(ur
 const isVideoRequest = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)$/i.test(url);
 const cloudinaryLookupCache = new Map();
 
-const cloudinaryImageFallbackUrl = (filename = "") => {
+const cleanUploadRequestPath = (filename = "") =>
+  String(filename || "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/^uploads\//i, "")
+    .replace(/[^\w./-]/g, "");
+
+const encodePathSegments = (value = "") =>
+  value
+    .split("/")
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+
+const cloudinaryFallbackUrl = (filename = "", resourceType = "image") => {
   if (!env.cloudinary.cloudName) return "";
   const rootFolder = String(env.cloudinary.uploadFolder || "uploads")
     .trim()
     .replace(/\\/g, "/")
     .replace(/^\/+|\/+$/g, "") || "uploads";
-  const safeName = String(filename || "")
-    .replace(/\\/g, "/")
-    .split("/")
-    .filter(Boolean)
-    .pop();
-  if (!safeName) return "";
-  const encodedFolder = rootFolder
-    .split("/")
-    .filter(Boolean)
-    .map((part) => encodeURIComponent(part))
-    .join("/");
-  return `https://res.cloudinary.com/${env.cloudinary.cloudName}/image/upload/${encodedFolder}/${encodeURIComponent(safeName)}`;
+  const relativePath = cleanUploadRequestPath(filename);
+  if (!relativePath) return "";
+  return `https://res.cloudinary.com/${env.cloudinary.cloudName}/${resourceType}/upload/${encodePathSegments(rootFolder)}/${encodePathSegments(relativePath)}`;
 };
 
 app.use(
@@ -128,8 +133,8 @@ app.use(
       cloudinaryLookupCache.set(cacheKey, cloudinaryUrl || "");
     }
 
-    if (!cloudinaryUrl && isImage) {
-      cloudinaryUrl = cloudinaryImageFallbackUrl(req.path);
+    if (!cloudinaryUrl) {
+      cloudinaryUrl = cloudinaryFallbackUrl(req.path, resourceType);
     }
 
     if (cloudinaryUrl) {
