@@ -98,7 +98,7 @@ const WorkApprovalsPage = ({ user }) => {
     if (submitLockRef.current) return;
     submitLockRef.current = true;
     setSubmitting(true);
-    await showLoadingPopup("Please uploading...", "Submitting work approval...");
+    await showLoadingPopup("Uploading Please Wait...", "Submitting work approval...");
 
     try {
       await workService.create({
@@ -136,7 +136,7 @@ const WorkApprovalsPage = ({ user }) => {
     workActionLockRef.current = true;
     setBusyWorkId(id);
     const approvedBy = user?.name || localStorage.getItem("name") || "Admin";
-    await showLoadingPopup("Please uploading...", `Updating work status to ${status}...`);
+    await showLoadingPopup("uploading Please Wait...", `Updating work status to ${status}...`);
     try {
       await workService.updateStatus(id, {
         status,
@@ -172,7 +172,7 @@ const WorkApprovalsPage = ({ user }) => {
     if (workActionLockRef.current) return;
     workActionLockRef.current = true;
     setBusyWorkId(id);
-    await showLoadingPopup("Please uploading...", "Uploading completion image...");
+    await showLoadingPopup("uploading Please Wait...", "Uploading completion image...");
     try {
       await workService.uploadAfterImages(id, files);
       await workService.updateStatus(id, {

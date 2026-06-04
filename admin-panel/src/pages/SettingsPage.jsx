@@ -116,7 +116,7 @@ const SettingsPage = ({ user }) => {
     savingRef.current = true;
     setSavingAction("security");
     setError("");
-    await showLoadingPopup("Please uploading...", "Saving security settings...");
+    await showLoadingPopup("uploading Please Wait...", "Saving security settings...");
     try {
       await settingsService.updateSecurity(security);
       await showSuccessPopup("Settings Saved Successfully");
@@ -135,7 +135,7 @@ const SettingsPage = ({ user }) => {
     savingRef.current = true;
     setSavingAction("theme");
     setError("");
-    await showLoadingPopup("Please uploading...", "Saving theme settings...");
+    await showLoadingPopup("uploading Please Wait...", "Saving theme settings...");
     try {
       await settingsService.updateBranding(branding);
       if (bannerFile || loginBgFile) {
@@ -169,7 +169,7 @@ const SettingsPage = ({ user }) => {
     savingRef.current = true;
     setSavingAction("notifications");
     setError("");
-    await showLoadingPopup("Please uploading...", "Saving notification settings...");
+    await showLoadingPopup("uploading Please Wait...", "Saving notification settings...");
     try {
       localStorage.setItem(notificationStorageKey, JSON.stringify(notifications));
       await showSuccessPopup("Settings Saved Successfully");
