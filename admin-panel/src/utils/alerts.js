@@ -73,7 +73,7 @@ export const showSuccessPopup = async (title, text = "") => {
 };
 
 export const showLoadingPopup = async (
-  title = "uploading Please Wait...",
+  title = "Uploading Please Wait...",
   text = "Please wait while your request is being processed."
 ) => {
   const Swal = await ensureSweetAlert();

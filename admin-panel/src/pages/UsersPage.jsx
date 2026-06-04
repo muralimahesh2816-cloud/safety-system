@@ -108,7 +108,7 @@ const UsersPage = ({ currentUser }) => {
     submitLockRef.current = true;
     setSavingUser(true);
     setError("");
-    await showLoadingPopup("uploading Please Wait...", editId ? "Updating user details..." : "Creating user...");
+    await showLoadingPopup("Uploading Please Wait...", editId ? "Updating user details..." : "Creating user...");
     try {
       if (editId) {
         await userService.update(editId, {

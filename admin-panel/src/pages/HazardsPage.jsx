@@ -113,7 +113,7 @@ const HazardsPage = ({ user }) => {
     if (submitLockRef.current) return;
     submitLockRef.current = true;
     setSubmitting(true);
-    await showLoadingPopup("uploading Please Wait...", "Submitting hazard report...");
+    await showLoadingPopup("Uploading Please Wait...", "Submitting hazard report...");
 
     try {
       await hazardService.create({
@@ -166,7 +166,7 @@ const HazardsPage = ({ user }) => {
     if (actionLockRef.current) return;
     actionLockRef.current = true;
     setBusyHazardId(hazard._id);
-    await showLoadingPopup("uploading Please Wait...", "Uploading closure image...");
+    await showLoadingPopup("Uploading Please Wait...", "Uploading closure image...");
     try {
       await hazardService.close(hazard._id, {
         closureNotes: "",

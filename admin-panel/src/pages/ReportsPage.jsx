@@ -98,7 +98,7 @@ const ReportsPage = () => {
     actionLockRef.current = true;
     setBusyAction("generate");
     setError("");
-    await showLoadingPopup("uploading Please Wait...", "Generating report...");
+    await showLoadingPopup("Uploading Please Wait...", "Generating report...");
     try {
       let rows = [];
       if (type === "training") {
@@ -147,7 +147,7 @@ const ReportsPage = () => {
     if (actionLockRef.current) return;
     actionLockRef.current = true;
     setBusyAction("excel");
-    await showLoadingPopup("uploading Please Wait...", "Preparing Excel report...");
+    await showLoadingPopup("Uploading Please Wait...", "Preparing Excel report...");
     const generatedDate = new Date().toLocaleString();
     try {
       const normalized =
@@ -186,7 +186,7 @@ const ReportsPage = () => {
     if (actionLockRef.current) return;
     actionLockRef.current = true;
     setBusyAction("csv");
-    await showLoadingPopup("uploading Please Wait...", "Preparing CSV report...");
+    await showLoadingPopup("Uploading Please Wait...", "Preparing CSV report...");
     const generatedDate = new Date().toLocaleString();
     try {
       const normalized =
@@ -221,7 +221,7 @@ const ReportsPage = () => {
     if (actionLockRef.current) return;
     actionLockRef.current = true;
     setBusyAction("pdf");
-    await showLoadingPopup("uploading Please Wait...", "Preparing PDF report...");
+    await showLoadingPopup("Uploading Please Wait...", "Preparing PDF report...");
     let activeUser = localStorage.getItem("name") || "Admin";
     try {
       try {

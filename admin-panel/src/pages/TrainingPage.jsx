@@ -195,7 +195,7 @@ const TrainingPage = ({ user }) => {
     if (uploadLockRef.current) return;
     uploadLockRef.current = true;
     setUploading(true);
-    await showLoadingPopup("uploading Please Wait...", "Uploading training video...");
+    await showLoadingPopup("Uploading Please Wait...", "Uploading training video...");
     try {
       await trainingService.create({
         ...form,
