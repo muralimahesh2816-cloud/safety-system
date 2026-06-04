@@ -49,7 +49,7 @@ export const showSuccessPopup = async (title, text = "") => {
     return;
   }
 
-  Swal.fire({
+  await Swal.fire({
     icon: "success",
     title,
     text,
@@ -79,7 +79,7 @@ export const showLoadingPopup = async (
   const Swal = await ensureSweetAlert();
   if (!Swal) return;
 
-  await Swal.fire({
+  Swal.fire({
     title,
     text,
     allowOutsideClick: false,

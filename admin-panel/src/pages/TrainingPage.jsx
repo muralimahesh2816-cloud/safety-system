@@ -5,7 +5,13 @@ import GlassCard from "../components/common/GlassCard";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import SectionHeader from "../components/common/SectionHeader";
 import { trainingService } from "../api/services";
-import { showConfirmPopup, showSuccessPopup, showValidationPopup } from "../utils/alerts";
+import {
+  closeLoadingPopup,
+  showConfirmPopup,
+  showLoadingPopup,
+  showSuccessPopup,
+  showValidationPopup
+} from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
 
@@ -63,6 +69,8 @@ const TrainingPage = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [imageModal, setImageModal] = useState({ open: false, items: [], index: 0, compare: null });
   const [deletingId, setDeletingId] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const uploadLockRef = useRef(false);
   const previewVideoRef = useRef(null);
 
   const canManageConcepts = ["super_admin", "admin"].includes(user?.role);
@@ -184,6 +192,10 @@ const TrainingPage = ({ user }) => {
       showValidationPopup("Please fill all required Training fields.");
       return;
     }
+    if (uploadLockRef.current) return;
+    uploadLockRef.current = true;
+    setUploading(true);
+    await showLoadingPopup("Please uploading...", "Uploading training video...");
     try {
       await trainingService.create({
         ...form,
@@ -197,6 +209,10 @@ const TrainingPage = ({ user }) => {
       fetchTraining();
     } catch (submitError) {
       setError(submitError?.response?.data?.message || "Training upload failed");
+    } finally {
+      uploadLockRef.current = false;
+      setUploading(false);
+      closeLoadingPopup();
     }
   };
 
@@ -511,9 +527,10 @@ const TrainingPage = ({ user }) => {
               ) : null}
               <button
                 type="submit"
-                className="w-full rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-3 py-2 text-xs font-semibold text-white"
+                disabled={uploading}
+                className="w-full rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Upload Training
+                {uploading ? "Uploading..." : "Upload Training"}
               </button>
             </form>
           </GlassCard>

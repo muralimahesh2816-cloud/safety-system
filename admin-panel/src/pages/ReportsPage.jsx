@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { saveAs } from "file-saver";
 import * as XLSX from "xlsx";
 import {
@@ -16,7 +16,7 @@ import {
 import GlassCard from "../components/common/GlassCard";
 import SectionHeader from "../components/common/SectionHeader";
 import { reportService, trainingService } from "../api/services";
-import { showSuccessPopup } from "../utils/alerts";
+import { closeLoadingPopup, showLoadingPopup, showSuccessPopup } from "../utils/alerts";
 import { exportReportPdf, normalizeReportRowsByType } from "../utils/pdfExport";
 import companyLogo from "../assets/logo.png";
 
@@ -70,6 +70,8 @@ const ReportsPage = () => {
   const [toDate, setToDate] = useState("");
   const [plaza, setPlaza] = useState("");
   const [reportRows, setReportRows] = useState([]);
+  const [busyAction, setBusyAction] = useState("");
+  const actionLockRef = useRef(false);
 
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
@@ -92,7 +94,11 @@ const ReportsPage = () => {
   }, [type, fromDate, toDate, plaza]);
 
   const generateReport = async () => {
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
+    setBusyAction("generate");
     setError("");
+    await showLoadingPopup("Please uploading...", "Generating report...");
     try {
       let rows = [];
       if (type === "training") {
@@ -118,8 +124,13 @@ const ReportsPage = () => {
         });
       }
       setReportRows(rows || []);
+      await showSuccessPopup("Report Generated Successfully");
     } catch (_error) {
       setError("Error generating report");
+    } finally {
+      actionLockRef.current = false;
+      setBusyAction("");
+      closeLoadingPopup();
     }
   };
 
@@ -131,80 +142,110 @@ const ReportsPage = () => {
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
   }, [analytics]);
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
     if (!reportRows.length) return;
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
+    setBusyAction("excel");
+    await showLoadingPopup("Please uploading...", "Preparing Excel report...");
     const generatedDate = new Date().toLocaleString();
-    const normalized =
-      type === "work" || type === "hazard" || type === "training"
-        ? normalizeReportRowsByType(reportRows, type)
-        : reportRows;
-    const headers = Object.keys(normalized[0] || {});
-    const rows = normalized.map((row) => headers.map((header) => row[header] ?? "-"));
-    const metadataRows = [
-      [companyName],
-      ["Safety HSE Enterprise System"],
-      [reportTitleMap[type] || "Report"],
-      [`Generated: ${generatedDate}`],
-      ["Logo: src/assets/logo.png"],
-      [],
-      headers
-    ];
+    try {
+      const normalized =
+        type === "work" || type === "hazard" || type === "training"
+          ? normalizeReportRowsByType(reportRows, type)
+          : reportRows;
+      const headers = Object.keys(normalized[0] || {});
+      const rows = normalized.map((row) => headers.map((header) => row[header] ?? "-"));
+      const metadataRows = [
+        [companyName],
+        ["Safety HSE Enterprise System"],
+        [reportTitleMap[type] || "Report"],
+        [`Generated: ${generatedDate}`],
+        ["Logo: src/assets/logo.png"],
+        [],
+        headers
+      ];
 
-    const ws = XLSX.utils.aoa_to_sheet(metadataRows);
-    XLSX.utils.sheet_add_aoa(ws, rows, { origin: `A${metadataRows.length + 1}` });
+      const ws = XLSX.utils.aoa_to_sheet(metadataRows);
+      XLSX.utils.sheet_add_aoa(ws, rows, { origin: `A${metadataRows.length + 1}` });
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Report");
-    XLSX.writeFile(wb, `${type}_report.xlsx`);
-    logReportExport("excel", type);
-    void showSuccessPopup("Report Exported Successfully", "Excel report downloaded");
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Report");
+      XLSX.writeFile(wb, `${type}_report.xlsx`);
+      logReportExport("excel", type);
+      await showSuccessPopup("Report Exported Successfully", "Excel report downloaded");
+    } finally {
+      actionLockRef.current = false;
+      setBusyAction("");
+      closeLoadingPopup();
+    }
   };
 
-  const exportCsv = () => {
+  const exportCsv = async () => {
     if (!reportRows.length) return;
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
+    setBusyAction("csv");
+    await showLoadingPopup("Please uploading...", "Preparing CSV report...");
     const generatedDate = new Date().toLocaleString();
-    const normalized =
-      type === "work" || type === "hazard" || type === "training"
-        ? normalizeReportRowsByType(reportRows, type)
-        : reportRows;
-    const headers = Object.keys(normalized[0] || {});
-    const rows = normalized.map((row) => headers.map((header) => row[header] ?? "-"));
-    const ws = XLSX.utils.aoa_to_sheet([
-      [companyName],
-      ["Safety HSE Enterprise System"],
-      [reportTitleMap[type] || "Report"],
-      [`Generated: ${generatedDate}`],
-      [],
-      headers,
-      ...rows
-    ]);
-    const csv = XLSX.utils.sheet_to_csv(ws);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    saveAs(blob, `${type}_report.csv`);
-    logReportExport("csv", type);
-    void showSuccessPopup("Report Exported Successfully", "CSV report downloaded");
+    try {
+      const normalized =
+        type === "work" || type === "hazard" || type === "training"
+          ? normalizeReportRowsByType(reportRows, type)
+          : reportRows;
+      const headers = Object.keys(normalized[0] || {});
+      const rows = normalized.map((row) => headers.map((header) => row[header] ?? "-"));
+      const ws = XLSX.utils.aoa_to_sheet([
+        [companyName],
+        ["Safety HSE Enterprise System"],
+        [reportTitleMap[type] || "Report"],
+        [`Generated: ${generatedDate}`],
+        [],
+        headers,
+        ...rows
+      ]);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      saveAs(blob, `${type}_report.csv`);
+      logReportExport("csv", type);
+      await showSuccessPopup("Report Exported Successfully", "CSV report downloaded");
+    } finally {
+      actionLockRef.current = false;
+      setBusyAction("");
+      closeLoadingPopup();
+    }
   };
 
-  const exportPdf = () => {
+  const exportPdf = async () => {
     if (!reportRows.length) return;
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
+    setBusyAction("pdf");
+    await showLoadingPopup("Please uploading...", "Preparing PDF report...");
     let activeUser = localStorage.getItem("name") || "Admin";
     try {
-      activeUser = JSON.parse(localStorage.getItem("hse_user") || "null")?.name || activeUser;
-    } catch (_error) {
-      // Keep local storage fallback user name.
+      try {
+        activeUser = JSON.parse(localStorage.getItem("hse_user") || "null")?.name || activeUser;
+      } catch (_error) {
+        // Keep local storage fallback user name.
+      }
+      const safeType = type === "hazard" || type === "training" ? type : "work";
+      exportReportPdf({
+        rows: reportRows,
+        type: safeType,
+        reportTitle: reportTitleMap[type] || "Report",
+        companyName,
+        companyLogo,
+        generatedBy: activeUser,
+        generatedAt: new Date()
+      });
+      logReportExport("pdf", type);
+      await showSuccessPopup("Report Exported Successfully", "PDF report downloaded");
+    } finally {
+      actionLockRef.current = false;
+      setBusyAction("");
+      closeLoadingPopup();
     }
-    const safeType = type === "hazard" || type === "training" ? type : "work";
-    exportReportPdf({
-      rows: reportRows,
-      type: safeType,
-      reportTitle: reportTitleMap[type] || "Report",
-      companyName,
-      companyLogo,
-      generatedBy: activeUser,
-      generatedAt: new Date()
-    });
-    logReportExport("pdf", type);
-    void showSuccessPopup("Report Exported Successfully", "PDF report downloaded");
   };
 
   return (
@@ -272,32 +313,36 @@ const ReportsPage = () => {
           <button
             type="button"
             onClick={generateReport}
-            className="rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-3 py-2 text-xs font-semibold text-white"
+            disabled={Boolean(busyAction)}
+            className="rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Generate Report
+            {busyAction === "generate" ? "Generating..." : "Generate Report"}
           </button>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={exportExcel}
-            className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs text-white"
+            disabled={Boolean(busyAction) || !reportRows.length}
+            className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Export Excel
+            {busyAction === "excel" ? "Exporting..." : "Export Excel"}
           </button>
           <button
             type="button"
             onClick={exportCsv}
-            className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs text-white"
+            disabled={Boolean(busyAction) || !reportRows.length}
+            className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Export CSV
+            {busyAction === "csv" ? "Exporting..." : "Export CSV"}
           </button>
           <button
             type="button"
             onClick={exportPdf}
-            className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs text-white"
+            disabled={Boolean(busyAction) || !reportRows.length}
+            className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Export PDF
+            {busyAction === "pdf" ? "Exporting..." : "Export PDF"}
           </button>
         </div>
       </GlassCard>

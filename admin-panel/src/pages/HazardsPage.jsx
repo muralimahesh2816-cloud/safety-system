@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import GlassCard from "../components/common/GlassCard";
 import SectionHeader from "../components/common/SectionHeader";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import { hazardService, userService } from "../api/services";
-import { showSuccessPopup, showValidationPopup } from "../utils/alerts";
+import { closeLoadingPopup, showLoadingPopup, showSuccessPopup, showValidationPopup } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
 
@@ -63,6 +63,10 @@ const HazardsPage = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState({ open: false, items: [], index: 0, compare: null });
   const [statusFilter, setStatusFilter] = useState("All");
+  const [submitting, setSubmitting] = useState(false);
+  const [busyHazardId, setBusyHazardId] = useState("");
+  const submitLockRef = useRef(false);
+  const actionLockRef = useRef(false);
 
   const canDelete = ["super_admin", "admin"].includes(user?.role);
   const riskScore = useMemo(
@@ -106,6 +110,11 @@ const HazardsPage = ({ user }) => {
       return;
     }
 
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+    setSubmitting(true);
+    await showLoadingPopup("Please uploading...", "Submitting hazard report...");
+
     try {
       await hazardService.create({
         ...form,
@@ -123,6 +132,10 @@ const HazardsPage = ({ user }) => {
       fetchAll();
     } catch (submitError) {
       setError(submitError?.response?.data?.message || "Failed to submit hazard");
+    } finally {
+      submitLockRef.current = false;
+      setSubmitting(false);
+      closeLoadingPopup();
     }
   };
 
@@ -150,6 +163,10 @@ const HazardsPage = ({ user }) => {
       showValidationPopup("Please upload a closure image before closing this hazard.");
       return;
     }
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
+    setBusyHazardId(hazard._id);
+    await showLoadingPopup("Please uploading...", "Uploading closure image...");
     try {
       await hazardService.close(hazard._id, {
         closureNotes: "",
@@ -168,6 +185,10 @@ const HazardsPage = ({ user }) => {
       fetchAll();
     } catch (closeError) {
       setError(closeError?.response?.data?.message || "Hazard closure failed");
+    } finally {
+      actionLockRef.current = false;
+      setBusyHazardId("");
+      closeLoadingPopup();
     }
   };
 
@@ -395,9 +416,10 @@ const HazardsPage = ({ user }) => {
             ) : null}
             <button
               type="submit"
-              className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-2.5 text-sm font-semibold text-white"
+              disabled={submitting}
+              className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Submit Hazard
+              {submitting ? "Uploading..." : "Submit Hazard"}
             </button>
           </form>
           <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-3">
@@ -629,9 +651,10 @@ const HazardsPage = ({ user }) => {
                       <button
                         type="button"
                         onClick={() => closeHazard(hazard)}
-                        className="rounded-xl bg-emerald-500/20 px-3 py-2 text-xs text-emerald-100"
+                        disabled={busyHazardId === hazard._id}
+                        className="rounded-xl bg-emerald-500/20 px-3 py-2 text-xs text-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        Close Hazard
+                        {busyHazardId === hazard._id ? "Uploading..." : "Close Hazard"}
                       </button>
                       {closurePreviewMap[hazard._id] ? (
                         <img

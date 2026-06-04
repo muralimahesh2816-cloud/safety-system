@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { KeyRound, Lock, Shield, Unlock } from "lucide-react";
 import GlassCard from "../components/common/GlassCard";
 import ImageStudioModal from "../components/common/ImageStudioModal";
 import SectionHeader from "../components/common/SectionHeader";
 import { userService } from "../api/services";
 import { ROLE_LABELS, ROLES } from "../constants/roles";
-import { showSuccessPopup, showValidationPopup } from "../utils/alerts";
+import { closeLoadingPopup, showLoadingPopup, showSuccessPopup, showValidationPopup } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { resolveAssetUrl } from "../utils/media";
 
@@ -38,6 +38,8 @@ const UsersPage = ({ currentUser }) => {
   const [editId, setEditId] = useState("");
   const [photoFile, setPhotoFile] = useState(null);
   const [imageModal, setImageModal] = useState({ open: false, items: [], index: 0, compare: null });
+  const [savingUser, setSavingUser] = useState(false);
+  const submitLockRef = useRef(false);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -102,6 +104,11 @@ const UsersPage = ({ currentUser }) => {
       showValidationPopup("Please fill all required User fields.");
       return;
     }
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+    setSavingUser(true);
+    setError("");
+    await showLoadingPopup("Please uploading...", editId ? "Updating user details..." : "Creating user...");
     try {
       if (editId) {
         await userService.update(editId, {
@@ -125,6 +132,10 @@ const UsersPage = ({ currentUser }) => {
       fetchUsers();
     } catch (submitError) {
       setError(submitError?.response?.data?.message || "Unable to save user");
+    } finally {
+      submitLockRef.current = false;
+      setSavingUser(false);
+      closeLoadingPopup();
     }
   };
 
@@ -258,10 +269,10 @@ const UsersPage = ({ currentUser }) => {
             <div className="flex gap-2">
               <button
                 type="submit"
-                className="flex-1 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-3 py-2 text-sm font-semibold text-white"
-                disabled={!canManageUsers}
+                className="flex-1 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!canManageUsers || savingUser}
               >
-                {editId ? "Update User" : "Create User"}
+                {savingUser ? "Uploading..." : editId ? "Update User" : "Create User"}
               </button>
               {editId ? (
                 <button
