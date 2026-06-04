@@ -1,11 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Clock3, UploadCloud } from "lucide-react";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import GlassCard from "../components/common/GlassCard";
 import SectionHeader from "../components/common/SectionHeader";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import { workService } from "../api/services";
-import { showConfirmPopup, showSuccessPopup, showValidationPopup } from "../utils/alerts";
+import {
+  closeLoadingPopup,
+  showConfirmPopup,
+  showLoadingPopup,
+  showSuccessPopup,
+  showValidationPopup
+} from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
 
@@ -34,6 +40,8 @@ const initialForm = {
 };
 
 const getWorkRecordId = (work = {}) => work._id || work.id || work.workId || "";
+const normalizeStatus = (status = "Pending") => String(status || "Pending").toLowerCase();
+const isCompletedStatus = (status) => normalizeStatus(status) === "completed";
 
 const WorkApprovalsPage = ({ user }) => {
   const [records, setRecords] = useState([]);
@@ -46,6 +54,10 @@ const WorkApprovalsPage = ({ user }) => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("All");
+  const [submitting, setSubmitting] = useState(false);
+  const [busyWorkId, setBusyWorkId] = useState("");
+  const submitLockRef = useRef(false);
+  const workActionLockRef = useRef(false);
 
   const canDelete = ["super_admin", "admin"].includes(user?.role);
   const canApprove = ["super_admin", "admin"].includes(user?.role);
@@ -83,6 +95,11 @@ const WorkApprovalsPage = ({ user }) => {
       return;
     }
 
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+    setSubmitting(true);
+    await showLoadingPopup("Please uploading...", "Submitting work approval...");
+
     try {
       await workService.create({
         ...form,
@@ -98,11 +115,28 @@ const WorkApprovalsPage = ({ user }) => {
       fetchAll();
     } catch (submitError) {
       setError(submitError?.response?.data?.message || "Failed to submit work");
+    } finally {
+      submitLockRef.current = false;
+      setSubmitting(false);
+      closeLoadingPopup();
     }
   };
 
-  const updateStatus = async (id, status) => {
+  const updateStatus = async (work, status) => {
+    const id = getWorkRecordId(work);
+    if (!id) {
+      showValidationPopup("Unable to update this work record because its id is missing.");
+      return;
+    }
+    if (isCompletedStatus(work?.status)) {
+      showValidationPopup("Completed work is locked and cannot be changed.");
+      return;
+    }
+    if (workActionLockRef.current) return;
+    workActionLockRef.current = true;
+    setBusyWorkId(id);
     const approvedBy = user?.name || localStorage.getItem("name") || "Admin";
+    await showLoadingPopup("Please uploading...", `Updating work status to ${status}...`);
     try {
       await workService.updateStatus(id, {
         status,
@@ -112,16 +146,33 @@ const WorkApprovalsPage = ({ user }) => {
       fetchAll();
     } catch (statusError) {
       setError(statusError?.response?.data?.message || "Status update failed");
+    } finally {
+      workActionLockRef.current = false;
+      setBusyWorkId("");
+      closeLoadingPopup();
     }
   };
 
-  const uploadCompletion = async (id) => {
+  const uploadCompletion = async (work) => {
+    const id = getWorkRecordId(work);
+    if (!id) {
+      showValidationPopup("Unable to complete this work record because its id is missing.");
+      return;
+    }
+    if (isCompletedStatus(work?.status)) {
+      showValidationPopup("Completed work is already locked.");
+      return;
+    }
     const files = afterImages[id] || [];
     if (!files.length) {
       setError("Upload completion image");
       showValidationPopup("Please upload a completion image before marking work completed.");
       return;
     }
+    if (workActionLockRef.current) return;
+    workActionLockRef.current = true;
+    setBusyWorkId(id);
+    await showLoadingPopup("Please uploading...", "Uploading completion image...");
     try {
       await workService.uploadAfterImages(id, files);
       await workService.updateStatus(id, {
@@ -139,6 +190,10 @@ const WorkApprovalsPage = ({ user }) => {
       fetchAll();
     } catch (uploadError) {
       setError(uploadError?.response?.data?.message || "Image upload failed");
+    } finally {
+      workActionLockRef.current = false;
+      setBusyWorkId("");
+      closeLoadingPopup();
     }
   };
 
@@ -281,9 +336,10 @@ const WorkApprovalsPage = ({ user }) => {
             ) : null}
             <button
               type="submit"
-              className="w-full rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-3 py-2.5 text-sm font-semibold text-white"
+              disabled={submitting}
+              className="w-full rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-3 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Submit Work
+              {submitting ? "Uploading..." : "Submit Work"}
             </button>
           </form>
 
@@ -360,8 +416,12 @@ const WorkApprovalsPage = ({ user }) => {
                   })
                   .slice(-4);
 
+                const recordId = getWorkRecordId(work);
+                const workCompleted = isCompletedStatus(work.status);
+                const workBusy = busyWorkId === recordId;
+
                 return (
-                  <div key={work._id} className="rounded-2xl border border-white/12 bg-white/5 p-4">
+                  <div key={recordId || work._id} className="rounded-2xl border border-white/12 bg-white/5 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-base font-semibold text-white">{work.workType || work.title}</p>
@@ -449,21 +509,28 @@ const WorkApprovalsPage = ({ user }) => {
                     </div>
 
                     {canApprove ? (
+                      workCompleted ? (
+                        <p className="mt-3 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100">
+                          Completed work is locked. Status cannot be changed.
+                        </p>
+                      ) : (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {statusList.map((status) => (
                           <button
-                            key={`${work._id}-${status}`}
+                            key={`${recordId}-${status}`}
                             type="button"
-                            onClick={() => updateStatus(work._id, status)}
-                            className="rounded-lg border border-white/15 bg-white/10 px-2.5 py-1 text-xs text-slate-100"
+                            disabled={workBusy}
+                            onClick={() => updateStatus(work, status)}
+                            className="rounded-lg border border-white/15 bg-white/10 px-2.5 py-1 text-xs text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {status}
                           </button>
                         ))}
                       </div>
+                      )
                     ) : null}
 
-                    {work.status === "Approved" ? (
+                    {normalizeStatus(work.status) === "approved" ? (
                       <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-2.5">
                         <p className="mb-1 text-xs text-slate-300">Upload Completion Image</p>
                         <div className="flex flex-wrap gap-2">
@@ -488,8 +555,9 @@ const WorkApprovalsPage = ({ user }) => {
                           />
                           <button
                             type="button"
-                            onClick={() => uploadCompletion(work._id)}
-                            className="rounded-lg bg-indigo-500/25 px-3 py-1.5 text-xs text-indigo-100"
+                            disabled={workBusy}
+                            onClick={() => uploadCompletion(work)}
+                            className="rounded-lg bg-indigo-500/25 px-3 py-1.5 text-xs text-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <span className="inline-flex items-center gap-1">
                               <UploadCloud size={12} />

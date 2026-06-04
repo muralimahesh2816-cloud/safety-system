@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import GlassCard from "../components/common/GlassCard";
 import SectionHeader from "../components/common/SectionHeader";
 import AccessControlPanel from "../components/settings/AccessControlPanel";
@@ -6,7 +6,7 @@ import { settingsService } from "../api/services";
 import { setSession } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
-import { showSuccessPopup } from "../utils/alerts";
+import { closeLoadingPopup, showLoadingPopup, showSuccessPopup } from "../utils/alerts";
 import { normalizePermissions } from "../utils/permissions";
 
 const notificationStorageKey = "hse_notification_preferences";
@@ -20,7 +20,6 @@ const defaultNotifications = {
 };
 
 const tabs = [
-  { key: "company", label: "Company Settings" },
   { key: "access", label: "Access Control" },
   { key: "security", label: "Security Settings" },
   { key: "notifications", label: "Notification Settings" },
@@ -31,18 +30,11 @@ const SettingsPage = ({ user }) => {
   const { setUser } = useAuth();
   const { theme, setTheme } = useTheme();
 
-  const [activeTab, setActiveTab] = useState("company");
+  const [activeTab, setActiveTab] = useState("access");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  const [company, setCompany] = useState({
-    companyName: "",
-    address: "",
-    contactInformation: { email: "", phone: "" },
-    gstNumber: "",
-    website: ""
-  });
-  const [logoFile, setLogoFile] = useState(null);
+  const [savingAction, setSavingAction] = useState("");
+  const savingRef = useRef(false);
 
   const [security, setSecurity] = useState({
     sessionTimeout: 30,
@@ -79,13 +71,6 @@ const SettingsPage = ({ user }) => {
     try {
       const response = await settingsService.get();
       const value = response.settings || {};
-      setCompany({
-        companyName: value.companyName || "Sasthan Udupi Tollway Pvt Ltd",
-        address: value.address || "",
-        contactInformation: value.contactInformation || { email: "", phone: "" },
-        gstNumber: value.gstNumber || "",
-        website: value.website || ""
-      });
       setSecurity({
         sessionTimeout: value.security?.sessionTimeout || 30,
         loginAttempts: value.security?.loginAttempts || 5,
@@ -126,29 +111,31 @@ const SettingsPage = ({ user }) => {
     }
   }, []);
 
-  const saveCompany = async () => {
-    try {
-      await settingsService.updateProfile(company);
-      if (logoFile) await settingsService.uploadLogo(logoFile);
-      await showSuccessPopup("Settings Saved Successfully");
-      setLogoFile(null);
-      fetchSettings();
-    } catch (saveError) {
-      setError(saveError?.response?.data?.message || "Failed to save company settings");
-    }
-  };
-
   const saveSecurity = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSavingAction("security");
+    setError("");
+    await showLoadingPopup("Please uploading...", "Saving security settings...");
     try {
       await settingsService.updateSecurity(security);
       await showSuccessPopup("Settings Saved Successfully");
       fetchSettings();
     } catch (saveError) {
       setError(saveError?.response?.data?.message || "Failed to save security settings");
+    } finally {
+      savingRef.current = false;
+      setSavingAction("");
+      closeLoadingPopup();
     }
   };
 
   const saveTheme = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSavingAction("theme");
+    setError("");
+    await showLoadingPopup("Please uploading...", "Saving theme settings...");
     try {
       await settingsService.updateBranding(branding);
       if (bannerFile || loginBgFile) {
@@ -170,12 +157,27 @@ const SettingsPage = ({ user }) => {
       fetchSettings();
     } catch (saveError) {
       setError(saveError?.response?.data?.message || "Failed to save theme settings");
+    } finally {
+      savingRef.current = false;
+      setSavingAction("");
+      closeLoadingPopup();
     }
   };
 
   const saveNotifications = async () => {
-    localStorage.setItem(notificationStorageKey, JSON.stringify(notifications));
-    await showSuccessPopup("Settings Saved Successfully");
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSavingAction("notifications");
+    setError("");
+    await showLoadingPopup("Please uploading...", "Saving notification settings...");
+    try {
+      localStorage.setItem(notificationStorageKey, JSON.stringify(notifications));
+      await showSuccessPopup("Settings Saved Successfully");
+    } finally {
+      savingRef.current = false;
+      setSavingAction("");
+      closeLoadingPopup();
+    }
   };
 
   const onPermissionUpdated = (updatedUser) => {
@@ -195,7 +197,7 @@ const SettingsPage = ({ user }) => {
     <div className="space-y-5">
       <SectionHeader
         title="Enterprise Settings"
-        subtitle="Company Settings, Access Control, Security, Notification, and Theme management"
+        subtitle="Access Control, Security, Notification, and Theme management"
       />
 
       <GlassCard className="p-5">
@@ -217,74 +219,6 @@ const SettingsPage = ({ user }) => {
 
       {loading ? <p className="text-sm text-slate-300">Loading settings...</p> : null}
       {error ? <p className="text-xs text-rose-300">{error}</p> : null}
-
-      {!loading && activeTab === "company" ? (
-        <GlassCard className="p-5">
-          <h3 className="mb-3 text-lg font-semibold text-white">Company Settings</h3>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <input
-              value={company.companyName}
-              onChange={(event) => setCompany((prev) => ({ ...prev, companyName: event.target.value }))}
-              placeholder="Company Name"
-              className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white"
-            />
-            <input
-              value={company.gstNumber}
-              onChange={(event) => setCompany((prev) => ({ ...prev, gstNumber: event.target.value }))}
-              placeholder="GST Number"
-              className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white"
-            />
-            <input
-              value={company.contactInformation.email}
-              onChange={(event) =>
-                setCompany((prev) => ({
-                  ...prev,
-                  contactInformation: { ...prev.contactInformation, email: event.target.value }
-                }))
-              }
-              placeholder="Contact Email"
-              className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white"
-            />
-            <input
-              value={company.contactInformation.phone}
-              onChange={(event) =>
-                setCompany((prev) => ({
-                  ...prev,
-                  contactInformation: { ...prev.contactInformation, phone: event.target.value }
-                }))
-              }
-              placeholder="Contact Phone"
-              className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white"
-            />
-            <input
-              value={company.website}
-              onChange={(event) => setCompany((prev) => ({ ...prev, website: event.target.value }))}
-              placeholder="Website"
-              className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white md:col-span-2"
-            />
-            <textarea
-              rows={3}
-              value={company.address}
-              onChange={(event) => setCompany((prev) => ({ ...prev, address: event.target.value }))}
-              placeholder="Address"
-              className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white md:col-span-2"
-            />
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(event) => setLogoFile(event.target.files?.[0] || null)}
-              className="rounded-xl border border-dashed border-white/20 bg-white/5 px-3 py-2 text-xs text-slate-300 md:col-span-2"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={saveCompany}
-            className="mt-4 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white"
-          >
-            Save Company Settings
-          </button>
-        </GlassCard>
-      ) : null}
 
       {!loading && activeTab === "access" ? (
         <AccessControlPanel currentUser={user} onPermissionUpdated={onPermissionUpdated} />
@@ -344,9 +278,10 @@ const SettingsPage = ({ user }) => {
           <button
             type="button"
             onClick={saveSecurity}
-            className="mt-4 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white"
+            disabled={savingAction === "security"}
+            className="mt-4 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Save Security Settings
+            {savingAction === "security" ? "Saving..." : "Save Security Settings"}
           </button>
         </GlassCard>
       ) : null}
@@ -376,9 +311,10 @@ const SettingsPage = ({ user }) => {
           <button
             type="button"
             onClick={saveNotifications}
-            className="mt-4 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white"
+            disabled={savingAction === "notifications"}
+            className="mt-4 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Save Notification Settings
+            {savingAction === "notifications" ? "Saving..." : "Save Notification Settings"}
           </button>
         </GlassCard>
       ) : null}
@@ -445,9 +381,10 @@ const SettingsPage = ({ user }) => {
             <button
               type="button"
               onClick={saveTheme}
-              className="rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white"
+              disabled={savingAction === "theme"}
+              className="rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Save Theme Settings
+              {savingAction === "theme" ? "Saving..." : "Save Theme Settings"}
             </button>
             <button
               type="button"
