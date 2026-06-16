@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { LogOut } from "lucide-react";
 import NotificationCenter from "../common/NotificationCenter";
 import ThemeToggle from "../common/ThemeToggle";
-import SafetyLogo from "../brand/SafetyLogo";
+import topbarLogo from "../../assets/topbarlogo.svg";
 import vertisVideo from "../../assets/vertis-video.mp4";
 import { getMediaUrl } from "../../utils/media";
 
@@ -119,7 +119,11 @@ const Topbar = ({ user, onLogout, title }) => {
                   : { duration: 9.5, ease: "linear", repeat: Infinity }
               }
             >
-              <SafetyLogo compact />
+              <img
+                src={topbarLogo}
+                alt="Momentum Safety logo"
+                className="h-12 w-12 object-contain drop-shadow-[0_0_22px_rgba(45,212,191,0.42)]"
+              />
             </motion.div>
           </div>
           <AnimatePresence>
