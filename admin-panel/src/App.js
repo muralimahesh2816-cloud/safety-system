@@ -53,7 +53,7 @@ const ModuleGuard = ({ user, moduleKey, children }) => {
 };
 
 const AppContent = () => {
-  const { user, loading, isAuthenticated, login, verifyOtp, resendOtp, logout } = useAuth();
+  const { user, loading, isAuthenticated, login, logout } = useAuth();
   const [activeModule, setActiveModule] = useState("dashboard");
   const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(30);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsed);
@@ -230,7 +230,7 @@ const AppContent = () => {
   }
 
   if (!isAuthenticated) {
-    return <LoginPage onLogin={login} onVerifyOtp={verifyOtp} onResendOtp={resendOtp} />;
+    return <LoginPage onLogin={login} />;
   }
 
   return (
