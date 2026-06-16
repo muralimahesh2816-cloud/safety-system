@@ -7,6 +7,8 @@ import ErrorBoundary from "./components/common/ErrorBoundary";
 import Sidebar from "./components/layout/Sidebar";
 import Topbar from "./components/layout/Topbar";
 import ParticleBackground from "./components/common/ParticleBackground";
+import SafetyLogo from "./components/brand/SafetyLogo";
+import MomentumSafetyBackground from "./components/visuals/MomentumSafetyBackground";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import WorkApprovalsPage from "./pages/WorkApprovalsPage";
@@ -51,7 +53,7 @@ const ModuleGuard = ({ user, moduleKey, children }) => {
 };
 
 const AppContent = () => {
-  const { user, loading, isAuthenticated, login, logout } = useAuth();
+  const { user, loading, isAuthenticated, login, verifyOtp, resendOtp, logout } = useAuth();
   const [activeModule, setActiveModule] = useState("dashboard");
   const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(30);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsed);
@@ -218,20 +220,23 @@ const AppContent = () => {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-100">
-        <div className="rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm">
-          Booting enterprise dashboard...
+        <MomentumSafetyBackground intensity="low" />
+        <div className="relative z-10 rounded-2xl border border-white/10 bg-white/5 px-6 py-5 text-sm backdrop-blur-2xl">
+          <SafetyLogo className="mb-3 justify-center" />
+          <p className="text-center text-slate-200">Booting enterprise dashboard...</p>
         </div>
       </div>
     );
   }
 
   if (!isAuthenticated) {
-    return <LoginPage onLogin={login} />;
+    return <LoginPage onLogin={login} onVerifyOtp={verifyOtp} onResendOtp={resendOtp} />;
   }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-50">
       <ParticleBackground />
+      <MomentumSafetyBackground intensity="low" />
       <div className="relative z-10 app-layout">
         <motion.aside
           animate={{ width: sidebarCollapsed ? 80 : 280 }}

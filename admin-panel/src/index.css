@@ -140,6 +140,87 @@ html.light .hse-swal-text {
   font-family: "Sora", sans-serif;
 }
 
+.hse-input {
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(2, 6, 23, 0.72);
+  padding: 0.78rem 3rem 0.78rem 2.75rem;
+  color: #f8fafc;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.hse-input:focus {
+  border-color: rgba(103, 232, 249, 0.9);
+  background: rgba(15, 23, 42, 0.82);
+  box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.1), 0 0 30px rgba(20, 184, 166, 0.18);
+}
+
+.hse-primary-button {
+  border-radius: 1rem;
+  background: linear-gradient(135deg, #14b8a6, #0ea5e9);
+  padding: 0.86rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: white;
+  box-shadow: 0 16px 34px rgba(14, 165, 233, 0.25);
+  transition: transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hse-primary-button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+  box-shadow: 0 20px 44px rgba(20, 184, 166, 0.3);
+}
+
+.hse-primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.momentum-safety-bg {
+  perspective: 1100px;
+}
+
+.momentum-particle {
+  position: absolute;
+  bottom: -12px;
+  border-radius: 999px;
+  background: #67e8f9;
+  box-shadow: 0 0 18px rgba(103, 232, 249, 0.8);
+  animation: momentum-particle-rise 9s linear infinite;
+}
+
+.momentum-wave {
+  animation: momentum-wave 8s ease-in-out infinite;
+}
+
+@keyframes momentum-particle-rise {
+  0% {
+    transform: translate3d(0, 0, 0) scale(0.8);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate3d(-42px, -110vh, 120px) scale(1.2);
+    opacity: 0;
+  }
+}
+
+@keyframes momentum-wave {
+  0%, 100% {
+    transform: translateX(-12%) skewY(-4deg);
+    opacity: 0.28;
+  }
+  50% {
+    transform: translateX(12%) skewY(3deg);
+    opacity: 0.48;
+  }
+}
+
 .bg-premium-grid {
   background-image:
     linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),

@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { LogOut } from "lucide-react";
 import NotificationCenter from "../common/NotificationCenter";
 import ThemeToggle from "../common/ThemeToggle";
-import companyLogo from "../../assets/topbarlogo.svg";
+import SafetyLogo from "../brand/SafetyLogo";
 import vertisVideo from "../../assets/vertis-video.mp4";
 import { getMediaUrl } from "../../utils/media";
 
@@ -110,18 +110,17 @@ const Topbar = ({ user, onLogout, title }) => {
               }}
               transition={{ duration: logoHovered ? 1.8 : 3.5, ease: "easeInOut", repeat: Infinity }}
             />
-            <motion.img
-              src={companyLogo}
-              alt="Company Logo"
-              className="relative z-10 h-14 w-14 object-contain drop-shadow-[0_0_16px_rgba(56,189,248,0.45)]"
-              loading="lazy"
+            <motion.div
+              className="relative z-10"
               animate={{ rotate: 360, scale: logoHovered ? 1.05 : 1 }}
               transition={
                 logoHovered
                   ? { duration: 6.5, ease: "linear", repeat: Infinity }
                   : { duration: 9.5, ease: "linear", repeat: Infinity }
               }
-            />
+            >
+              <SafetyLogo compact />
+            </motion.div>
           </div>
           <AnimatePresence>
             {logoHovered ? (

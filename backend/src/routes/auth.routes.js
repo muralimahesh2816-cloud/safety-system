@@ -5,7 +5,12 @@ const ApiError = require("../utils/api-error");
 const validate = require("../middleware/validate.middleware");
 const authMiddleware = require("../middleware/auth.middleware");
 const audit = require("../middleware/audit.middleware");
-const { registerSchema, loginSchema } = require("../validators/auth.validators");
+const {
+  registerSchema,
+  loginSchema,
+  verifyOtpSchema,
+  resendOtpSchema
+} = require("../validators/auth.validators");
 const User = require("../models/User");
 const SessionToken = require("../models/SessionToken");
 const CompanySettings = require("../models/CompanySettings");
@@ -24,6 +29,8 @@ const {
   parseExpiryToDate
 } = require("../utils/tokens");
 const { issueCsrfToken } = require("../middleware/csrf.middleware");
+const { otpRateLimiter } = require("../middleware/rateLimit.middleware");
+const { setOtpForUser, verifyOtpForUser, maskEmail } = require("../services/auth.service");
 
 const router = express.Router();
 
@@ -138,6 +145,7 @@ router.post(
 
 router.post(
   "/login",
+  otpRateLimiter,
   validate(loginSchema),
   asyncHandler(async (req, res) => {
     const user = await User.findOne({ email: req.body.email });
@@ -172,6 +180,31 @@ router.post(
 
     user.failedLoginAttempts = 0;
     user.lockedUntil = null;
+    await setOtpForUser(user, { force: true });
+    await audit(req, "login_otp_sent", "auth", { email: user.email }, user._id);
+
+    res.json({
+      success: true,
+      pendingOtp: true,
+      message: "Verification code sent",
+      maskedEmail: maskEmail(user.email),
+      expiresInSeconds: 300,
+      resendAfterSeconds: 60
+    });
+  })
+);
+
+router.post(
+  "/verify-otp",
+  otpRateLimiter,
+  validate(verifyOtpSchema),
+  asyncHandler(async (req, res) => {
+    const user = await User.findOne({ email: req.body.email });
+    if (!user || user.status === "blocked") {
+      throw new ApiError(401, "Invalid or expired OTP");
+    }
+
+    await verifyOtpForUser(user, req.body.otp);
     user.lastLoginAt = new Date();
     appendLoginHistory(user, req, true);
     await user.save();
@@ -194,6 +227,28 @@ router.post(
         permissions: normalizePagePermissions(user.permissions, user.role),
         permissionMatrix: toActionPermissions(user.permissions, user.role)
       }
+    });
+  })
+);
+
+router.post(
+  "/resend-otp",
+  otpRateLimiter,
+  validate(resendOtpSchema),
+  asyncHandler(async (req, res) => {
+    const user = await User.findOne({ email: req.body.email });
+    if (user && user.status === "active") {
+      await setOtpForUser(user);
+      await audit(req, "login_otp_resent", "auth", { email: user.email }, user._id);
+    }
+
+    res.json({
+      success: true,
+      pendingOtp: true,
+      message: "If the account can sign in, a new verification code has been sent",
+      maskedEmail: user ? maskEmail(user.email) : "",
+      expiresInSeconds: 300,
+      resendAfterSeconds: 60
     });
   })
 );

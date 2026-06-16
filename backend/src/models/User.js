@@ -43,6 +43,12 @@ const userSchema = new mongoose.Schema(
     loginHistory: [loginHistorySchema],
     failedLoginAttempts: { type: Number, default: 0 },
     lockedUntil: Date,
+    otpHash: { type: String, default: "" },
+    otpExpiresAt: Date,
+    otpAttempts: { type: Number, default: 0 },
+    lastOtpSentAt: Date,
+    loginLockedUntil: Date,
+    otpVerified: { type: Boolean, default: false },
     isTwoFactorEnabled: { type: Boolean, default: false }
   },
   {

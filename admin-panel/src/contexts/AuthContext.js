@@ -35,6 +35,7 @@ export const AuthProvider = ({ children }) => {
     const csrf = await authService.getCsrf();
     setSession({ csrfToken: csrf.csrfToken });
     const res = await authService.login({ email, password });
+    if (res.pendingOtp) return res;
     setSession({
       token: res.token,
       user: res.user,
@@ -43,6 +44,19 @@ export const AuthProvider = ({ children }) => {
     setUser(res.user);
     return res.user;
   }, []);
+
+  const verifyOtp = useCallback(async (email, otp) => {
+    const res = await authService.verifyOtp({ email, otp });
+    setSession({
+      token: res.token,
+      user: res.user,
+      csrfToken: res.csrfToken
+    });
+    setUser(res.user);
+    return res.user;
+  }, []);
+
+  const resendOtp = useCallback(async (email) => authService.resendOtp({ email }), []);
 
   const logout = useCallback(async () => {
     try {
@@ -60,10 +74,12 @@ export const AuthProvider = ({ children }) => {
       loading,
       isAuthenticated: Boolean(user),
       login,
+      verifyOtp,
+      resendOtp,
       logout,
       setUser
     }),
-    [user, loading, login, logout]
+    [user, loading, login, verifyOtp, resendOtp, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
