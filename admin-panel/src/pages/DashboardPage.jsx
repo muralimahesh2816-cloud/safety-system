@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { CircleCheckBig, ClipboardCheck, HardHat, ShieldCheck, Siren, TriangleAlert, UsersRound, Wrench } from "lucide-react";
+import {
+  CircleCheckBig,
+  ClipboardCheck,
+  Clock3,
+  Construction,
+  GraduationCap,
+  HardHat,
+  ShieldCheck,
+  Siren,
+  TriangleAlert,
+  UsersRound,
+  Wrench
+} from "lucide-react";
 import {
   Area,
   AreaChart,
@@ -142,13 +154,31 @@ const DashboardPage = ({ onModuleSelect }) => {
         subtitle="Live operational and safety metrics across enterprise modules"
       />
       {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          {Array.from({ length: 10 }).map((_, index) => (
             <SkeletonBlock key={index} className="h-40 rounded-3xl" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <KPIBox
+            title="Total Users"
+            value={kpis.totalUsers}
+            icon={UsersRound}
+            backgroundIcon={HardHat}
+            gradient="from-teal-500/35 via-cyan-600/20 to-slate-950/70"
+            accent="text-teal-200"
+            delay={0}
+          />
+          <KPIBox
+            title="Active Users"
+            value={kpis.activeUsers}
+            icon={ShieldCheck}
+            backgroundIcon={UsersRound}
+            gradient="from-sky-500/35 via-blue-600/20 to-slate-950/70"
+            accent="text-sky-200"
+            delay={0.04}
+          />
           <KPIBox
             title="Total Work Approvals"
             value={kpis.totalWorkApprovals}
@@ -156,54 +186,70 @@ const DashboardPage = ({ onModuleSelect }) => {
             backgroundIcon={Wrench}
             gradient="from-cyan-500/35 via-sky-600/20 to-slate-950/70"
             accent="text-cyan-200"
-            hint="All submitted work requests"
-            delay={0}
+            delay={0.08}
+          />
+          <KPIBox
+            title="Pending Work"
+            value={kpis.pendingWork}
+            icon={Clock3}
+            backgroundIcon={ClipboardCheck}
+            gradient="from-orange-500/35 via-amber-600/20 to-slate-950/70"
+            accent="text-amber-200"
+            delay={0.12}
+          />
+          <KPIBox
+            title="Approved Work"
+            value={kpis.approvedWork}
+            icon={ClipboardCheck}
+            backgroundIcon={HardHat}
+            gradient="from-emerald-500/35 via-teal-600/20 to-slate-950/70"
+            accent="text-emerald-200"
+            delay={0.16}
+          />
+          <KPIBox
+            title="Completed Work"
+            value={kpis.completedWork}
+            icon={CircleCheckBig}
+            backgroundIcon={Construction}
+            gradient="from-indigo-500/35 via-blue-600/20 to-slate-950/70"
+            accent="text-indigo-200"
+            delay={0.2}
+          />
+          <KPIBox
+            title="Total Hazards"
+            value={kpis.totalHazards}
+            icon={TriangleAlert}
+            backgroundIcon={Siren}
+            gradient="from-rose-500/35 via-red-600/20 to-slate-950/70"
+            accent="text-rose-200"
+            delay={0.24}
           />
           <KPIBox
             title="Open Hazards"
             value={kpis.openHazards}
-            icon={TriangleAlert}
-            gradient="from-orange-500/35 via-amber-600/20 to-slate-950/70"
-            accent="text-amber-200"
-            hint="Requires corrective action"
-            delay={0.05}
+            icon={Siren}
+            backgroundIcon={TriangleAlert}
+            gradient="from-orange-500/35 via-rose-600/20 to-slate-950/70"
+            accent="text-orange-200"
+            delay={0.28}
           />
           <KPIBox
             title="Closed Hazards"
             value={kpis.closedHazards}
             icon={ShieldCheck}
-            gradient="from-emerald-500/35 via-teal-600/20 to-slate-950/70"
-            accent="text-emerald-200"
-            hint="Verified safety closures"
-            delay={0.1}
+            backgroundIcon={TriangleAlert}
+            gradient="from-green-500/35 via-emerald-600/20 to-slate-950/70"
+            accent="text-green-200"
+            delay={0.32}
           />
           <KPIBox
-            title="Near Miss Reports"
-            value={kpis.nearMissReports}
-            icon={Siren}
-            gradient="from-rose-500/35 via-red-600/20 to-slate-950/70"
-            accent="text-rose-200"
-            hint="Preventive observation reports"
-            delay={0.15}
-          />
-          <KPIBox
-            title="Pending Approvals"
-            value={kpis.pendingWork}
-            icon={ClipboardCheck}
-            gradient="from-yellow-500/35 via-amber-600/20 to-slate-950/70"
-            accent="text-yellow-200"
-            hint="Awaiting admin decision"
-            delay={0.2}
-          />
-          <KPIBox
-            title="Completed Works"
-            value={kpis.completedWork}
-            icon={CircleCheckBig}
-            backgroundIcon={UsersRound}
-            gradient="from-indigo-500/35 via-blue-600/20 to-slate-950/70"
-            accent="text-indigo-200"
-            hint="Work closed with evidence"
-            delay={0.25}
+            title="Training Records"
+            value={kpis.trainingRecords}
+            icon={GraduationCap}
+            backgroundIcon={HardHat}
+            gradient="from-cyan-400/35 via-indigo-600/20 to-slate-950/70"
+            accent="text-cyan-100"
+            delay={0.36}
           />
         </div>
       )}

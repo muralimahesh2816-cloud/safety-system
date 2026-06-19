@@ -9,7 +9,6 @@ export const mockSummary = {
     totalHazards: 94,
     openHazards: 26,
     closedHazards: 68,
-    nearMissReports: 12,
     trainingRecords: 238
   },
   charts: {
