@@ -324,6 +324,7 @@ const mapWorkRecord = (item = {}) => {
     ...item,
     title: item.title || item.workType || "Work Approval",
     workType: item.workType || item.title || "",
+    description: item.description || item.workDescription || "",
     category: item.category || "General",
     priority: item.priority || "Medium",
     chainage: item.chainage || item.chainageNo || "",
@@ -711,6 +712,7 @@ export const workService = {
         formData.append(key, value);
       }
     });
+    formData.set("description", String(payload.description || "").trim());
     (payload.beforeImages || []).forEach((file) => formData.append("beforeImages", file));
     const res = await client.post("/work-approvals", formData);
     return { success: true, work: mapWorkRecord(res.data.work) };

@@ -57,6 +57,7 @@ const workApprovalSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
     workType: { type: String, required: true },
+    description: { type: String, default: "", trim: true },
     category: { type: String, default: "General" },
     plaza: { type: String, default: "" },
     location: { type: String, required: true },

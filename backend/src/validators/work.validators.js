@@ -3,6 +3,7 @@ const { z } = require("zod");
 const createWorkSchema = z.object({
   title: z.string().optional().default(""),
   workType: z.string().min(2),
+  description: z.string().trim().max(1000).optional().default(""),
   category: z.string().optional().default("General"),
   plaza: z.string().optional().default(""),
   location: z.string().min(2),

@@ -29,6 +29,7 @@ const toLegacyWorkRecord = (record) => {
   const afterImage = plain.afterImages?.[0]?.url || plain.afterImage || "";
   return {
     ...plain,
+    description: plain.description || plain.workDescription || "",
     chainageNo: plain.chainageNo || plain.chainage || "",
     beforeImage,
     afterImage,
@@ -77,6 +78,7 @@ router.post(
     const work = await WorkApproval.create({
       ...payload,
       title: payload.title || `${payload.workType} - ${payload.location}`,
+      description: payload.description || "",
       chainage: payload.chainage || payload.chainageNo || "",
       chainageNo: payload.chainageNo || payload.chainage || "",
       beforeImages,
