@@ -60,7 +60,7 @@ const getDashboardSummary = async () => {
   const [users, work, hazards, trainings, activities] = await Promise.all([
     User.find().select("_id status role createdAt lastLoginAt"),
     WorkApproval.find().select("_id status createdAt updatedAt"),
-    Hazard.find().select("_id status severity createdAt updatedAt"),
+    Hazard.find().select("_id status severity category createdAt updatedAt"),
     Training.find().select("_id category completions createdAt"),
     AuditLog.find().sort({ createdAt: -1 }).limit(15)
   ]);
@@ -74,6 +74,9 @@ const getDashboardSummary = async () => {
   const totalHazards = hazards.length;
   const openHazards = hazards.filter((item) => item.status === "Open").length;
   const closedHazards = hazards.filter((item) => item.status === "Closed").length;
+  const nearMissReports = hazards.filter(
+    (item) => String(item.category || "").trim().toLowerCase() === "near miss"
+  ).length;
   const trainingRecords = trainings.length;
 
   const workStatus = [
@@ -124,6 +127,7 @@ const getDashboardSummary = async () => {
       totalHazards,
       openHazards,
       closedHazards,
+      nearMissReports,
       trainingRecords
     },
     charts: {

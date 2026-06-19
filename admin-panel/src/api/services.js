@@ -85,6 +85,9 @@ const buildDashboardSummaryFallback = ({
   const openHazards = hazardRecords.filter((item) => item.status === "Open" || !item.status).length;
   const closedHazards = hazardRecords.filter((item) => item.status === "Closed").length;
   const inProgressHazards = hazardRecords.filter((item) => item.status === "In Progress").length;
+  const nearMissReports = hazardRecords.filter(
+    (item) => String(item.category || "").trim().toLowerCase() === "near miss"
+  ).length;
 
   const totalUsers = users.length;
   const activeUsers = users.filter((item) => !item.status || item.status === "active").length;
@@ -205,6 +208,7 @@ const buildDashboardSummaryFallback = ({
       totalHazards,
       openHazards,
       closedHazards,
+      nearMissReports,
       trainingRecords: trainingCount
     },
     charts: {

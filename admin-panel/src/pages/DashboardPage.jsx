@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { CircleCheckBig, ClipboardCheck, HardHat, ShieldCheck, Siren, TriangleAlert, UsersRound, Wrench } from "lucide-react";
 import {
   Area,
   AreaChart,
@@ -21,7 +22,7 @@ import {
   YAxis
 } from "recharts";
 import GlassCard from "../components/common/GlassCard";
-import KpiCard from "../components/common/KpiCard";
+import KPIBox from "../components/dashboard/KPIBox";
 import SectionHeader from "../components/common/SectionHeader";
 import SkeletonBlock from "../components/common/SkeletonBlock";
 import { dashboardService } from "../api/services";
@@ -141,23 +142,69 @@ const DashboardPage = ({ onModuleSelect }) => {
         subtitle="Live operational and safety metrics across enterprise modules"
       />
       {loading ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-          {Array.from({ length: 10 }).map((_, index) => (
-            <SkeletonBlock key={index} className="h-28" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <SkeletonBlock key={index} className="h-40 rounded-3xl" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <KpiCard title="Total Users" value={kpis.totalUsers} tone="bg-teal-500/35" />
-          <KpiCard title="Active Users" value={kpis.activeUsers} tone="bg-sky-500/35" />
-          <KpiCard title="Total Work Approvals" value={kpis.totalWorkApprovals} tone="bg-cyan-500/35" />
-          <KpiCard title="Pending Work" value={kpis.pendingWork} tone="bg-amber-500/35" />
-          <KpiCard title="Approved Work" value={kpis.approvedWork} tone="bg-emerald-500/35" />
-          <KpiCard title="Completed Work" value={kpis.completedWork} tone="bg-indigo-500/35" />
-          <KpiCard title="Total Hazards" value={kpis.totalHazards} tone="bg-rose-500/35" />
-          <KpiCard title="Open Hazards" value={kpis.openHazards} tone="bg-orange-500/35" />
-          <KpiCard title="Closed Hazards" value={kpis.closedHazards} tone="bg-green-500/35" />
-          <KpiCard title="Training Records" value={kpis.trainingRecords} tone="bg-cyan-400/35" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <KPIBox
+            title="Total Work Approvals"
+            value={kpis.totalWorkApprovals}
+            icon={HardHat}
+            backgroundIcon={Wrench}
+            gradient="from-cyan-500/35 via-sky-600/20 to-slate-950/70"
+            accent="text-cyan-200"
+            hint="All submitted work requests"
+            delay={0}
+          />
+          <KPIBox
+            title="Open Hazards"
+            value={kpis.openHazards}
+            icon={TriangleAlert}
+            gradient="from-orange-500/35 via-amber-600/20 to-slate-950/70"
+            accent="text-amber-200"
+            hint="Requires corrective action"
+            delay={0.05}
+          />
+          <KPIBox
+            title="Closed Hazards"
+            value={kpis.closedHazards}
+            icon={ShieldCheck}
+            gradient="from-emerald-500/35 via-teal-600/20 to-slate-950/70"
+            accent="text-emerald-200"
+            hint="Verified safety closures"
+            delay={0.1}
+          />
+          <KPIBox
+            title="Near Miss Reports"
+            value={kpis.nearMissReports}
+            icon={Siren}
+            gradient="from-rose-500/35 via-red-600/20 to-slate-950/70"
+            accent="text-rose-200"
+            hint="Preventive observation reports"
+            delay={0.15}
+          />
+          <KPIBox
+            title="Pending Approvals"
+            value={kpis.pendingWork}
+            icon={ClipboardCheck}
+            gradient="from-yellow-500/35 via-amber-600/20 to-slate-950/70"
+            accent="text-yellow-200"
+            hint="Awaiting admin decision"
+            delay={0.2}
+          />
+          <KPIBox
+            title="Completed Works"
+            value={kpis.completedWork}
+            icon={CircleCheckBig}
+            backgroundIcon={UsersRound}
+            gradient="from-indigo-500/35 via-blue-600/20 to-slate-950/70"
+            accent="text-indigo-200"
+            hint="Work closed with evidence"
+            delay={0.25}
+          />
         </div>
       )}
 
