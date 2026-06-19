@@ -4,6 +4,7 @@ import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recha
 import GlassCard from "../components/common/GlassCard";
 import SectionHeader from "../components/common/SectionHeader";
 import MediaStudioModal from "../components/common/MediaStudioModal";
+import HazardDetailsModal from "../components/modals/HazardDetailsModal";
 import { hazardService, userService } from "../api/services";
 import { closeLoadingPopup, showLoadingPopup, showSuccessPopup, showValidationPopup } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
@@ -62,6 +63,7 @@ const HazardsPage = ({ user }) => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState({ open: false, items: [], index: 0, compare: null });
+  const [selectedHazard, setSelectedHazard] = useState(null);
   const [statusFilter, setStatusFilter] = useState("All");
   const [submitting, setSubmitting] = useState(false);
   const [busyHazardId, setBusyHazardId] = useState("");
@@ -488,30 +490,58 @@ const HazardsPage = ({ user }) => {
                 const closurePreview = closureItems[0]?.url || "";
 
                 return (
-                  <div key={hazard._id} className="rounded-2xl border border-white/12 bg-white/5 p-4">
+                  <div
+                    key={hazard._id}
+                    onClick={(event) => {
+                      if (event.target.closest("button, input, select, a")) return;
+                      setSelectedHazard(hazard);
+                    }}
+                    className="cursor-pointer rounded-2xl border border-white/12 bg-white/5 p-4 transition duration-300 hover:border-cyan-300/30 hover:bg-white/[0.075] hover:shadow-[0_20px_50px_rgba(8,145,178,.12)]"
+                  >
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-base font-semibold text-white">{hazard.plaza || hazard.title}</p>
-                      <p className="mt-1 text-xs text-slate-300">📍 {hazard.location || "-"}</p>
-                      <p className="mt-1 text-xs text-slate-300">👤 {hazard.reportedBy || "-"}</p>
-                      <p className="mt-1 text-xs text-slate-300">
-                        {hazard.category || "-"} | {hazard.action || "-"}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-300">
-                        Severity {hazard.severity || "-"} • Risk {hazard.riskScore || 0}
-                      </p>
-                      <p
-                        className={`mt-1 text-xs font-semibold ${
-                          hazard.status === "Closed" ? "text-green-300" : "text-amber-300"
-                        }`}
+                    <div className="flex min-w-0 flex-1 gap-3">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedHazard(hazard);
+                        }}
+                        className="h-24 w-28 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/65"
+                        aria-label="View hazard details"
                       >
-                        {hazard.status || "Open"}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-400">
-                        {formatDateTime(hazard.date || hazard.createdAt)}
-                      </p>
+                        {evidencePreview ? (
+                          <img src={evidencePreview} alt="Hazard evidence" loading="lazy" className="h-full w-full object-cover transition duration-300 hover:scale-105" />
+                        ) : (
+                          <span className="flex h-full items-center justify-center px-2 text-center text-[11px] text-slate-500">No Image Available</span>
+                        )}
+                      </button>
+                      <div className="min-w-0">
+                        <p className="truncate text-base font-semibold text-white">{hazard.title || hazard.plaza || "Hazard Observation"}</p>
+                        <p className="mt-1 text-xs text-slate-300">{hazard.category || "Hazard"} | {hazard.location || "-"}</p>
+                        <p className="mt-1 text-xs text-slate-300">Reported By: {hazard.reportedBy || "-"}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-200">
+                            {hazard.severity || "Risk"} / {hazard.riskScore || 0}
+                          </span>
+                          <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                            hazard.status === "Closed"
+                              ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                              : "border-rose-400/30 bg-rose-500/10 text-rose-200"
+                          }`}>
+                            {hazard.status || "Open"}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs text-slate-400">{formatDateTime(hazard.date || hazard.createdAt)}</p>
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedHazard(hazard)}
+                        className="rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-2.5 py-1.5 text-xs font-semibold text-cyan-100"
+                      >
+                        View Details
+                      </button>
                       <button
                         type="button"
                         onClick={() => openGallery(hazard, 0)}
@@ -677,6 +707,15 @@ const HazardsPage = ({ user }) => {
           )}
         </GlassCard>
       </div>
+
+      <HazardDetailsModal
+        open={Boolean(selectedHazard)}
+        hazard={selectedHazard}
+        onClose={() => setSelectedHazard(null)}
+        onOpenMedia={(items, index) =>
+          setModal({ open: true, items, index, compare: null })
+        }
+      />
 
       <MediaStudioModal
         open={modal.open}

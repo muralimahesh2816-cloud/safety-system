@@ -65,6 +65,27 @@ const MediaStudioModal = ({
     onIndexChange?.(safeIndex === galleryItems.length - 1 ? 0 : safeIndex + 1);
   };
 
+  const downloadMedia = async () => {
+    if (!url) return;
+    const fallbackName = `hse-media-${Date.now()}`;
+    const sourceName = activeItem?.name || activeItem?.filename || url.split("/").pop()?.split("?")[0] || fallbackName;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Download failed");
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = blobUrl;
+      anchor.download = sourceName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (_error) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  };
+
   return (
     <AnimatePresence>
       {shouldOpen && url ? (
@@ -76,7 +97,7 @@ const MediaStudioModal = ({
           onClick={onClose}
         >
           <motion.div
-            className="relative flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-slate-950/90 shadow-[0_30px_90px_rgba(0,0,0,.58)]"
+            className="relative flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-white/15 bg-slate-950/95 shadow-[0_30px_90px_rgba(0,0,0,.58)]"
             initial={{ y: 18, scale: 0.98 }}
             animate={{ y: 0, scale: 1 }}
             exit={{ y: 18, scale: 0.98 }}
@@ -98,8 +119,8 @@ const MediaStudioModal = ({
                     <button className="rounded-xl bg-white/10 p-2 text-white" onClick={() => setZoom((v) => Math.min(3, v + 0.25))} type="button"><Plus size={16} /></button>
                   </>
                 ) : null}
-                <a className="rounded-xl bg-white/10 p-2 text-white" href={url} download target="_blank" rel="noreferrer"><Download size={16} /></a>
-                <button className="rounded-xl bg-rose-500/20 p-2 text-rose-100" onClick={onClose} type="button"><X size={16} /></button>
+                <button className="rounded-xl bg-white/10 p-2 text-white transition hover:bg-emerald-500/20" onClick={downloadMedia} type="button" aria-label="Download media"><Download size={16} /></button>
+                <button className="rounded-xl bg-rose-500/20 p-2 text-rose-100 transition hover:bg-rose-500/30" onClick={onClose} type="button" aria-label="Close media"><X size={16} /></button>
               </div>
             </div>
             <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
