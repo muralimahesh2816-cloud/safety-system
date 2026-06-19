@@ -34,6 +34,7 @@ const initialForm = {
   location: "",
   chainage: "",
   workersCount: "",
+  description: "",
   priority: "Medium",
   assignedTo: "",
   startDate: "",
@@ -90,6 +91,7 @@ const WorkApprovalsPage = ({ user }) => {
       !form.location ||
       !form.chainage ||
       !form.workersCount ||
+      !form.description.trim() ||
       beforeImages.length === 0
     ) {
       setError("Fill all required fields from legacy workflow");
@@ -316,6 +318,15 @@ const WorkApprovalsPage = ({ user }) => {
               value={form.workersCount}
               onChange={(event) => setForm((prev) => ({ ...prev, workersCount: event.target.value }))}
               className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+              required
+            />
+            <textarea
+              value={form.description}
+              onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+              placeholder="Work Description"
+              rows={3}
+              maxLength={1000}
+              className="w-full resize-none rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-cyan-300/60 focus:outline-none"
               required
             />
             <input

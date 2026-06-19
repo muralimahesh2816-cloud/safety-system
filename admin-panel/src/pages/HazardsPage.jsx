@@ -103,6 +103,7 @@ const HazardsPage = ({ user }) => {
       !form.plaza ||
       !form.location ||
       !form.reportedBy ||
+      !form.description.trim() ||
       !form.category ||
       !form.action ||
       images.length === 0
@@ -323,6 +324,15 @@ const HazardsPage = ({ user }) => {
               onChange={(event) => setForm((prev) => ({ ...prev, reportedBy: event.target.value }))}
               placeholder="Reported By"
               className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+              required
+            />
+            <textarea
+              value={form.description}
+              onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+              placeholder="Hazard Description"
+              rows={3}
+              maxLength={1000}
+              className="w-full resize-none rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-amber-300/60 focus:outline-none"
               required
             />
             <div className="grid grid-cols-2 gap-2">
