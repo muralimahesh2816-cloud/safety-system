@@ -58,15 +58,29 @@ const toLegacyWorkRecord = (record) => ({
   updatedAt: record.updatedAt,
   plaza: record.plaza || "",
   workType: record.workType || record.title || "",
+  description: record.description || "",
   location: record.location || "",
   chainage: record.chainage || record.chainageNo || "",
   chainageNo: record.chainageNo || record.chainage || "",
   workersCount: record.workersCount || 0,
+  priority: record.priority || "Medium",
   status: record.status || "Pending",
+  reportedBy: record.createdBy?.name || "",
   approvedBy: record.approvedBy || "",
+  completionDate: record.status === "Completed" ? record.updatedAt : "",
   beforeImage: record.beforeImages?.[0]?.url || record.beforeImage || "",
   afterImage: record.afterImages?.[0]?.url || record.afterImage || ""
 });
+
+const formatCorrectiveActions = (actions = []) =>
+  actions
+    .map((item) => {
+      const owner = item.owner?.name ? ` (${item.owner.name})` : "";
+      const status = item.status ? ` [${item.status}]` : "";
+      return `${item.action || ""}${owner}${status}`.trim();
+    })
+    .filter(Boolean)
+    .join("; ");
 
 const toLegacyHazardRecord = (record) => ({
   _id: record._id,
@@ -80,7 +94,13 @@ const toLegacyHazardRecord = (record) => ({
       ? record.reportedBy?.name || record.reportedByName || ""
       : record.reportedByName || "",
   category: record.category || "",
+  description: record.description || "",
+  severity: record.severity || "",
+  likelihood: record.likelihood || "",
+  riskScore: record.riskScore || 0,
   action: record.action || "",
+  actionTaken: formatCorrectiveActions(record.correctiveActions),
+  closureAction: record.closureNotes || "",
   status: record.status || "Open",
   beforeImage: record.evidenceImages?.[0]?.url || record.beforeImage || "",
   afterImage: record.closureImages?.[0]?.url || record.afterImage || ""
@@ -92,8 +112,9 @@ router.get(
   authorizePermission("reports", "view"),
   asyncHandler(async (_req, res) => {
     const records = await WorkApproval.find()
+      .populate("createdBy", "name")
       .select(
-        "title plaza workType location chainage chainageNo workersCount status approvedBy beforeImages afterImages beforeImage afterImage createdAt updatedAt"
+        "title plaza workType description location chainage chainageNo workersCount priority status createdBy approvedBy beforeImages afterImages beforeImage afterImage createdAt updatedAt"
       )
       .sort({ createdAt: -1 });
     res.json(records.map(toLegacyWorkRecord));
@@ -107,8 +128,9 @@ router.get(
   asyncHandler(async (_req, res) => {
     const records = await Hazard.find()
       .populate("reportedBy", "name")
+      .populate("correctiveActions.owner", "name")
       .select(
-        "title date plaza location reportedBy reportedByName category action status evidenceImages closureImages beforeImage afterImage createdAt updatedAt"
+        "title date plaza location reportedBy reportedByName category description severity likelihood riskScore action correctiveActions closureNotes status evidenceImages closureImages beforeImage afterImage createdAt updatedAt"
       )
       .sort({ createdAt: -1 });
     res.json(records.map(toLegacyHazardRecord));

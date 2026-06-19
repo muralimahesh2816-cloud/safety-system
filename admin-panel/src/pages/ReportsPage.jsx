@@ -18,7 +18,7 @@ import SectionHeader from "../components/common/SectionHeader";
 import { reportService, trainingService } from "../api/services";
 import { closeLoadingPopup, showLoadingPopup, showSuccessPopup } from "../utils/alerts";
 import { exportReportPdf, normalizeReportRowsByType } from "../utils/pdfExport";
-import companyLogo from "../assets/logo.png";
+import companyLogo from "../assets/topbarlogo.png";
 
 const periods = ["daily", "weekly", "monthly", "yearly"];
 const reportTypes = [
@@ -40,6 +40,17 @@ const reportTitleMap = {
   date: "Date-wise Hazards",
   user: "User-wise Hazards",
   approved: "Approved Work Report"
+};
+
+const reportStatusTone = (value) => {
+  const status = String(value || "").toLowerCase();
+  if (["completed", "closed", "published", "approved"].includes(status)) {
+    return "border-emerald-400/30 bg-emerald-500/15 text-emerald-200";
+  }
+  if (["rejected", "critical", "open"].includes(status)) {
+    return "border-rose-400/30 bg-rose-500/15 text-rose-200";
+  }
+  return "border-amber-400/30 bg-amber-500/15 text-amber-200";
 };
 
 const logReportExport = (format, reportType) => {
@@ -112,8 +123,10 @@ const ReportsPage = () => {
             item.author ||
             "Training Team",
           Category: item.category || "General",
+          Duration: item.durationMinutes ? `${item.durationMinutes} min` : "-",
+          Completions: (item.completions || []).filter((entry) => entry.isCompleted).length,
           "Uploaded Date": item.createdAt || "-",
-          Status: item.status || "Published"
+          Status: item.isPublished === false ? "Draft" : item.status || "Published"
         }));
       } else {
         rows = await reportService.generateLegacyReport({
@@ -142,6 +155,11 @@ const ReportsPage = () => {
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
   }, [analytics]);
 
+  const normalizedReportRows = useMemo(
+    () => normalizeReportRowsByType(reportRows, type),
+    [reportRows, type]
+  );
+
   const exportExcel = async () => {
     if (!reportRows.length) return;
     if (actionLockRef.current) return;
@@ -150,10 +168,7 @@ const ReportsPage = () => {
     await showLoadingPopup("Uploading Please Wait...", "Preparing Excel report...");
     const generatedDate = new Date().toLocaleString();
     try {
-      const normalized =
-        type === "work" || type === "hazard" || type === "training"
-          ? normalizeReportRowsByType(reportRows, type)
-          : reportRows;
+      const normalized = normalizedReportRows;
       const headers = Object.keys(normalized[0] || {});
       const rows = normalized.map((row) => headers.map((header) => row[header] ?? "-"));
       const metadataRows = [
@@ -161,13 +176,21 @@ const ReportsPage = () => {
         ["Safety HSE Enterprise System"],
         [reportTitleMap[type] || "Report"],
         [`Generated: ${generatedDate}`],
-        ["Logo: src/assets/logo.png"],
         [],
         headers
       ];
 
       const ws = XLSX.utils.aoa_to_sheet(metadataRows);
       XLSX.utils.sheet_add_aoa(ws, rows, { origin: `A${metadataRows.length + 1}` });
+      const finalColumn = XLSX.utils.encode_col(Math.max(headers.length - 1, 0));
+      ws["!merges"] = [0, 1, 2, 3].map((row) => ({
+        s: { r: row, c: 0 },
+        e: { r: row, c: Math.max(headers.length - 1, 0) }
+      }));
+      ws["!cols"] = headers.map((header) => ({
+        wch: Math.min(Math.max(header.length + 4, header.includes("Description") || header.includes("Action") ? 28 : 14), 38)
+      }));
+      ws["!autofilter"] = { ref: `A${metadataRows.length}:${finalColumn}${metadataRows.length + rows.length}` };
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Report");
@@ -189,10 +212,7 @@ const ReportsPage = () => {
     await showLoadingPopup("Uploading Please Wait...", "Preparing CSV report...");
     const generatedDate = new Date().toLocaleString();
     try {
-      const normalized =
-        type === "work" || type === "hazard" || type === "training"
-          ? normalizeReportRowsByType(reportRows, type)
-          : reportRows;
+      const normalized = normalizedReportRows;
       const headers = Object.keys(normalized[0] || {});
       const rows = normalized.map((row) => headers.map((header) => row[header] ?? "-"));
       const ws = XLSX.utils.aoa_to_sheet([
@@ -229,10 +249,9 @@ const ReportsPage = () => {
       } catch (_error) {
         // Keep local storage fallback user name.
       }
-      const safeType = type === "hazard" || type === "training" ? type : "work";
-      exportReportPdf({
+      await exportReportPdf({
         rows: reportRows,
-        type: safeType,
+        type,
         reportTitle: reportTitleMap[type] || "Report",
         companyName,
         companyLogo,
@@ -348,25 +367,46 @@ const ReportsPage = () => {
       </GlassCard>
 
       {reportRows.length > 0 ? (
-        <GlassCard className="p-5">
-          <h3 className="mb-3 text-lg font-semibold text-white">Report Preview</h3>
-          <div className="max-h-80 overflow-auto">
-            <table className="w-full min-w-[780px] text-left text-xs">
-              <thead>
-                <tr className="border-b border-white/10 text-slate-300">
-                  {Object.keys(reportRows[0]).map((header) => (
-                    <th key={header} className="py-2 pr-3">
+        <GlassCard className="overflow-hidden p-0">
+          <div className="flex flex-col gap-4 border-b border-white/10 bg-gradient-to-r from-slate-950/80 via-slate-900/60 to-rose-950/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] p-2 shadow-[0_0_28px_rgba(248,113,113,.12)]">
+                <img src={companyLogo} alt="Sasthan Udupi Tollway logo" className="h-full w-full object-contain" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-rose-300">Sasthan Udupi Tollway Pvt Ltd</p>
+                <h3 className="mt-1 text-lg font-semibold text-white">{reportTitleMap[type] || "Report"}</h3>
+                <p className="mt-0.5 text-xs text-slate-400">Safety HSE Enterprise System</p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-left sm:text-right">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Records</p>
+              <p className="text-lg font-bold text-white">{normalizedReportRows.length}</p>
+            </div>
+          </div>
+          <div className="max-h-[28rem] overflow-auto">
+            <table className="w-full min-w-[980px] table-auto text-left text-xs">
+              <thead className="sticky top-0 z-10 bg-slate-950/95 shadow-[0_8px_20px_rgba(0,0,0,.25)] backdrop-blur-xl">
+                <tr className="border-b border-cyan-400/20 text-slate-300">
+                  {Object.keys(normalizedReportRows[0] || {}).map((header) => (
+                    <th key={header} className="whitespace-nowrap px-4 py-3 font-semibold uppercase tracking-[0.08em]">
                       {header}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {reportRows.map((row, idx) => (
-                  <tr key={`row-${idx}`} className="border-b border-white/5 text-slate-200">
-                    {Object.keys(reportRows[0]).map((header) => (
-                      <td key={`${idx}-${header}`} className="py-2 pr-3">
-                        {row[header] ?? "-"}
+                {normalizedReportRows.map((row, idx) => (
+                  <tr key={`row-${idx}`} className="border-b border-white/[0.06] text-slate-200 transition hover:bg-cyan-500/[0.06] odd:bg-white/[0.018]">
+                    {Object.keys(normalizedReportRows[0] || {}).map((header) => (
+                      <td key={`${idx}-${header}`} className="max-w-[260px] px-4 py-3 align-top leading-5">
+                        {header === "Status" ? (
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${reportStatusTone(row[header])}`}>
+                            {row[header] ?? "-"}
+                          </span>
+                        ) : (
+                          <span className="break-words">{row[header] ?? "-"}</span>
+                        )}
                       </td>
                     ))}
                   </tr>

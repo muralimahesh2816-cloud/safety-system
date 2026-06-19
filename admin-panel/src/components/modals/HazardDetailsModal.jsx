@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CalendarDays,
+  CheckCircle2,
   Download,
   Image as ImageIcon,
   MapPin,
@@ -95,6 +96,7 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
   const openMedia = (index) => onOpenMedia?.(allMedia, index);
   const status = hazard?.status || "Open";
   const timeline = (hazard?.timeline || hazard?.approvalHistory || []).slice(-6).reverse();
+  const correctiveActions = hazard?.correctiveActions || [];
 
   const downloadPdf = async () => {
     if (exporting || !hazard) return;
@@ -184,6 +186,54 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
                     <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-100">
                       {hazard.description || hazard.details || hazard.observation || "No description entered."}
                     </p>
+                  </div>
+
+                  <div className="mt-5 rounded-2xl border border-emerald-400/15 bg-emerald-500/[0.06] p-4">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className="text-emerald-300" />
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">
+                        Action Taken
+                      </p>
+                    </div>
+                    <div className="mt-3 space-y-3">
+                      {correctiveActions.length ? (
+                        correctiveActions.map((item, index) => (
+                          <div
+                            key={`${item.action || "action"}-${index}`}
+                            className="rounded-xl border border-white/[0.08] bg-slate-950/35 p-3"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm font-medium leading-6 text-slate-100">
+                                {item.action || "Corrective action recorded"}
+                              </p>
+                              <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                                item.status === "Completed"
+                                  ? "border-emerald-400/30 bg-emerald-500/15 text-emerald-200"
+                                  : "border-amber-400/30 bg-amber-500/15 text-amber-200"
+                              }`}>
+                                {item.status || "Open"}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-xs text-slate-400">
+                              Owner: {valueOrDash(item.owner?.name || item.owner)}
+                              {item.targetDate ? ` | Target: ${formatDateTime(item.targetDate)}` : ""}
+                            </p>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-slate-400">No corrective action recorded.</p>
+                      )}
+                      {hazard.closureNotes ? (
+                        <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/[0.08] p-3">
+                          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-300">
+                            Closure Action
+                          </p>
+                          <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-6 text-slate-100">
+                            {hazard.closureNotes}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/45 p-4">

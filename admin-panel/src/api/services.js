@@ -415,7 +415,11 @@ const withinDateRange = (value, fromDate, toDate) => {
   const d = toDateValue(value);
   if (!d) return false;
   if (fromDate && d < new Date(fromDate)) return false;
-  if (toDate && d > new Date(toDate)) return false;
+  if (toDate) {
+    const endDate = new Date(toDate);
+    endDate.setHours(23, 59, 59, 999);
+    if (d > endDate) return false;
+  }
   return true;
 };
 
@@ -429,7 +433,12 @@ const normalizeReportRows = (rows = [], type = "work") =>
         "Reported By":
           typeof item.reportedBy === "object" ? item.reportedBy?.name || "-" : item.reportedBy || "-",
         Category: item.category || "-",
-        Action: item.action || "-",
+        Description: item.description || "-",
+        "Risk Level": item.severity || "-",
+        "Risk Score": item.riskScore ?? "-",
+        "Action Team": item.action || item.actionTeam || "-",
+        "Action Taken": item.actionTaken || "-",
+        "Closure Action": item.closureAction || item.closureNotes || "-",
         Status: item.status || "Open"
       };
     }
@@ -438,11 +447,15 @@ const normalizeReportRows = (rows = [], type = "work") =>
       Date: item.date || item.createdAt || "-",
       Plaza: item.plaza || "-",
       "Work Type": item.workType || item.title || "-",
+      Description: item.description || "-",
       Location: item.location || "-",
       Chainage: item.chainage || item.chainageNo || "-",
       "Workers Count": item.workersCount || "-",
+      Priority: item.priority || "-",
       Status: item.status || "Pending",
-      "Approved By": item.approvedBy || "-"
+      "Reported By": item.reportedBy || "-",
+      "Approved By": item.approvedBy || "-",
+      "Completion Date": item.completionDate || "-"
     };
   });
 
@@ -457,8 +470,10 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
   }
 
   if (type === "date") {
-    const filtered = hazardData.filter((item) =>
-      withinDateRange(item.date || item.createdAt, fromDate, toDate)
+    const filtered = hazardData.filter(
+      (item) =>
+        withinDateRange(item.date || item.createdAt, fromDate, toDate) &&
+        (!plaza || item.plaza === plaza)
     );
     const grouped = {};
     filtered.forEach((item) => {
@@ -470,12 +485,21 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
       if (item.status === "Closed") grouped[dateKey].Closed += 1;
       else grouped[dateKey].Open += 1;
     });
-    return Object.values(grouped);
+    return Object.values(grouped).map((row) => ({
+      ...row,
+      "Closure Rate": row.Total ? `${Math.round((row.Closed / row.Total) * 100)}%` : "0%"
+    }));
   }
 
   if (type === "user") {
     const grouped = {};
-    hazardData.forEach((item) => {
+    hazardData
+      .filter(
+        (item) =>
+          withinDateRange(item.date || item.createdAt, fromDate, toDate) &&
+          (!plaza || item.plaza === plaza)
+      )
+      .forEach((item) => {
       const userKey =
         typeof item.reportedBy === "object"
           ? item.reportedBy?.name || "Unknown"
@@ -486,11 +510,15 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
       grouped[userKey].hazardsUploaded += 1;
       if (item.status === "Closed") grouped[userKey].closed += 1;
       else grouped[userKey].open += 1;
-    });
+      });
     return Object.values(grouped).map((row) => ({
       "User Name": row.user,
-      "Hazards Uploaded": row.hazardsUploaded,
-      Status: `${row.closed} Closed / ${row.open} Open`
+      "Hazards Reported": row.hazardsUploaded,
+      Open: row.open,
+      Closed: row.closed,
+      "Closure Rate": row.hazardsUploaded
+        ? `${Math.round((row.closed / row.hazardsUploaded) * 100)}%`
+        : "0%"
     }));
   }
 
@@ -498,13 +526,16 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
     const filtered = workData.filter(
       (item) =>
         withinDateRange(item.date || item.createdAt, fromDate, toDate) &&
+        (!plaza || item.plaza === plaza) &&
         item.status === "Approved"
     );
     return filtered.map((item) => ({
+      Date: item.date || item.createdAt || "-",
       "Work Type": item.workType || "-",
       Location: item.location || "-",
       "Workers Count": item.workersCount || "-",
-      "Approved By": item.approvedBy || "Admin"
+      "Approved By": item.approvedBy || "Admin",
+      Status: item.status || "Approved"
     }));
   }
 

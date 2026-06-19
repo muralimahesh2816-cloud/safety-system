@@ -23,6 +23,17 @@ const normalizeMedia = (items = [], fallback) => {
   return source.map(getMediaUrl).filter(Boolean);
 };
 
+const formatCorrectiveActions = (actions = []) => {
+  if (!actions.length) return "No corrective action recorded.";
+  return actions
+    .map((item, index) => {
+      const owner = safe(item.owner);
+      const target = item.targetDate ? formatDate(item.targetDate) : "-";
+      return `${index + 1}. ${safe(item.action)} | Owner: ${owner} | Target: ${target} | Status: ${safe(item.status || "Open")}`;
+    })
+    .join("\n");
+};
+
 const toDataUrl = async (url) => {
   if (!url) return "";
   if (url.startsWith("data:")) return url;
@@ -222,6 +233,8 @@ export const exportHazardDetailsPdf = async (hazard = {}) => {
       ["Plaza", hazard.plaza],
       ["Reported By", hazard.reportedBy || hazard.createdBy],
       ["Action Team", hazard.action || hazard.actionTeam],
+      ["Action Taken", formatCorrectiveActions(hazard.correctiveActions || [])],
+      ["Closure Action", hazard.closureNotes],
       ["Assigned To", hazard.assignedTo],
       ["Status", hazard.status || "Open"]
     ],
