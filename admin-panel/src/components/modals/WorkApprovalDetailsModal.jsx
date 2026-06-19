@@ -1,8 +1,9 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarDays, Download, Image as ImageIcon, MapPin, Maximize2, UsersRound, UserRound, Wrench, X } from "lucide-react";
 import { formatDateTime } from "../../utils/format";
 import { getMediaUrl } from "../../utils/media";
+import { exportWorkApprovalDetailsPdf } from "../../utils/detailPdfExport";
 
 const valueOrDash = (value) => (value === undefined || value === null || value === "" ? "-" : value);
 
@@ -59,6 +60,7 @@ const ImagePanel = ({ label, tone, item, onOpen }) => (
 );
 
 const WorkApprovalDetailsModal = ({ open, work, onClose, onOpenMedia }) => {
+  const [exporting, setExporting] = useState(false);
   const before = useMemo(() => normalizeMedia(work?.beforeImages, work?.beforeImage), [work]);
   const after = useMemo(() => normalizeMedia(work?.afterImages, work?.afterImage), [work]);
   const allMedia = useMemo(() => [...before, ...after], [after, before]);
@@ -78,6 +80,18 @@ const WorkApprovalDetailsModal = ({ open, work, onClose, onOpenMedia }) => {
     ? work?.completedAt || work?.completionDate || work?.updatedAt
     : work?.completionDate;
   const reportedBy = work?.reportedBy || work?.createdBy?.name || work?.submittedBy?.name || work?.employeeName;
+
+  const downloadPdf = async () => {
+    if (exporting || !work) return;
+    setExporting(true);
+    try {
+      await exportWorkApprovalDetailsPdf(work);
+    } catch (_error) {
+      window.alert("Unable to generate the Work Approval PDF. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -109,9 +123,20 @@ const WorkApprovalDetailsModal = ({ open, work, onClose, onOpenMedia }) => {
                 <h2 className="font-display text-xl font-bold text-white sm:text-2xl">Work Approval Details</h2>
                 <p className="mt-1 truncate text-sm text-slate-400">{work.workType || work.title || "Work Approval"}</p>
               </div>
-              <button type="button" onClick={onClose} className="shrink-0 rounded-2xl border border-white/10 bg-white/[0.08] p-2.5 text-slate-200 transition hover:bg-rose-500/20 hover:text-white" aria-label="Close work details">
-                <X size={19} />
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={downloadPdf}
+                  disabled={exporting}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-emerald-400/30 bg-emerald-500/15 px-3 py-2.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:cursor-wait disabled:opacity-60"
+                >
+                  <Download size={16} />
+                  <span className="hidden sm:inline">{exporting ? "Preparing PDF..." : "Download Full PDF"}</span>
+                </button>
+                <button type="button" onClick={onClose} className="rounded-2xl border border-white/10 bg-white/[0.08] p-2.5 text-slate-200 transition hover:bg-rose-500/20 hover:text-white" aria-label="Close work details">
+                  <X size={19} />
+                </button>
+              </div>
             </header>
 
             <div className="relative min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">

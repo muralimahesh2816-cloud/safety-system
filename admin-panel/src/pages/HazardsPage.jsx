@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import jsPDF from "jspdf";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import GlassCard from "../components/common/GlassCard";
 import SectionHeader from "../components/common/SectionHeader";
@@ -9,6 +8,7 @@ import { hazardService, userService } from "../api/services";
 import { closeLoadingPopup, showLoadingPopup, showSuccessPopup, showValidationPopup } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
+import { exportHazardDetailsPdf } from "../utils/detailPdfExport";
 
 const severityWeight = {
   Low: 1,
@@ -205,22 +205,12 @@ const HazardsPage = ({ user }) => {
     }
   };
 
-  const exportPdf = (hazard) => {
-    const doc = new jsPDF();
-    doc.setFontSize(14);
-    doc.text("Hazard Closure Report", 14, 18);
-    doc.setFontSize(10);
-    doc.text(`Date: ${hazard.date || "-"}`, 14, 30);
-    doc.text(`Plaza: ${hazard.plaza || "-"}`, 14, 38);
-    doc.text(`Location: ${hazard.location || "-"}`, 14, 46);
-    doc.text(`Reported By: ${hazard.reportedBy || "-"}`, 14, 54);
-    doc.text(`Category: ${hazard.category || "-"}`, 14, 62);
-    doc.text(`Action Team: ${hazard.action || "-"}`, 14, 70);
-    doc.text(`Severity: ${hazard.severity || "-"}`, 14, 78);
-    doc.text(`Risk Score: ${hazard.riskScore || 0}`, 14, 86);
-    doc.text(`Status: ${hazard.status || "Open"}`, 14, 94);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 102);
-    doc.save(`hazard-${hazard._id}.pdf`);
+  const exportPdf = async (hazard) => {
+    try {
+      await exportHazardDetailsPdf(hazard);
+    } catch (_error) {
+      setError("Unable to generate the Hazard PDF");
+    }
   };
 
   const openGallery = (hazard, startAt = 0) => {

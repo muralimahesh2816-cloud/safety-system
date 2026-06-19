@@ -15,6 +15,7 @@ import {
 } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
+import { exportWorkApprovalDetailsPdf } from "../utils/detailPdfExport";
 
 const legacyWorkTypes = [
   "Road Work",
@@ -494,6 +495,19 @@ const WorkApprovalsPage = ({ user }) => {
                           className="rounded-xl border border-white/20 px-2.5 py-1.5 text-xs text-white"
                         >
                           Image Gallery
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await exportWorkApprovalDetailsPdf(work);
+                            } catch (_error) {
+                              setError("Unable to generate the Work Approval PDF");
+                            }
+                          }}
+                          className="rounded-xl border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-1.5 text-xs text-emerald-100"
+                        >
+                          PDF
                         </button>
                         {canDelete ? (
                           <button

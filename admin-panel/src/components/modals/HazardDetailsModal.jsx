@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CalendarDays,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { formatDateTime } from "../../utils/format";
 import { getMediaUrl } from "../../utils/media";
+import { exportHazardDetailsPdf } from "../../utils/detailPdfExport";
 
 const valueOrDash = (value) => (value === undefined || value === null || value === "" ? "-" : value);
 
@@ -71,6 +72,7 @@ const ImagePanel = ({ label, tone, item, onOpen }) => (
 );
 
 const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
+  const [exporting, setExporting] = useState(false);
   const evidence = useMemo(
     () => normalizeMedia(hazard?.evidenceImages, hazard?.beforeImage),
     [hazard]
@@ -93,6 +95,18 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
   const openMedia = (index) => onOpenMedia?.(allMedia, index);
   const status = hazard?.status || "Open";
   const timeline = (hazard?.timeline || hazard?.approvalHistory || []).slice(-6).reverse();
+
+  const downloadPdf = async () => {
+    if (exporting || !hazard) return;
+    setExporting(true);
+    try {
+      await exportHazardDetailsPdf(hazard);
+    } catch (_error) {
+      window.alert("Unable to generate the Hazard PDF. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -131,9 +145,20 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
                 <h2 className="font-display text-xl font-bold text-white sm:text-2xl">Hazard Details</h2>
                 <p className="mt-1 truncate text-sm text-slate-400">{hazard.title || `${hazard.category || "Hazard"} - ${hazard.plaza || "Site"}`}</p>
               </div>
-              <button type="button" onClick={onClose} className="shrink-0 rounded-2xl border border-white/10 bg-white/[0.08] p-2.5 text-slate-200 transition hover:bg-rose-500/20 hover:text-white" aria-label="Close hazard details">
-                <X size={19} />
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={downloadPdf}
+                  disabled={exporting}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-emerald-400/30 bg-emerald-500/15 px-3 py-2.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:cursor-wait disabled:opacity-60"
+                >
+                  <Download size={16} />
+                  <span className="hidden sm:inline">{exporting ? "Preparing PDF..." : "Download Full PDF"}</span>
+                </button>
+                <button type="button" onClick={onClose} className="rounded-2xl border border-white/10 bg-white/[0.08] p-2.5 text-slate-200 transition hover:bg-rose-500/20 hover:text-white" aria-label="Close hazard details">
+                  <X size={19} />
+                </button>
+              </div>
             </header>
 
             <div className="relative min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
