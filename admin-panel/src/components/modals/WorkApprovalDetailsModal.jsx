@@ -130,7 +130,13 @@ const WorkApprovalDetailsModal = ({ open, work, onClose, onOpenMedia }) => {
                   <InfoRow label="Status" value={status} />
                   <InfoRow label="Approved By" value={work.approvedBy || work.approvedByName} />
                   <InfoRow label="Completion Date" value={completionDate ? formatDateTime(completionDate) : "-"} />
-                  <InfoRow label="Description" value={work.description || work.workDescription || work.title} />
+
+                  <div className="mt-5 rounded-2xl border border-cyan-400/15 bg-cyan-500/[0.06] p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-200">Work Description</p>
+                    <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-100">
+                      {work.description || work.workDescription || work.details || "No description entered."}
+                    </p>
+                  </div>
 
                   <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/45 p-4">
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Approval Timeline</p>

@@ -153,7 +153,13 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
                   <InfoRow label="Action Team" value={hazard.action || hazard.actionTeam} icon={UsersRound} />
                   <InfoRow label="Assigned To" value={hazard.assignedTo?.name || hazard.assignedTo} />
                   <InfoRow label="Status" value={status} />
-                  <InfoRow label="Description" value={hazard.description} />
+
+                  <div className="mt-5 rounded-2xl border border-cyan-400/15 bg-cyan-500/[0.06] p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-200">Description</p>
+                    <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-100">
+                      {hazard.description || hazard.details || hazard.observation || "No description entered."}
+                    </p>
+                  </div>
 
                   <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/45 p-4">
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Timeline</p>
