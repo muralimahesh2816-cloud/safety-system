@@ -23,6 +23,7 @@ const toLegacyHazardRecord = (record) => {
   const plain = typeof record.toObject === "function" ? record.toObject() : record;
   return {
     ...plain,
+    status: plain.status === "Closed" ? "Closed" : "Open",
     date: plain.date || plain.createdAt,
     beforeImage: plain.evidenceImages?.[0]?.url || plain.beforeImage || "",
     afterImage: plain.closureImages?.[0]?.url || plain.afterImage || "",
@@ -143,7 +144,7 @@ router.patch(
     if (!hazard) throw new ApiError(404, "Hazard not found");
 
     hazard.assignedTo = req.body.assignedTo;
-    hazard.status = hazard.status === "Open" ? "In Progress" : hazard.status;
+    if (hazard.status !== "Closed") hazard.status = "Open";
     hazard.timeline.push({
       label: "Assigned",
       description: `Assigned to ${user.name}`,
@@ -161,7 +162,7 @@ router.patch(
     });
 
     await audit(req, "assign", "hazards", { assignedTo: user._id }, hazard._id);
-    res.json({ success: true, hazard });
+    res.json({ success: true, hazard: toLegacyHazardRecord(hazard) });
   })
 );
 
@@ -188,7 +189,7 @@ router.post(
 
     await hazard.save();
     await audit(req, "corrective_action", "hazards", req.body, hazard._id);
-    res.json({ success: true, hazard });
+    res.json({ success: true, hazard: toLegacyHazardRecord(hazard) });
   })
 );
 
@@ -231,7 +232,7 @@ router.patch(
     await hazard.save();
 
     await audit(req, "close", "hazards", { closureImages: closureImages.length }, hazard._id);
-    res.json({ success: true, hazard });
+    res.json({ success: true, hazard: toLegacyHazardRecord(hazard) });
   })
 );
 

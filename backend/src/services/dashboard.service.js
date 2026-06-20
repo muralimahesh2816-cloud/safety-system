@@ -72,7 +72,7 @@ const getDashboardSummary = async () => {
   const approvedWork = work.filter((item) => item.status === "Approved").length;
   const completedWork = work.filter((item) => item.status === "Completed").length;
   const totalHazards = hazards.length;
-  const openHazards = hazards.filter((item) => item.status === "Open").length;
+  const openHazards = hazards.filter((item) => item.status !== "Closed").length;
   const closedHazards = hazards.filter((item) => item.status === "Closed").length;
   const trainingRecords = trainings.length;
 
@@ -88,10 +88,6 @@ const getDashboardSummary = async () => {
 
   const hazardStatus = [
     { name: "Open", value: openHazards },
-    {
-      name: "In Progress",
-      value: hazards.filter((item) => item.status === "In Progress").length
-    },
     { name: "Closed", value: closedHazards }
   ];
 

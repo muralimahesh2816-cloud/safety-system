@@ -366,7 +366,7 @@ const mapHazardRecord = (item = {}) => {
     severity: item.severity || "Medium",
     likelihood: item.likelihood || "Possible",
     riskScore: Number(item.riskScore || 0),
-    status: item.status || "Open",
+    status: item.status === "Closed" ? "Closed" : "Open",
     action: item.action || "",
     date: item.date || item.createdAt || "",
     reportedBy:

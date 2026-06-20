@@ -37,6 +37,12 @@ const legacyActionTeams = [
   "Housekeeping Team"
 ];
 
+const formatFileSize = (bytes = 0) => {
+  if (!bytes) return "0 KB";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
 const initialForm = {
   title: "",
   description: "",
@@ -172,10 +178,10 @@ const HazardsPage = ({ user }) => {
     await showLoadingPopup("Uploading Please Wait...", "Uploading closure image...");
     try {
       await hazardService.close(hazard._id, {
-        closureNotes: "",
+        closureNotes: closure.notes || "",
         closureImages: closure.images || []
       });
-      setClosureMap((prev) => ({ ...prev, [hazard._id]: { images: [] } }));
+      setClosureMap((prev) => ({ ...prev, [hazard._id]: { images: [], notes: "" } }));
       if (closurePreviewMap[hazard._id]?.startsWith("blob:")) {
         URL.revokeObjectURL(closurePreviewMap[hazard._id]);
       }
@@ -243,7 +249,7 @@ const HazardsPage = ({ user }) => {
 
   const filteredRecords = useMemo(() => {
     if (statusFilter === "All") return records;
-    return records.filter((item) => (item.status || "Open") === statusFilter);
+    return records.filter((item) => (item.status === "Closed" ? "Closed" : "Open") === statusFilter);
   }, [records, statusFilter]);
 
   const deleteHazard = async (id) => {
@@ -261,7 +267,7 @@ const HazardsPage = ({ user }) => {
       { name: "Closed", value: records.filter((item) => item.status === "Closed").length },
       {
         name: "Open",
-        value: records.filter((item) => item.status === "Open" || !item.status).length
+        value: records.filter((item) => item.status !== "Closed").length
       }
     ],
     [records]
@@ -456,7 +462,7 @@ const HazardsPage = ({ user }) => {
               onChange={(event) => setStatusFilter(event.target.value)}
               className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-white"
             >
-              {["All", "Open", "In Progress", "Closed"].map((status) => (
+              {["All", "Open", "Closed"].map((status) => (
                 <option key={status} value={status} className="bg-slate-900 text-white">
                   {status}
                 </option>
@@ -528,7 +534,7 @@ const HazardsPage = ({ user }) => {
                               ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
                               : "border-rose-400/30 bg-rose-500/10 text-rose-200"
                           }`}>
-                            {hazard.status || "Open"}
+                            {hazard.status === "Closed" ? "Closed" : "Open"}
                           </span>
                         </div>
                         <p className="mt-2 text-xs text-slate-400">{formatDateTime(hazard.date || hazard.createdAt)}</p>
@@ -654,7 +660,7 @@ const HazardsPage = ({ user }) => {
                     </button>
                   </div>
 
-                  {hazard.status === "Open" ? (
+                  {hazard.status !== "Closed" ? (
                     <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
                       <input
                         type="file"
@@ -686,13 +692,49 @@ const HazardsPage = ({ user }) => {
                       >
                         {busyHazardId === hazard._id ? "Uploading..." : "Close Hazard"}
                       </button>
+                      <textarea
+                        value={closureMap[hazard._id]?.notes || ""}
+                        onChange={(event) =>
+                          setClosureMap((prev) => ({
+                            ...prev,
+                            [hazard._id]: {
+                              ...(prev[hazard._id] || {}),
+                              notes: event.target.value
+                            }
+                          }))
+                        }
+                        rows={2}
+                        maxLength={500}
+                        placeholder="Closure action/details (optional)"
+                        className="resize-none rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-xs text-white placeholder:text-slate-500 md:col-span-2"
+                      />
                       {closurePreviewMap[hazard._id] ? (
-                        <img
-                          src={closurePreviewMap[hazard._id]}
-                          alt="Closure Preview"
-                          className="h-24 w-full rounded-xl border border-white/10 object-contain md:col-span-2"
-                        />
-                      ) : null}
+                        <div className="flex items-center gap-3 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.06] p-3 md:col-span-2">
+                          <img
+                            src={closurePreviewMap[hazard._id]}
+                            alt="Closure preview"
+                            className="h-20 w-28 shrink-0 rounded-lg border border-white/10 object-contain"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-semibold text-emerald-100">
+                              {closureMap[hazard._id]?.images?.[0]?.name || "Closure image selected"}
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-400">
+                              {formatFileSize(closureMap[hazard._id]?.images?.[0]?.size)}
+                              {closureMap[hazard._id]?.images?.[0]?.type
+                                ? ` | ${closureMap[hazard._id].images[0].type}`
+                                : ""}
+                            </p>
+                            <p className="mt-1 text-[11px] font-medium text-emerald-300">
+                              Ready to upload as closure evidence
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-500 md:col-span-2">
+                          Select a closure image to preview its upload details.
+                        </p>
+                      )}
                     </div>
                   ) : null}
                   </div>
