@@ -53,8 +53,7 @@ const initialForm = {
   category: "",
   action: "",
   severity: "Medium",
-  likelihood: "Possible",
-  assignedTo: ""
+  likelihood: "Possible"
 };
 
 const HazardsPage = ({ user }) => {
@@ -362,20 +361,6 @@ const HazardsPage = ({ user }) => {
                 ))}
               </select>
             </div>
-            <select
-              value={form.assignedTo}
-              onChange={(event) => setForm((prev) => ({ ...prev, assignedTo: event.target.value }))}
-              className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
-            >
-              <option value="" className="bg-slate-900 text-white">
-                Assign To (Optional)
-              </option>
-              {users.map((item) => (
-                <option key={item._id} value={item._id} className="bg-slate-900 text-white">
-                  {item.name}
-                </option>
-              ))}
-            </select>
             <div className="rounded-xl border border-white/10 bg-white/5 p-2 text-xs text-slate-300">
               Risk Matrix Score: <span className="font-semibold text-teal-300">{riskScore}</span>
             </div>
