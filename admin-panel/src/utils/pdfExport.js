@@ -27,7 +27,6 @@ const reportColumns = {
     { header: "Risk Score", keys: ["Risk Score", "riskScore"] },
     { header: "Action Team", keys: ["Action Team", "Action", "action", "actionTeam"] },
     { header: "Action Taken", keys: ["Action Taken", "actionTaken", "correctiveAction"] },
-    { header: "Closure Action", keys: ["Closure Action", "closureAction", "closureNotes"] },
     { header: "Status", keys: ["Status", "status"] }
   ],
   training: [

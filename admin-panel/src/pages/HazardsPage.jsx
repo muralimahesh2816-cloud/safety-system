@@ -63,7 +63,6 @@ const HazardsPage = ({ user }) => {
   const [form, setForm] = useState(initialForm);
   const [images, setImages] = useState([]);
   const [evidencePreview, setEvidencePreview] = useState("");
-  const [actionMap, setActionMap] = useState({});
   const [closureMap, setClosureMap] = useState({});
   const [closurePreviewMap, setClosurePreviewMap] = useState({});
   const [error, setError] = useState("");
@@ -148,25 +147,13 @@ const HazardsPage = ({ user }) => {
     }
   };
 
-  const addAction = async (hazard) => {
-    const action = actionMap[hazard._id];
-    if (!action?.text) return;
-    try {
-      await hazardService.addAction(hazard._id, {
-        action: action.text,
-        owner: action.owner || "",
-        targetDate: action.targetDate || "",
-        status: "Open"
-      });
-      setActionMap((prev) => ({ ...prev, [hazard._id]: { text: "", owner: "", targetDate: "" } }));
-      fetchAll();
-    } catch (actionError) {
-      setError(actionError?.response?.data?.message || "Action update failed");
-    }
-  };
-
   const closeHazard = async (hazard) => {
     const closure = closureMap[hazard._id] || {};
+    if (!closure.notes?.trim()) {
+      setError("Corrective action is required to close the hazard");
+      showValidationPopup("Please enter the corrective action taken before closing this hazard.");
+      return;
+    }
     if (!(closure.images || []).length) {
       setError("Upload after image to close hazard");
       showValidationPopup("Please upload a closure image before closing this hazard.");
@@ -175,10 +162,10 @@ const HazardsPage = ({ user }) => {
     if (actionLockRef.current) return;
     actionLockRef.current = true;
     setBusyHazardId(hazard._id);
-    await showLoadingPopup("Uploading Please Wait...", "Uploading closure image...");
+    await showLoadingPopup("Uploading Please Wait...", "Uploading corrective action and closure image...");
     try {
       await hazardService.close(hazard._id, {
-        closureNotes: closure.notes || "",
+        closureNotes: closure.notes.trim(),
         closureImages: closure.images || []
       });
       setClosureMap((prev) => ({ ...prev, [hazard._id]: { images: [], notes: "" } }));
@@ -190,7 +177,7 @@ const HazardsPage = ({ user }) => {
         delete next[hazard._id];
         return next;
       });
-      await showSuccessPopup("Hazard Closed Successfully");
+      await showSuccessPopup("Corrective Action Uploaded and Hazard Closed");
       fetchAll();
     } catch (closeError) {
       setError(closeError?.response?.data?.message || "Hazard closure failed");
@@ -625,7 +612,7 @@ const HazardsPage = ({ user }) => {
                       </div>
                     </div>
 
-                  <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+                  <div className="mt-3 grid grid-cols-1 gap-2">
                     <select
                       value={hazard.assignedTo?._id || hazard.assignedTo || ""}
                       onChange={(event) => assignHazard(hazard._id, event.target.value)}
@@ -640,28 +627,34 @@ const HazardsPage = ({ user }) => {
                         </option>
                       ))}
                     </select>
-                    <input
-                      value={actionMap[hazard._id]?.text || ""}
-                      onChange={(event) =>
-                        setActionMap((prev) => ({
-                          ...prev,
-                          [hazard._id]: { ...(prev[hazard._id] || {}), text: event.target.value }
-                        }))
-                      }
-                      placeholder="Corrective action"
-                      className="rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-xs text-white"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => addAction(hazard)}
-                      className="rounded-xl bg-teal-500/20 px-3 py-2 text-xs text-teal-100"
-                    >
-                      Add Action
-                    </button>
                   </div>
 
                   {hazard.status !== "Closed" ? (
                     <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                      <label className="md:col-span-2">
+                        <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-300">
+                          Action Taken <span className="text-rose-300">*</span>
+                        </span>
+                        <textarea
+                          value={closureMap[hazard._id]?.notes || ""}
+                          onChange={(event) =>
+                            setClosureMap((prev) => ({
+                              ...prev,
+                              [hazard._id]: {
+                                ...(prev[hazard._id] || {}),
+                                notes: event.target.value
+                              }
+                            }))
+                          }
+                          rows={3}
+                          maxLength={1000}
+                          placeholder="Enter the corrective action completed before uploading closure evidence"
+                          className="w-full resize-none rounded-xl border border-emerald-400/20 bg-slate-900/70 px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:border-emerald-300/60 focus:outline-none"
+                        />
+                        <span className="mt-1 block text-right text-[10px] text-slate-500">
+                          {(closureMap[hazard._id]?.notes || "").length}/1000
+                        </span>
+                      </label>
                       <input
                         type="file"
                         accept="image/*"
@@ -690,24 +683,8 @@ const HazardsPage = ({ user }) => {
                         disabled={busyHazardId === hazard._id}
                         className="rounded-xl bg-emerald-500/20 px-3 py-2 text-xs text-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {busyHazardId === hazard._id ? "Uploading..." : "Close Hazard"}
+                        {busyHazardId === hazard._id ? "Uploading..." : "Upload & Close Hazard"}
                       </button>
-                      <textarea
-                        value={closureMap[hazard._id]?.notes || ""}
-                        onChange={(event) =>
-                          setClosureMap((prev) => ({
-                            ...prev,
-                            [hazard._id]: {
-                              ...(prev[hazard._id] || {}),
-                              notes: event.target.value
-                            }
-                          }))
-                        }
-                        rows={2}
-                        maxLength={500}
-                        placeholder="Closure action/details (optional)"
-                        className="resize-none rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-xs text-white placeholder:text-slate-500 md:col-span-2"
-                      />
                       {closurePreviewMap[hazard._id] ? (
                         <div className="flex items-center gap-3 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.06] p-3 md:col-span-2">
                           <img

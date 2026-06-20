@@ -30,7 +30,11 @@ const correctiveActionSchema = z.object({
 });
 
 const closeHazardSchema = z.object({
-  closureNotes: z.string().optional().default(""),
+  closureNotes: z
+    .string()
+    .trim()
+    .min(2, "Corrective action is required")
+    .max(1000, "Corrective action must not exceed 1000 characters"),
   status: z.enum(["Closed"]).optional().default("Closed")
 });
 

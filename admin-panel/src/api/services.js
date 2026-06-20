@@ -438,7 +438,6 @@ const normalizeReportRows = (rows = [], type = "work") =>
         "Risk Score": item.riskScore ?? "-",
         "Action Team": item.action || item.actionTeam || "-",
         "Action Taken": item.actionTaken || "-",
-        "Closure Action": item.closureAction || item.closureNotes || "-",
         Status: item.status || "Open"
       };
     }

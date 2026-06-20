@@ -99,8 +99,7 @@ const toLegacyHazardRecord = (record) => ({
   likelihood: record.likelihood || "",
   riskScore: record.riskScore || 0,
   action: record.action || "",
-  actionTaken: formatCorrectiveActions(record.correctiveActions),
-  closureAction: record.closureNotes || "",
+  actionTaken: record.closureNotes || formatCorrectiveActions(record.correctiveActions),
   status: record.status === "Closed" ? "Closed" : "Open",
   beforeImage: record.evidenceImages?.[0]?.url || record.beforeImage || "",
   afterImage: record.closureImages?.[0]?.url || record.afterImage || ""

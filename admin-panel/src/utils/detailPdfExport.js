@@ -233,8 +233,7 @@ export const exportHazardDetailsPdf = async (hazard = {}) => {
       ["Plaza", hazard.plaza],
       ["Reported By", hazard.reportedBy || hazard.createdBy],
       ["Action Team", hazard.action || hazard.actionTeam],
-      ["Action Taken", formatCorrectiveActions(hazard.correctiveActions || [])],
-      ["Closure Action", hazard.closureNotes],
+      ["Action Taken", hazard.closureNotes || formatCorrectiveActions(hazard.correctiveActions || [])],
       ["Assigned To", hazard.assignedTo],
       ["Status", hazard.status || "Open"]
     ],
