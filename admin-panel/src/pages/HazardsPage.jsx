@@ -5,7 +5,13 @@ import SectionHeader from "../components/common/SectionHeader";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import HazardDetailsModal from "../components/modals/HazardDetailsModal";
 import { hazardService } from "../api/services";
-import { closeLoadingPopup, showLoadingPopup, showSuccessPopup, showValidationPopup } from "../utils/alerts";
+import {
+  closeLoadingPopup,
+  showConfirmPopup,
+  showLoadingPopup,
+  showSuccessPopup,
+  showValidationPopup
+} from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
 import { exportHazardDetailsPdf } from "../utils/detailPdfExport";
@@ -227,12 +233,30 @@ const HazardsPage = ({ user }) => {
   }, [records, statusFilter]);
 
   const deleteHazard = async (id) => {
-    if (!window.confirm("Delete this hazard?")) return;
+    setError("");
+    if (!id) {
+      showValidationPopup("Unable to delete this hazard because its id is missing.");
+      return;
+    }
+
+    const confirmed = await showConfirmPopup({
+      title: "Delete Hazard?",
+      text: "This hazard record and its evidence will be removed from the list.",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      icon: "warning"
+    });
+    if (!confirmed) return;
+
     try {
       await hazardService.remove(id);
-      fetchAll();
+      setRecords((prev) => prev.filter((item) => item._id !== id));
+      await showSuccessPopup("Hazard Deleted Successfully");
+      await fetchAll();
     } catch (deleteError) {
-      setError(deleteError?.response?.data?.message || "Delete failed");
+      const message = deleteError?.response?.data?.message || "Delete failed";
+      setError(message);
+      showValidationPopup(message);
     }
   };
 
@@ -458,11 +482,7 @@ const HazardsPage = ({ user }) => {
                 return (
                   <div
                     key={hazard._id}
-                    onClick={(event) => {
-                      if (event.target.closest("button, input, select, a")) return;
-                      setSelectedHazard(hazard);
-                    }}
-                    className="cursor-pointer rounded-2xl border border-white/12 bg-white/5 p-4 transition duration-300 hover:border-cyan-300/30 hover:bg-white/[0.075] hover:shadow-[0_20px_50px_rgba(8,145,178,.12)]"
+                    className="rounded-2xl border border-white/12 bg-white/5 p-4 transition duration-300 hover:border-cyan-300/30 hover:bg-white/[0.075] hover:shadow-[0_20px_50px_rgba(8,145,178,.12)]"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex min-w-0 flex-1 gap-3">
@@ -470,10 +490,10 @@ const HazardsPage = ({ user }) => {
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          setSelectedHazard(hazard);
+                          openGallery(hazard, 0);
                         }}
                         className="h-24 w-28 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/65"
-                        aria-label="View hazard details"
+                        aria-label="Open hazard evidence"
                       >
                         {evidencePreview ? (
                           <img src={evidencePreview} alt="Hazard evidence" loading="lazy" className="h-full w-full object-cover transition duration-300 hover:scale-105" />
