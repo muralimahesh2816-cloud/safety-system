@@ -226,7 +226,6 @@ export const exportHazardDetailsPdf = async (hazard = {}) => {
     fileName: `hazard-details-${hazard._id || Date.now()}.pdf`,
     detailRows: [
       ["Report Date", formatDate(hazard.date || hazard.createdAt)],
-      ["Hazard Type", hazard.type || hazard.title || hazard.category],
       ["Category", hazard.category],
       ["Risk Level", `${safe(hazard.severity)} / ${safe(hazard.likelihood)} (Score ${hazard.riskScore || 0})`],
       ["Location", hazard.location],
@@ -234,7 +233,6 @@ export const exportHazardDetailsPdf = async (hazard = {}) => {
       ["Reported By", hazard.reportedBy || hazard.createdBy],
       ["Action Team", hazard.action || hazard.actionTeam],
       ["Action Taken", hazard.closureNotes || formatCorrectiveActions(hazard.correctiveActions || [])],
-      ["Assigned To", hazard.assignedTo],
       ["Status", hazard.status || "Open"]
     ],
     descriptionTitle: "Hazard Description",

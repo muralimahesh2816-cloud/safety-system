@@ -4,7 +4,7 @@ import GlassCard from "../components/common/GlassCard";
 import SectionHeader from "../components/common/SectionHeader";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import HazardDetailsModal from "../components/modals/HazardDetailsModal";
-import { hazardService, userService } from "../api/services";
+import { hazardService } from "../api/services";
 import { closeLoadingPopup, showLoadingPopup, showSuccessPopup, showValidationPopup } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
@@ -59,7 +59,6 @@ const initialForm = {
 
 const HazardsPage = ({ user }) => {
   const [records, setRecords] = useState([]);
-  const [users, setUsers] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [images, setImages] = useState([]);
   const [evidencePreview, setEvidencePreview] = useState("");
@@ -85,9 +84,8 @@ const HazardsPage = ({ user }) => {
     setLoading(true);
     setError("");
     try {
-      const [hazardRes, userRes] = await Promise.all([hazardService.list(), userService.list()]);
+      const hazardRes = await hazardService.list();
       setRecords(hazardRes.records || []);
-      setUsers(userRes.users || []);
     } catch (fetchError) {
       setError(fetchError?.response?.data?.message || "Unable to fetch hazards");
     } finally {
@@ -185,16 +183,6 @@ const HazardsPage = ({ user }) => {
       actionLockRef.current = false;
       setBusyHazardId("");
       closeLoadingPopup();
-    }
-  };
-
-  const assignHazard = async (hazardId, assignedTo) => {
-    if (!assignedTo) return;
-    try {
-      await hazardService.assign(hazardId, assignedTo);
-      fetchAll();
-    } catch (_error) {
-      // Legacy endpoints may not support assignment; keep silent.
     }
   };
 
@@ -611,23 +599,6 @@ const HazardsPage = ({ user }) => {
                         )}
                       </div>
                     </div>
-
-                  <div className="mt-3 grid grid-cols-1 gap-2">
-                    <select
-                      value={hazard.assignedTo?._id || hazard.assignedTo || ""}
-                      onChange={(event) => assignHazard(hazard._id, event.target.value)}
-                      className="rounded-xl border border-white/15 bg-slate-900/70 px-3 py-2 text-xs text-white"
-                    >
-                      <option value="" className="bg-slate-900 text-white">
-                        Assign user
-                      </option>
-                      {users.map((item) => (
-                        <option key={item._id} value={item._id} className="bg-slate-900 text-white">
-                          {item.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
 
                   {hazard.status !== "Closed" ? (
                     <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">

@@ -35,12 +35,12 @@ const riskTone = (hazard = {}) => {
 };
 
 const InfoRow = ({ label, value, icon: Icon }) => (
-  <div className="grid grid-cols-[130px_minmax(0,1fr)] gap-3 border-b border-white/[0.08] py-3 last:border-b-0 sm:grid-cols-[155px_minmax(0,1fr)]">
-    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+  <div className="grid grid-cols-[minmax(120px,145px)_minmax(0,1fr)] items-start gap-4 border-b border-white/[0.08] py-3 last:border-b-0">
+    <div className="flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase leading-5 tracking-[0.12em] text-slate-400">
       {Icon ? <Icon size={14} className="shrink-0 text-cyan-300" /> : null}
       {label}
     </div>
-    <div className="min-w-0 break-words text-sm font-medium text-slate-100">{valueOrDash(value)}</div>
+    <div className="min-w-0 break-words text-sm font-medium leading-5 text-slate-100">{valueOrDash(value)}</div>
   </div>
 );
 
@@ -149,7 +149,7 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
                   </span>
                 </div>
                 <h2 className="font-display text-xl font-bold text-white sm:text-2xl">Hazard Details</h2>
-                <p className="mt-1 truncate text-sm text-slate-400">{hazard.title || `${hazard.category || "Hazard"} - ${hazard.plaza || "Site"}`}</p>
+                <p className="mt-1 text-sm text-slate-400">Safety observation record</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <button
@@ -175,14 +175,12 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
                     <h3 className="font-display text-base font-semibold text-white">Observation Information</h3>
                   </div>
                   <InfoRow label="Report Date" value={formatDateTime(hazard.date || hazard.createdAt)} icon={CalendarDays} />
-                  <InfoRow label="Hazard Type" value={hazard.type || hazard.title || hazard.category} icon={ShieldAlert} />
                   <InfoRow label="Category" value={hazard.category} />
                   <InfoRow label="Risk Level" value={`${hazard.severity || "-"} / ${hazard.likelihood || "-"} (Score ${hazard.riskScore || 0})`} />
                   <InfoRow label="Location" value={hazard.location} icon={MapPin} />
                   <InfoRow label="Plaza Name" value={hazard.plaza} />
                   <InfoRow label="Reported By" value={hazard.reportedBy || hazard.createdBy?.name} icon={UserRound} />
                   <InfoRow label="Action Team" value={hazard.action || hazard.actionTeam} icon={UsersRound} />
-                  <InfoRow label="Assigned To" value={hazard.assignedTo?.name || hazard.assignedTo} />
                   <InfoRow label="Status" value={status} />
 
                   <div className="mt-5 rounded-2xl border border-cyan-400/15 bg-cyan-500/[0.06] p-4">
