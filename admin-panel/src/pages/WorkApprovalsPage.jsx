@@ -45,6 +45,42 @@ const initialForm = {
 const getWorkRecordId = (work = {}) => work._id || work.id || work.workId || "";
 const normalizeStatus = (status = "Pending") => String(status || "Pending").toLowerCase();
 const isCompletedStatus = (status) => normalizeStatus(status) === "completed";
+const toDateInputValue = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+};
+const formatElapsedDuration = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "just now";
+  const diffMs = Math.max(0, Date.now() - date.getTime());
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"}`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? "" : "s"}`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? "" : "s"}`;
+  const years = Math.floor(months / 12);
+  return `${years} year${years === 1 ? "" : "s"}`;
+};
+const getWorkStatusSinceText = (work = {}) => {
+  const status = work.status || "Pending";
+  const lowerStatus = normalizeStatus(status);
+  const timeline = Array.isArray(work.timeline) ? work.timeline : [];
+  const statusEvent = [...timeline]
+    .reverse()
+    .find((item) => `${item?.label || ""} ${item?.description || ""}`.toLowerCase().includes(lowerStatus));
+  const createdAt = work.createdAt || work.date;
+  const changedAt =
+    lowerStatus === "pending"
+      ? createdAt
+      : statusEvent?.at || work.updatedAt || createdAt;
+  return `${status} since ${formatElapsedDuration(changedAt)}`;
+};
 
 const WorkApprovalsPage = ({ user }) => {
   const [records, setRecords] = useState([]);
@@ -60,8 +96,12 @@ const WorkApprovalsPage = ({ user }) => {
   const [statusFilter, setStatusFilter] = useState("All");
   const [submitting, setSubmitting] = useState(false);
   const [busyWorkId, setBusyWorkId] = useState("");
+  const [editingWork, setEditingWork] = useState(null);
+  const [editForm, setEditForm] = useState(initialForm);
+  const [editSaving, setEditSaving] = useState(false);
   const submitLockRef = useRef(false);
   const workActionLockRef = useRef(false);
+  const editLockRef = useRef(false);
 
   const canDelete = ["super_admin", "admin"].includes(user?.role);
   const canApprove = ["super_admin", "admin"].includes(user?.role);
@@ -228,6 +268,79 @@ const WorkApprovalsPage = ({ user }) => {
       const message = deleteError?.response?.data?.message || "Delete failed";
       setError(message);
       showValidationPopup(message);
+    }
+  };
+
+  const openEditWork = (work) => {
+    setEditingWork(work);
+    setEditForm({
+      title: work.title || "",
+      workType: work.workType || "",
+      category: work.category || "General",
+      location: work.location || "",
+      chainage: work.chainage || work.chainageNo || "",
+      workersCount: work.workersCount ? String(work.workersCount) : "",
+      description: work.description || work.workDescription || "",
+      priority: work.priority || "Medium",
+      assignedTo: "",
+      startDate: toDateInputValue(work.startDate),
+      dueDate: toDateInputValue(work.dueDate)
+    });
+  };
+
+  const saveWorkEdit = async (event) => {
+    event.preventDefault();
+    const id = getWorkRecordId(editingWork);
+
+    if (!id) {
+      showValidationPopup("Unable to edit this work record because its id is missing.");
+      return;
+    }
+    if (
+      !editForm.workType ||
+      !editForm.location ||
+      !editForm.chainage ||
+      !editForm.workersCount ||
+      !editForm.description.trim()
+    ) {
+      showValidationPopup("Please fill all required Work Approval edit fields.");
+      return;
+    }
+    if (editLockRef.current) return;
+
+    editLockRef.current = true;
+    setEditSaving(true);
+    await showLoadingPopup("Uploading Please Wait...", "Saving work approval corrections...");
+    try {
+      const response = await workService.update(id, {
+        title: editForm.title,
+        workType: editForm.workType,
+        category: editForm.category,
+        location: editForm.location,
+        chainage: editForm.chainage,
+        chainageNo: editForm.chainage,
+        workersCount: Number(editForm.workersCount),
+        description: editForm.description.trim(),
+        priority: editForm.priority,
+        startDate: editForm.startDate,
+        dueDate: editForm.dueDate
+      });
+      const updatedWork = response.work;
+      setRecords((prev) =>
+        prev.map((item) => (getWorkRecordId(item) === id ? updatedWork : item))
+      );
+      setSelectedWork((prev) => (prev && getWorkRecordId(prev) === id ? updatedWork : prev));
+      setEditingWork(null);
+      await showSuccessPopup("Work Approval Updated Successfully");
+      fetchAll();
+    } catch (editError) {
+      const message = editError?.response?.data?.message || editError?.message || "Work edit failed";
+      setError(message);
+      showValidationPopup(message);
+    } finally {
+      editLockRef.current = false;
+      setEditSaving(false);
+      closeLoadingPopup();
     }
   };
 
@@ -433,6 +546,7 @@ const WorkApprovalsPage = ({ user }) => {
                 const recordId = getWorkRecordId(work);
                 const workCompleted = isCompletedStatus(work.status);
                 const workBusy = busyWorkId === recordId;
+                const statusSinceText = getWorkStatusSinceText(work);
 
                 return (
                   <div
@@ -443,6 +557,14 @@ const WorkApprovalsPage = ({ user }) => {
                     }}
                     className="cursor-pointer rounded-2xl border border-white/12 bg-white/5 p-4 transition duration-300 hover:border-cyan-300/30 hover:bg-white/[0.075] hover:shadow-[0_20px_50px_rgba(8,145,178,.12)]"
                   >
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-slate-950/45 px-3 py-2">
+                      <span className={`text-xs font-semibold ${statusTone(work.status || "Pending")}`}>
+                        {statusSinceText}
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        Last updated: {formatDateTime(work.updatedAt || work.createdAt)}
+                      </span>
+                    </div>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="flex min-w-0 flex-1 gap-3">
                         <button
@@ -489,6 +611,15 @@ const WorkApprovalsPage = ({ user }) => {
                         >
                           View Details
                         </button>
+                        {canApprove ? (
+                          <button
+                            type="button"
+                            onClick={() => openEditWork(work)}
+                            className="rounded-xl border border-amber-400/40 bg-amber-500/15 px-2.5 py-1.5 text-xs font-semibold text-amber-100"
+                          >
+                            Edit
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => openGallery(work, 0)}
@@ -671,6 +802,142 @@ const WorkApprovalsPage = ({ user }) => {
           )}
         </GlassCard>
       </div>
+
+      {editingWork ? (
+        <div
+          className="fixed inset-0 z-[99990] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xl"
+          onClick={() => setEditingWork(null)}
+        >
+          <form
+            onSubmit={saveWorkEdit}
+            onClick={(event) => event.stopPropagation()}
+            className="w-full max-w-3xl rounded-[28px] border border-white/12 bg-slate-950/95 p-5 shadow-[0_30px_90px_rgba(8,145,178,.22)]"
+          >
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-300">
+                  Correct Submitted Details
+                </p>
+                <h3 className="mt-1 text-xl font-semibold text-white">Edit Work Approval</h3>
+                <p className="mt-1 text-xs text-slate-400">
+                  Images and approval status remain unchanged. A timeline entry will be added.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingWork(null)}
+                className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Work Type</span>
+                <select
+                  value={editForm.workType}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, workType: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                >
+                  <option value="" className="bg-slate-900 text-white">
+                    Select Work Type
+                  </option>
+                  {legacyWorkTypes.map((item) => (
+                    <option key={item} value={item} className="bg-slate-900 text-white">
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Priority</span>
+                <select
+                  value={editForm.priority}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, priority: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                >
+                  {["Low", "Medium", "High", "Critical"].map((item) => (
+                    <option key={item} value={item} className="bg-slate-900 text-white">
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Location</span>
+                <input
+                  value={editForm.location}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, location: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Chainage</span>
+                <input
+                  value={editForm.chainage}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, chainage: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Workers Count</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={editForm.workersCount}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, workersCount: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Title</span>
+                <input
+                  value={editForm.title}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, title: event.target.value }))}
+                  placeholder="Optional title"
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                />
+              </label>
+              <label className="md:col-span-2">
+                <span className="mb-1 block text-xs text-slate-300">Work Description</span>
+                <textarea
+                  value={editForm.description}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, description: event.target.value }))}
+                  rows={4}
+                  maxLength={1000}
+                  className="w-full resize-none rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-cyan-300/60 focus:outline-none"
+                  required
+                />
+                <span className="mt-1 block text-right text-[10px] text-slate-500">
+                  {editForm.description.length}/1000
+                </span>
+              </label>
+            </div>
+
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingWork(null)}
+                className="rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-sm text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={editSaving}
+                className="rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {editSaving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       <WorkApprovalDetailsModal
         open={Boolean(selectedWork)}

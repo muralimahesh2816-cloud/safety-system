@@ -11,6 +11,7 @@ const WorkApproval = require("../models/WorkApproval");
 const { ROLES } = require("../constants/roles");
 const {
   createWorkSchema,
+  updateWorkSchema,
   workflowActionSchema,
   statusUpdateSchema,
   commentSchema,
@@ -127,6 +128,56 @@ router.get(
       .populate("comments.user", "name role")
       .populate("digitalSignatures.signedBy", "name role");
     if (!work) throw new ApiError(404, "Work approval not found");
+    res.json({ success: true, work: toLegacyWorkRecord(work) });
+  })
+);
+
+router.patch(
+  "/:id",
+  authMiddleware,
+  authorizePermission("work", "update"),
+  validate(updateWorkSchema),
+  asyncHandler(async (req, res) => {
+    const work = await WorkApproval.findById(req.params.id);
+    if (!work) throw new ApiError(404, "Work approval not found");
+
+    const editableFields = [
+      "title",
+      "workType",
+      "description",
+      "category",
+      "plaza",
+      "location",
+      "chainage",
+      "chainageNo",
+      "workersCount",
+      "priority"
+    ];
+
+    editableFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        work[field] = req.body[field];
+      }
+    });
+
+    if (req.body.startDate !== undefined) {
+      work.startDate = parseDate(req.body.startDate);
+    }
+    if (req.body.dueDate !== undefined) {
+      work.dueDate = parseDate(req.body.dueDate);
+    }
+
+    work.chainage = work.chainage || work.chainageNo || "";
+    work.chainageNo = work.chainageNo || work.chainage || "";
+    work.title = work.title || `${work.workType} - ${work.location}`;
+    work.timeline.push({
+      label: "Details Edited",
+      description: "Submitted work approval details updated",
+      user: req.user.id
+    });
+
+    await work.save();
+    await audit(req, "update", "work", req.body, work._id);
     res.json({ success: true, work: toLegacyWorkRecord(work) });
   })
 );

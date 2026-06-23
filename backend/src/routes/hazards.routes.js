@@ -10,6 +10,7 @@ const Hazard = require("../models/Hazard");
 const User = require("../models/User");
 const {
   createHazardSchema,
+  updateHazardSchema,
   assignHazardSchema,
   correctiveActionSchema,
   closeHazardSchema
@@ -19,6 +20,18 @@ const { createNotification } = require("../services/notifications.service");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
+const severityWeight = {
+  Low: 1,
+  Medium: 2,
+  High: 3,
+  Critical: 4
+};
+const likelihoodWeight = {
+  Rare: 1,
+  Possible: 2,
+  Likely: 3,
+  "Almost Certain": 4
+};
 const toLegacyHazardRecord = (record) => {
   const plain = typeof record.toObject === "function" ? record.toObject() : record;
   return {
@@ -127,6 +140,64 @@ router.get(
       .populate("assignedTo", "name role")
       .populate("correctiveActions.owner", "name role");
     if (!hazard) throw new ApiError(404, "Hazard not found");
+    res.json({ success: true, hazard: toLegacyHazardRecord(hazard) });
+  })
+);
+
+router.patch(
+  "/:id",
+  authMiddleware,
+  authorizePermission("hazards", "update"),
+  validate(updateHazardSchema),
+  asyncHandler(async (req, res) => {
+    const hazard = await Hazard.findById(req.params.id);
+    if (!hazard) throw new ApiError(404, "Hazard not found");
+
+    const editableFields = [
+      "title",
+      "description",
+      "category",
+      "severity",
+      "likelihood",
+      "plaza",
+      "location",
+      "action"
+    ];
+
+    editableFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        hazard[field] = req.body[field];
+      }
+    });
+
+    if (req.body.date !== undefined) {
+      hazard.date = req.body.date ? new Date(req.body.date) : null;
+    }
+    if (req.body.reportedBy !== undefined) {
+      hazard.reportedByName = req.body.reportedBy;
+    }
+
+    hazard.title =
+      hazard.title || `${hazard.category || "Hazard"} - ${hazard.plaza || hazard.location || "Site"}`;
+    hazard.description =
+      hazard.description ||
+      `${hazard.category || "Hazard"} reported at ${hazard.location || "-"}${
+        hazard.reportedByName ? ` by ${hazard.reportedByName}` : ""
+      }`;
+    hazard.riskScore =
+      req.body.riskScore !== undefined
+        ? req.body.riskScore
+        : (severityWeight[hazard.severity] || 1) * (likelihoodWeight[hazard.likelihood] || 1);
+    if (hazard.status !== "Closed") hazard.status = "Open";
+
+    hazard.timeline.push({
+      label: "Details Edited",
+      description: "Submitted hazard details updated",
+      user: req.user.id
+    });
+
+    await hazard.save();
+    await audit(req, "update", "hazards", req.body, hazard._id);
     res.json({ success: true, hazard: toLegacyHazardRecord(hazard) });
   })
 );

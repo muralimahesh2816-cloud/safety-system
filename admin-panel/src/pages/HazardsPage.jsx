@@ -48,6 +48,39 @@ const formatFileSize = (bytes = 0) => {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
+const toDateInputValue = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+};
+const formatElapsedDuration = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "just now";
+  const diffMs = Math.max(0, Date.now() - date.getTime());
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"}`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? "" : "s"}`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? "" : "s"}`;
+  const years = Math.floor(months / 12);
+  return `${years} year${years === 1 ? "" : "s"}`;
+};
+const getHazardStatusSinceText = (hazard = {}) => {
+  const status = hazard.status === "Closed" ? "Closed" : "Open";
+  const lowerStatus = status.toLowerCase();
+  const timeline = Array.isArray(hazard.timeline) ? hazard.timeline : [];
+  const statusEvent = [...timeline]
+    .reverse()
+    .find((item) => `${item?.label || ""} ${item?.description || ""}`.toLowerCase().includes(lowerStatus));
+  const createdAt = hazard.createdAt || hazard.date;
+  const changedAt = status === "Open" ? createdAt : statusEvent?.at || hazard.updatedAt || createdAt;
+  return `${status} since ${formatElapsedDuration(changedAt)}`;
+};
 
 const initialForm = {
   title: "",
@@ -76,8 +109,12 @@ const HazardsPage = ({ user }) => {
   const [statusFilter, setStatusFilter] = useState("All");
   const [submitting, setSubmitting] = useState(false);
   const [busyHazardId, setBusyHazardId] = useState("");
+  const [editingHazard, setEditingHazard] = useState(null);
+  const [editForm, setEditForm] = useState(initialForm);
+  const [editSaving, setEditSaving] = useState(false);
   const submitLockRef = useRef(false);
   const actionLockRef = useRef(false);
+  const editLockRef = useRef(false);
 
   const canDelete = ["super_admin", "admin"].includes(user?.role);
   const riskScore = useMemo(
@@ -257,6 +294,72 @@ const HazardsPage = ({ user }) => {
       const message = deleteError?.response?.data?.message || "Delete failed";
       setError(message);
       showValidationPopup(message);
+    }
+  };
+
+  const openEditHazard = (hazard) => {
+    setEditingHazard(hazard);
+    setEditForm({
+      title: hazard.title || "",
+      description: hazard.description || "",
+      date: toDateInputValue(hazard.date || hazard.createdAt),
+      plaza: hazard.plaza || "",
+      location: hazard.location || "",
+      reportedBy: hazard.reportedBy || "",
+      category: hazard.category || "Hazard",
+      action: hazard.action || "",
+      severity: hazard.severity || "Medium",
+      likelihood: hazard.likelihood || "Possible"
+    });
+  };
+
+  const saveHazardEdit = async (event) => {
+    event.preventDefault();
+    const id = editingHazard?._id || editingHazard?.id;
+    const nextRiskScore = severityWeight[editForm.severity] * likelihoodWeight[editForm.likelihood];
+
+    if (!id) {
+      showValidationPopup("Unable to edit this hazard because its id is missing.");
+      return;
+    }
+    if (
+      !editForm.date ||
+      !editForm.plaza ||
+      !editForm.location ||
+      !editForm.reportedBy ||
+      !editForm.description.trim() ||
+      !editForm.category ||
+      !editForm.action
+    ) {
+      showValidationPopup("Please fill all required Hazard edit fields.");
+      return;
+    }
+    if (editLockRef.current) return;
+
+    editLockRef.current = true;
+    setEditSaving(true);
+    await showLoadingPopup("Uploading Please Wait...", "Saving hazard corrections...");
+    try {
+      const response = await hazardService.update(id, {
+        ...editForm,
+        description: editForm.description.trim(),
+        title: editForm.title,
+        riskScore: nextRiskScore
+      });
+      const updatedHazard = response.hazard;
+      setRecords((prev) => prev.map((item) => (item._id === id ? updatedHazard : item)));
+      setSelectedHazard((prev) => (prev && prev._id === id ? updatedHazard : prev));
+      setEditingHazard(null);
+      await showSuccessPopup("Hazard Updated Successfully");
+      fetchAll();
+    } catch (editError) {
+      const message = editError?.response?.data?.message || editError?.message || "Hazard edit failed";
+      setError(message);
+      showValidationPopup(message);
+    } finally {
+      editLockRef.current = false;
+      setEditSaving(false);
+      closeLoadingPopup();
     }
   };
 
@@ -478,12 +581,25 @@ const HazardsPage = ({ user }) => {
                   .filter((item) => Boolean(item.url));
                 const evidencePreview = evidenceItems[0]?.url || "";
                 const closurePreview = closureItems[0]?.url || "";
+                const statusSinceText = getHazardStatusSinceText(hazard);
 
                 return (
                   <div
                     key={hazard._id}
                     className="rounded-2xl border border-white/12 bg-white/5 p-4 transition duration-300 hover:border-cyan-300/30 hover:bg-white/[0.075] hover:shadow-[0_20px_50px_rgba(8,145,178,.12)]"
                   >
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-slate-950/45 px-3 py-2">
+                      <span
+                        className={`text-xs font-semibold ${
+                          hazard.status === "Closed" ? "text-emerald-300" : "text-rose-300"
+                        }`}
+                      >
+                        {statusSinceText}
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        Last updated: {formatDateTime(hazard.updatedAt || hazard.createdAt)}
+                      </span>
+                    </div>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex min-w-0 flex-1 gap-3">
                       <button
@@ -528,6 +644,15 @@ const HazardsPage = ({ user }) => {
                       >
                         View Details
                       </button>
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          onClick={() => openEditHazard(hazard)}
+                          className="rounded-xl border border-amber-400/40 bg-amber-500/15 px-2.5 py-1.5 text-xs font-semibold text-amber-100"
+                        >
+                          Edit
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => openGallery(hazard, 0)}
@@ -702,6 +827,185 @@ const HazardsPage = ({ user }) => {
           )}
         </GlassCard>
       </div>
+
+      {editingHazard ? (
+        <div
+          className="fixed inset-0 z-[99990] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xl"
+          onClick={() => setEditingHazard(null)}
+        >
+          <form
+            onSubmit={saveHazardEdit}
+            onClick={(event) => event.stopPropagation()}
+            className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[28px] border border-white/12 bg-slate-950/95 p-5 shadow-[0_30px_90px_rgba(245,158,11,.18)]"
+          >
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-300">
+                  Correct Submitted Details
+                </p>
+                <h3 className="mt-1 text-xl font-semibold text-white">Edit Hazard Observation</h3>
+                <p className="mt-1 text-xs text-slate-400">
+                  Evidence, closure image, and status remain unchanged. A timeline entry will be added.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingHazard(null)}
+                className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Report Date</span>
+                <input
+                  type="date"
+                  value={editForm.date}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, date: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Plaza</span>
+                <select
+                  value={editForm.plaza}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, plaza: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                >
+                  <option value="" className="bg-slate-900 text-white">
+                    Select Plaza
+                  </option>
+                  {legacyPlazas.map((item) => (
+                    <option key={item} value={item} className="bg-slate-900 text-white">
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Location & Chainage</span>
+                <input
+                  value={editForm.location}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, location: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Reported By</span>
+                <input
+                  value={editForm.reportedBy}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, reportedBy: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Category</span>
+                <select
+                  value={editForm.category}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, category: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                >
+                  {legacyCategories.map((item) => (
+                    <option key={item} value={item} className="bg-slate-900 text-white">
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Action Team</span>
+                <select
+                  value={editForm.action}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, action: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                >
+                  <option value="" className="bg-slate-900 text-white">
+                    Select Action Team
+                  </option>
+                  {legacyActionTeams.map((item) => (
+                    <option key={item} value={item} className="bg-slate-900 text-white">
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Severity</span>
+                <select
+                  value={editForm.severity}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, severity: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                >
+                  {Object.keys(severityWeight).map((item) => (
+                    <option key={item} value={item} className="bg-slate-900 text-white">
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Likelihood</span>
+                <select
+                  value={editForm.likelihood}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, likelihood: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                >
+                  {Object.keys(likelihoodWeight).map((item) => (
+                    <option key={item} value={item} className="bg-slate-900 text-white">
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-slate-300 md:col-span-2">
+                Risk Matrix Score:{" "}
+                <span className="font-semibold text-amber-300">
+                  {severityWeight[editForm.severity] * likelihoodWeight[editForm.likelihood]}
+                </span>
+              </div>
+              <label className="md:col-span-2">
+                <span className="mb-1 block text-xs text-slate-300">Hazard Description</span>
+                <textarea
+                  value={editForm.description}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, description: event.target.value }))}
+                  rows={4}
+                  maxLength={1000}
+                  className="w-full resize-none rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-amber-300/60 focus:outline-none"
+                  required
+                />
+                <span className="mt-1 block text-right text-[10px] text-slate-500">
+                  {editForm.description.length}/1000
+                </span>
+              </label>
+            </div>
+
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingHazard(null)}
+                className="rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-sm text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={editSaving}
+                className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {editSaving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       <HazardDetailsModal
         open={Boolean(selectedHazard)}

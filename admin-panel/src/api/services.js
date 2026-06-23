@@ -747,6 +747,10 @@ export const workService = {
     const res = await client.post("/work-approvals", formData);
     return { success: true, work: mapWorkRecord(res.data.work) };
   },
+  update: async (id, payload) => {
+    const res = await client.patch(`/work-approvals/${id}`, payload);
+    return { success: true, work: mapWorkRecord(res.data.work) };
+  },
   updateWorkflow: async (id, payload) =>
     (await client.patch(`/work-approvals/${id}/workflow`, payload)).data,
   updateStatus: async (id, payload) =>
@@ -811,6 +815,16 @@ export const hazardService = {
         }
         const res = await legacyClient.post("/hazard", formData);
         return { success: true, message: res.data };
+      }
+    ),
+  update: async (id, payload) =>
+    withLegacyFallback(
+      async () => {
+        const res = await client.patch(`/hazards/${id}`, payload);
+        return { success: true, hazard: mapHazardRecord(res.data.hazard) };
+      },
+      async () => {
+        throw new Error("Hazard edit is not available on legacy endpoint");
       }
     ),
   assign: async (id, assignedTo) =>

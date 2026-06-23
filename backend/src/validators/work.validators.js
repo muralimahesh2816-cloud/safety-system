@@ -16,6 +16,21 @@ const createWorkSchema = z.object({
   dueDate: z.string().optional()
 });
 
+const updateWorkSchema = z.object({
+  title: z.string().trim().max(160).optional().default(""),
+  workType: z.string().trim().min(2).optional(),
+  description: z.string().trim().max(1000).optional().default(""),
+  category: z.string().trim().optional().default("General"),
+  plaza: z.string().trim().optional().default(""),
+  location: z.string().trim().min(2).optional(),
+  chainage: z.string().trim().optional().default(""),
+  chainageNo: z.string().trim().optional().default(""),
+  workersCount: z.coerce.number().min(0).optional(),
+  priority: z.enum(["Low", "Medium", "High", "Critical"]).optional().default("Medium"),
+  startDate: z.string().optional(),
+  dueDate: z.string().optional()
+});
+
 const workflowActionSchema = z.object({
   level: z.coerce.number().min(1),
   status: z.enum(["pending", "approved", "rejected"]),
@@ -38,6 +53,7 @@ const signatureSchema = z.object({
 
 module.exports = {
   createWorkSchema,
+  updateWorkSchema,
   workflowActionSchema,
   statusUpdateSchema,
   commentSchema,
