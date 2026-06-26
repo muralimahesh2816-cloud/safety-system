@@ -398,7 +398,7 @@ const HazardsPage = ({ user }) => {
         subtitle="Legacy hazard fields and workflows restored with enterprise risk operations UX"
       />
 
-      <div className="grid grid-cols-1 gap-4 xl:h-[calc(100vh-180px)] xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 xl:h-[calc(100vh-120px)] xl:grid-cols-3">
         <GlassCard className="module-sticky-card p-5 xl:col-span-1">
           <h3 className="mb-3 text-lg font-semibold text-white">Report Hazard</h3>
           <form className="space-y-3" onSubmit={submit}>
@@ -558,7 +558,7 @@ const HazardsPage = ({ user }) => {
           {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
         </GlassCard>
 
-        <GlassCard className="p-5 xl:col-span-2 xl:max-h-[calc(100vh-180px)] xl:overflow-hidden">
+        <GlassCard className="p-5 xl:col-span-2 xl:max-h-[calc(100vh-120px)] xl:overflow-hidden">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="text-lg font-semibold text-white">Hazard Log</h3>
@@ -666,7 +666,7 @@ const HazardsPage = ({ user }) => {
           {loading ? (
             <p className="text-sm text-slate-300">Loading hazards...</p>
           ) : (
-            <div className="module-list-scroll space-y-4 xl:max-h-[calc(100vh-330px)] xl:overflow-y-auto xl:pr-1">
+            <div className="module-list-scroll space-y-4 xl:max-h-[calc(100vh-270px)] xl:overflow-y-auto xl:pr-1">
               {filteredRecords.map((hazard) => {
                 const evidenceItems = (
                   hazard.evidenceImages?.length
