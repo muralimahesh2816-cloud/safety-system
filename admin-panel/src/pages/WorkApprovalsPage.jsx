@@ -81,6 +81,12 @@ const getWorkStatusSinceText = (work = {}) => {
       : statusEvent?.at || work.updatedAt || createdAt;
   return `${status} since ${formatElapsedDuration(changedAt)}`;
 };
+const getWorkReporterName = (work = {}) =>
+  work.reportedBy || work.createdBy?.name || work.submittedBy?.name || "";
+const isSameDate = (value, filterDate) => {
+  if (!filterDate) return true;
+  return toDateInputValue(value) === filterDate;
+};
 
 const WorkApprovalsPage = ({ user }) => {
   const [records, setRecords] = useState([]);
@@ -94,6 +100,11 @@ const WorkApprovalsPage = ({ user }) => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("All");
+  const [listFilters, setListFilters] = useState({
+    date: "",
+    reportedBy: "",
+    workType: ""
+  });
   const [submitting, setSubmitting] = useState(false);
   const [busyWorkId, setBusyWorkId] = useState("");
   const [editingWork, setEditingWork] = useState(null);
@@ -361,9 +372,17 @@ const WorkApprovalsPage = ({ user }) => {
   };
 
   const filteredRecords = useMemo(() => {
-    if (statusFilter === "All") return records;
-    return records.filter((item) => (item.status || "Pending") === statusFilter);
-  }, [records, statusFilter]);
+    const reporterNeedle = listFilters.reportedBy.trim().toLowerCase();
+
+    return records.filter((item) => {
+      const statusMatch = statusFilter === "All" || (item.status || "Pending") === statusFilter;
+      const dateMatch = isSameDate(item.createdAt || item.date, listFilters.date);
+      const reporterMatch =
+        !reporterNeedle || getWorkReporterName(item).toLowerCase().includes(reporterNeedle);
+      const workTypeMatch = !listFilters.workType || (item.workType || item.title || "") === listFilters.workType;
+      return statusMatch && dateMatch && reporterMatch && workTypeMatch;
+    });
+  }, [records, statusFilter, listFilters]);
 
   const chartData = useMemo(
     () => [
@@ -499,23 +518,86 @@ const WorkApprovalsPage = ({ user }) => {
 
         <GlassCard className="p-5 xl:col-span-2 xl:max-h-[calc(100vh-180px)] xl:overflow-hidden">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-lg font-semibold text-white">Work List</h3>
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-white"
+            <div>
+              <h3 className="text-lg font-semibold text-white">Work List</h3>
+              <p className="text-xs text-slate-400">
+                Showing {filteredRecords.length} of {records.length} work approvals
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("All");
+                setListFilters({ date: "", reportedBy: "", workType: "" });
+              }}
+              className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100"
             >
-              {["All", "Pending", "Approved", "Rejected", "Completed"].map((status) => (
-                <option key={status} value={status} className="bg-slate-900 text-white">
-                  {status}
+              Clear Filters
+            </button>
+          </div>
+          <div className="mb-4 grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-slate-950/35 p-3 md:grid-cols-2 xl:grid-cols-4">
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Status
+              </span>
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
+              >
+                {["All", "Pending", "Approved", "Rejected", "Completed"].map((status) => (
+                  <option key={status} value={status} className="bg-slate-900 text-white">
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Date
+              </span>
+              <input
+                type="date"
+                value={listFilters.date}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, date: event.target.value }))}
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
+              />
+            </label>
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Reported By
+              </span>
+              <input
+                value={listFilters.reportedBy}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, reportedBy: event.target.value }))}
+                placeholder="Search name"
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white placeholder:text-slate-500"
+              />
+            </label>
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Work Type
+              </span>
+              <select
+                value={listFilters.workType}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, workType: event.target.value }))}
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
+              >
+                <option value="" className="bg-slate-900 text-white">
+                  All Work Types
                 </option>
-              ))}
-            </select>
+                {legacyWorkTypes.map((item) => (
+                  <option key={item} value={item} className="bg-slate-900 text-white">
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           {loading ? (
             <p className="text-sm text-slate-300">Loading work approvals...</p>
           ) : (
-            <div className="module-list-scroll space-y-4 xl:max-h-[calc(100vh-250px)] xl:overflow-y-auto xl:pr-1">
+            <div className="module-list-scroll space-y-4 xl:max-h-[calc(100vh-330px)] xl:overflow-y-auto xl:pr-1">
               {filteredRecords.map((work) => {
                 const beforeItems = (
                   work.beforeImages?.length ? work.beforeImages : work.beforeImage ? [work.beforeImage] : []

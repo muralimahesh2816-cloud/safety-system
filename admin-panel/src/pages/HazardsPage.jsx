@@ -81,6 +81,10 @@ const getHazardStatusSinceText = (hazard = {}) => {
   const changedAt = status === "Open" ? createdAt : statusEvent?.at || hazard.updatedAt || createdAt;
   return `${status} since ${formatElapsedDuration(changedAt)}`;
 };
+const isSameDate = (value, filterDate) => {
+  if (!filterDate) return true;
+  return toDateInputValue(value) === filterDate;
+};
 
 const initialForm = {
   title: "",
@@ -107,6 +111,12 @@ const HazardsPage = ({ user }) => {
   const [modal, setModal] = useState({ open: false, items: [], index: 0, compare: null });
   const [selectedHazard, setSelectedHazard] = useState(null);
   const [statusFilter, setStatusFilter] = useState("All");
+  const [listFilters, setListFilters] = useState({
+    date: "",
+    category: "",
+    risk: "",
+    plaza: ""
+  });
   const [submitting, setSubmitting] = useState(false);
   const [busyHazardId, setBusyHazardId] = useState("");
   const [editingHazard, setEditingHazard] = useState(null);
@@ -265,9 +275,16 @@ const HazardsPage = ({ user }) => {
   };
 
   const filteredRecords = useMemo(() => {
-    if (statusFilter === "All") return records;
-    return records.filter((item) => (item.status === "Closed" ? "Closed" : "Open") === statusFilter);
-  }, [records, statusFilter]);
+    return records.filter((item) => {
+      const normalizedStatus = item.status === "Closed" ? "Closed" : "Open";
+      const statusMatch = statusFilter === "All" || normalizedStatus === statusFilter;
+      const dateMatch = isSameDate(item.date || item.createdAt, listFilters.date);
+      const categoryMatch = !listFilters.category || item.category === listFilters.category;
+      const riskMatch = !listFilters.risk || item.severity === listFilters.risk;
+      const plazaMatch = !listFilters.plaza || item.plaza === listFilters.plaza;
+      return statusMatch && dateMatch && categoryMatch && riskMatch && plazaMatch;
+    });
+  }, [records, statusFilter, listFilters]);
 
   const deleteHazard = async (id) => {
     setError("");
@@ -543,23 +560,113 @@ const HazardsPage = ({ user }) => {
 
         <GlassCard className="p-5 xl:col-span-2 xl:max-h-[calc(100vh-180px)] xl:overflow-hidden">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-lg font-semibold text-white">Hazard Log</h3>
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-white"
+            <div>
+              <h3 className="text-lg font-semibold text-white">Hazard Log</h3>
+              <p className="text-xs text-slate-400">
+                Showing {filteredRecords.length} of {records.length} hazards
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("All");
+                setListFilters({ date: "", category: "", risk: "", plaza: "" });
+              }}
+              className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100"
             >
-              {["All", "Open", "Closed"].map((status) => (
-                <option key={status} value={status} className="bg-slate-900 text-white">
-                  {status}
+              Clear Filters
+            </button>
+          </div>
+          <div className="mb-4 grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-slate-950/35 p-3 md:grid-cols-2 xl:grid-cols-5">
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Status
+              </span>
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
+              >
+                {["All", "Open", "Closed"].map((status) => (
+                  <option key={status} value={status} className="bg-slate-900 text-white">
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Date
+              </span>
+              <input
+                type="date"
+                value={listFilters.date}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, date: event.target.value }))}
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
+              />
+            </label>
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Category
+              </span>
+              <select
+                value={listFilters.category}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, category: event.target.value }))}
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
+              >
+                <option value="" className="bg-slate-900 text-white">
+                  All Categories
                 </option>
-              ))}
-            </select>
+                {legacyCategories.map((item) => (
+                  <option key={item} value={item} className="bg-slate-900 text-white">
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Risk
+              </span>
+              <select
+                value={listFilters.risk}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, risk: event.target.value }))}
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
+              >
+                <option value="" className="bg-slate-900 text-white">
+                  All Risk Levels
+                </option>
+                {Object.keys(severityWeight).map((item) => (
+                  <option key={item} value={item} className="bg-slate-900 text-white">
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Plaza
+              </span>
+              <select
+                value={listFilters.plaza}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, plaza: event.target.value }))}
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
+              >
+                <option value="" className="bg-slate-900 text-white">
+                  All Plazas
+                </option>
+                {legacyPlazas.map((item) => (
+                  <option key={item} value={item} className="bg-slate-900 text-white">
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           {loading ? (
             <p className="text-sm text-slate-300">Loading hazards...</p>
           ) : (
-            <div className="module-list-scroll space-y-4 xl:max-h-[calc(100vh-250px)] xl:overflow-y-auto xl:pr-1">
+            <div className="module-list-scroll space-y-4 xl:max-h-[calc(100vh-330px)] xl:overflow-y-auto xl:pr-1">
               {filteredRecords.map((hazard) => {
                 const evidenceItems = (
                   hazard.evidenceImages?.length
