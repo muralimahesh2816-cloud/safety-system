@@ -1,6 +1,5 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const multer = require("multer");
 const asyncHandler = require("../utils/async-handler");
 const ApiError = require("../utils/api-error");
 const authMiddleware = require("../middleware/auth.middleware");
@@ -15,6 +14,7 @@ const {
 } = require("../validators/users.validators");
 const { env } = require("../config/env");
 const { uploadAsset } = require("../utils/uploads");
+const { createMemoryUpload } = require("../utils/multer");
 const { ROLES } = require("../constants/roles");
 const {
   normalizePagePermissions,
@@ -24,7 +24,7 @@ const { updateUserPermissions } = require("../controllers/users.controller");
 const { createNotification } = require("../services/notifications.service");
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = createMemoryUpload({ maxFileSizeMb: 5, maxFiles: 1 });
 
 router.get(
   "/",

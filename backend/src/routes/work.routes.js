@@ -1,6 +1,5 @@
 const express = require("express");
 const mongoose = require("mongoose");
-const multer = require("multer");
 const asyncHandler = require("../utils/async-handler");
 const ApiError = require("../utils/api-error");
 const authMiddleware = require("../middleware/auth.middleware");
@@ -18,6 +17,7 @@ const {
   signatureSchema
 } = require("../validators/work.validators");
 const { uploadManyAssets } = require("../utils/uploads");
+const { createMemoryUpload } = require("../utils/multer");
 const { createNotification } = require("../services/notifications.service");
 const {
   getChainageFrom,
@@ -26,7 +26,7 @@ const {
 } = require("../utils/chainage");
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = createMemoryUpload({ maxFileSizeMb: 10, maxFiles: 6 });
 
 const parseDate = (value) => (value ? new Date(value) : null);
 const toLegacyWorkRecord = (record) => {
@@ -161,7 +161,7 @@ router.post(
     }
 
     await audit(req, "create", "work", { title: work.title }, work._id);
-    res.status(201).json({ success: true, work });
+    res.status(201).json({ success: true, work: toLegacyWorkRecord(work) });
   })
 );
 
@@ -279,7 +279,7 @@ router.patch(
 
     await work.save();
     await audit(req, "workflow_update", "work", { level, status }, work._id);
-    res.json({ success: true, work });
+    res.json({ success: true, work: toLegacyWorkRecord(work) });
   })
 );
 
@@ -291,6 +291,12 @@ router.patch(
   asyncHandler(async (req, res) => {
     const work = await WorkApproval.findById(req.params.id);
     if (!work) throw new ApiError(404, "Work approval not found");
+    if (work.status === "Completed") {
+      throw new ApiError(400, "Completed work is locked and cannot be changed");
+    }
+    if (req.body.status === "Completed") {
+      throw new ApiError(400, "Upload completion image to mark work as completed");
+    }
 
     work.status = req.body.status;
     if (req.body.approvedBy) {
@@ -311,7 +317,7 @@ router.patch(
 
     await work.save();
     await audit(req, "status_update", "work", req.body, work._id);
-    res.json({ success: true, work });
+    res.json({ success: true, work: toLegacyWorkRecord(work) });
   })
 );
 
@@ -336,7 +342,7 @@ router.post(
     await work.save();
     await audit(req, "comment", "work", { text: req.body.text }, work._id);
 
-    res.json({ success: true, work });
+    res.json({ success: true, work: toLegacyWorkRecord(work) });
   })
 );
 
@@ -362,7 +368,7 @@ router.post(
 
     await work.save();
     await audit(req, "signature", "work", {}, work._id);
-    res.json({ success: true, work });
+    res.json({ success: true, work: toLegacyWorkRecord(work) });
   })
 );
 
@@ -377,6 +383,12 @@ router.post(
   asyncHandler(async (req, res) => {
     const work = await WorkApproval.findById(req.params.id);
     if (!work) throw new ApiError(404, "Work approval not found");
+    if (work.status === "Completed") {
+      throw new ApiError(400, "Completed work is already locked");
+    }
+    if (work.status !== "Approved") {
+      throw new ApiError(400, "Only approved work can upload completion evidence");
+    }
     const afterFiles = [...(req.files?.afterImages || []), ...(req.files?.afterImage || [])];
     if (!afterFiles.length) {
       throw new ApiError(400, "At least one image is required");
@@ -385,9 +397,7 @@ router.post(
     const uploads = await uploadManyAssets(afterFiles, "safety-hse/work/after", "image");
     work.afterImages = [...(work.afterImages || []), ...uploads];
     work.afterImage = work.afterImages[0]?.url || uploads[0]?.url || "";
-    if (work.status === "Approved" || work.status === "Under Review") {
-      work.status = "Completed";
-    }
+    work.status = "Completed";
     work.timeline.push({
       label: "After Images Uploaded",
       description: `${uploads.length} file(s) added`,
@@ -396,7 +406,7 @@ router.post(
     await work.save();
     await audit(req, "after_images_upload", "work", { count: uploads.length }, work._id);
 
-    res.json({ success: true, work });
+    res.json({ success: true, work: toLegacyWorkRecord(work) });
   })
 );
 

@@ -1,5 +1,4 @@
 const express = require("express");
-const multer = require("multer");
 const asyncHandler = require("../utils/async-handler");
 const ApiError = require("../utils/api-error");
 const authMiddleware = require("../middleware/auth.middleware");
@@ -8,11 +7,16 @@ const audit = require("../middleware/audit.middleware");
 const Training = require("../models/Training");
 const { createTrainingSchema, progressSchema } = require("../validators/training.validators");
 const { uploadAsset } = require("../utils/uploads");
+const { IMAGE_MIME_TYPES, VIDEO_MIME_TYPES, createMemoryUpload } = require("../utils/multer");
 const User = require("../models/User");
 const { createNotification } = require("../services/notifications.service");
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = createMemoryUpload({
+  allowedMimeTypes: [...IMAGE_MIME_TYPES, ...VIDEO_MIME_TYPES],
+  maxFileSizeMb: 100,
+  maxFiles: 2
+});
 
 router.get(
   "/",

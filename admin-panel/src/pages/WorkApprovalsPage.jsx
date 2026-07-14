@@ -33,10 +33,20 @@ const legacyWorkTypes = [
   "Plaza Maintenance"
 ];
 
-const statusList = ["Pending", "Approved", "Rejected", "Completed"];
+const statusList = ["Pending", "Approved", "Rejected"];
 
 const getApiErrorMessage = (error, fallback = "Request failed") => {
   const data = error?.response?.data;
+  const issues = data?.details?.issues || data?.errors?.issues || [];
+  const issueMessages = Array.isArray(issues)
+    ? issues
+        .map((issue) => {
+          const field = issue?.path ? `${issue.path}: ` : "";
+          return issue?.message ? `${field}${issue.message}` : "";
+        })
+        .filter(Boolean)
+        .join(" ")
+    : "";
   const fieldErrors =
     data?.details?.fieldErrors ||
     data?.details ||
@@ -45,10 +55,15 @@ const getApiErrorMessage = (error, fallback = "Request failed") => {
     {};
   const flattenedErrors = Object.values(fieldErrors)
     .flat()
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item?.message) return item.message;
+      return "";
+    })
     .filter(Boolean)
     .join(" ");
 
-  return flattenedErrors || data?.message || error?.message || fallback;
+  return issueMessages || flattenedErrors || data?.message || error?.message || fallback;
 };
 
 const getWorkSubmitValidationMessage = ({ form, chainageValidation, beforeImages }) => {
@@ -256,6 +271,7 @@ const WorkApprovalsPage = ({ user }) => {
     setBusyWorkId(id);
     const approvedBy = user?.name || localStorage.getItem("name") || "Admin";
     await showLoadingPopup("Uploading Please Wait...", `Updating work status to ${status}...`);
+    let statusErrorMessage = "";
     try {
       await workService.updateStatus(id, {
         status,
@@ -264,11 +280,16 @@ const WorkApprovalsPage = ({ user }) => {
       await showSuccessPopup(`Work ${status} Successfully`);
       fetchAll();
     } catch (statusError) {
-      setError(statusError?.response?.data?.message || "Status update failed");
+      statusErrorMessage = getApiErrorMessage(statusError, "Status update failed");
+      setError(statusErrorMessage);
     } finally {
       workActionLockRef.current = false;
       setBusyWorkId("");
-      closeLoadingPopup();
+      await closeLoadingPopup();
+    }
+
+    if (statusErrorMessage) {
+      await showValidationPopup(statusErrorMessage);
     }
   };
 
@@ -292,12 +313,9 @@ const WorkApprovalsPage = ({ user }) => {
     workActionLockRef.current = true;
     setBusyWorkId(id);
     await showLoadingPopup("Uploading Please Wait...", "Uploading completion image...");
+    let uploadErrorMessage = "";
     try {
       await workService.uploadAfterImages(id, files);
-      await workService.updateStatus(id, {
-        status: "Completed",
-        approvedBy: user?.name || localStorage.getItem("name") || "Admin"
-      });
       setAfterImages((prev) => ({ ...prev, [id]: [] }));
       if (afterPreviewMap[id]?.startsWith("blob:")) URL.revokeObjectURL(afterPreviewMap[id]);
       setAfterPreviewMap((prev) => {
@@ -308,11 +326,16 @@ const WorkApprovalsPage = ({ user }) => {
       await showSuccessPopup("Work Marked Completed Successfully");
       fetchAll();
     } catch (uploadError) {
-      setError(uploadError?.response?.data?.message || "Image upload failed");
+      uploadErrorMessage = getApiErrorMessage(uploadError, "Image upload failed");
+      setError(uploadErrorMessage);
     } finally {
       workActionLockRef.current = false;
       setBusyWorkId("");
-      closeLoadingPopup();
+      await closeLoadingPopup();
+    }
+
+    if (uploadErrorMessage) {
+      await showValidationPopup(uploadErrorMessage);
     }
   };
 

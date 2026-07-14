@@ -39,6 +39,16 @@ const hasCloudinary = Boolean(
   env.cloudinary.cloudName && env.cloudinary.apiKey && env.cloudinary.apiSecret
 );
 
+if (
+  isProduction &&
+  (!process.env.JWT_ACCESS_SECRET ||
+    !process.env.JWT_REFRESH_SECRET ||
+    env.jwtAccessSecret.includes("change-me") ||
+    env.jwtRefreshSecret.includes("change-me"))
+) {
+  throw new Error("JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be set in production.");
+}
+
 module.exports = {
   env,
   isProduction,

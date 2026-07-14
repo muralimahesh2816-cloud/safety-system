@@ -86,10 +86,9 @@ const DashboardPage = ({ onModuleSelect }) => {
       try {
         if (!active || document.hidden) return;
         await fetchSummary();
-      } catch (error) {
+      } catch (_error) {
         if (!active) return;
         // Dashboard silently falls back to latest known snapshot.
-        console.debug(error);
       }
     };
 

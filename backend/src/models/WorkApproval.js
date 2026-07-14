@@ -101,13 +101,12 @@ const workApprovalSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-workApprovalSchema.pre("validate", function normalizeChainageRange(next) {
+workApprovalSchema.pre("validate", function normalizeChainageRange() {
   const legacyChainage = this.chainageNo || this.chainage || "";
   if (!this.chainageFrom) this.chainageFrom = legacyChainage;
   if (!this.chainageTo) this.chainageTo = this.chainageFrom || legacyChainage;
   if (!this.chainage) this.chainage = this.chainageFrom;
   if (!this.chainageNo) this.chainageNo = this.chainageFrom;
-  next();
 });
 
 workApprovalSchema.index({ status: 1, priority: 1, createdAt: -1 });

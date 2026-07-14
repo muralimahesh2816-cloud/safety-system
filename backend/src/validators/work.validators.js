@@ -24,7 +24,7 @@ const createWorkSchema = withChainageValidation(z.object({
   chainageNo: z.string().optional().default(""),
   chainageFrom: z.string().trim().optional().default(""),
   chainageTo: z.string().trim().optional().default(""),
-  workersCount: z.coerce.number().min(0).optional().default(0),
+  workersCount: z.coerce.number().min(1, "Workers Count must be greater than zero").optional().default(1),
   priority: z.enum(["Low", "Medium", "High", "Critical"]).optional().default("Medium"),
   assignedTo: z.string().optional(),
   startDate: z.string().optional(),
@@ -42,7 +42,7 @@ const updateWorkSchema = withChainageValidation(z.object({
   chainageNo: z.string().trim().optional().default(""),
   chainageFrom: z.string().trim().optional().default(""),
   chainageTo: z.string().trim().optional().default(""),
-  workersCount: z.coerce.number().min(0).optional(),
+  workersCount: z.coerce.number().min(1, "Workers Count must be greater than zero").optional(),
   priority: z.enum(["Low", "Medium", "High", "Critical"]).optional().default("Medium"),
   startDate: z.string().optional(),
   dueDate: z.string().optional()

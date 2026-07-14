@@ -1,5 +1,4 @@
 const express = require("express");
-const multer = require("multer");
 const asyncHandler = require("../utils/async-handler");
 const ApiError = require("../utils/api-error");
 const authMiddleware = require("../middleware/auth.middleware");
@@ -16,10 +15,11 @@ const {
   closeHazardSchema
 } = require("../validators/hazard.validators");
 const { uploadManyAssets } = require("../utils/uploads");
+const { createMemoryUpload } = require("../utils/multer");
 const { createNotification } = require("../services/notifications.service");
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = createMemoryUpload({ maxFileSizeMb: 10, maxFiles: 7 });
 const severityWeight = {
   Low: 1,
   Medium: 2,
@@ -126,7 +126,7 @@ router.post(
     }
 
     await audit(req, "create", "hazards", { title: hazard.title }, hazard._id);
-    res.status(201).json({ success: true, hazard });
+    res.status(201).json({ success: true, hazard: toLegacyHazardRecord(hazard) });
   })
 );
 
@@ -280,6 +280,9 @@ router.patch(
 
     const hazard = await Hazard.findById(req.params.id);
     if (!hazard) throw new ApiError(404, "Hazard not found");
+    if (hazard.status === "Closed") {
+      throw new ApiError(400, "Closed hazard is already locked");
+    }
 
     const closureFiles = [...(req.files?.closureImages || []), ...(req.files?.afterImage || [])];
     if (!closureFiles.length) {

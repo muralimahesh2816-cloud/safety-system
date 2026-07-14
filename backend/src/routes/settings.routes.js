@@ -1,5 +1,4 @@
 const express = require("express");
-const multer = require("multer");
 const asyncHandler = require("../utils/async-handler");
 const authMiddleware = require("../middleware/auth.middleware");
 const { authorizePermission } = require("../middleware/rbac.middleware");
@@ -9,9 +8,10 @@ const ApiError = require("../utils/api-error");
 const CompanySettings = require("../models/CompanySettings");
 const { profileSchema, brandingSchema, securitySchema } = require("../validators/settings.validators");
 const { uploadAsset } = require("../utils/uploads");
+const { createMemoryUpload } = require("../utils/multer");
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = createMemoryUpload({ maxFileSizeMb: 10, maxFiles: 2 });
 
 const ensureSettings = async () => {
   const settings = await CompanySettings.findOne();
