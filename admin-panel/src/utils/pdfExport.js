@@ -177,7 +177,7 @@ export const exportReportPdf = async ({
   rows = [],
   type = "work",
   reportTitle = "Report",
-  companyName = "Sasthan Udupi Tollway Pvt Ltd",
+  companyName = "Udupi Tollway Pvt Ltd",
   companyLogo,
   generatedBy = "System",
   generatedAt = new Date()

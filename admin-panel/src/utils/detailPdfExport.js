@@ -3,7 +3,7 @@ import autoTable from "jspdf-autotable";
 import companyLogoUrl from "../assets/topbarlogo.png";
 import { getMediaUrl } from "./media";
 
-const COMPANY_NAME = "Sasthan Udupi Tollway Pvt Ltd";
+const COMPANY_NAME = "Udupi Tollway Pvt Ltd";
 const SYSTEM_NAME = "Safety HSE Enterprise System";
 
 const safe = (value) => {

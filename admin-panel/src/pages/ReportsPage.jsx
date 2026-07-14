@@ -31,7 +31,7 @@ const reportTypes = [
 ];
 
 const plazaOptions = ["", "Sasthan Plaza", "Hejamadi Plaza", "Talapady Plaza", "Site"];
-const companyName = "Sasthan Udupi Tollway Pvt Ltd";
+const companyName = "Udupi Tollway Pvt Ltd";
 
 const reportTitleMap = {
   work: "Work Report",
@@ -371,10 +371,10 @@ const ReportsPage = () => {
           <div className="flex flex-col gap-4 border-b border-white/10 bg-gradient-to-r from-slate-950/80 via-slate-900/60 to-rose-950/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] p-2 shadow-[0_0_28px_rgba(248,113,113,.12)]">
-                <img src={companyLogo} alt="Sasthan Udupi Tollway logo" className="h-full w-full object-contain" />
+                <img src={companyLogo} alt="Udupi Tollway logo" className="h-full w-full object-contain" />
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-rose-300">Sasthan Udupi Tollway Pvt Ltd</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-rose-300">Udupi Tollway Pvt Ltd</p>
                 <h3 className="mt-1 text-lg font-semibold text-white">{reportTitleMap[type] || "Report"}</h3>
                 <p className="mt-0.5 text-xs text-slate-400">Safety HSE Enterprise System</p>
               </div>

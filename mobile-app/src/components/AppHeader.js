@@ -19,7 +19,7 @@ const AppHeader = ({ title = "UTPL Safety HSE", subtitle = "Safety Management Sy
           <MomentumSafetySVG size={46} />
         </View>
         <View style={styles.copy}>
-          <Text style={styles.eyebrow}>SASTHAN UDUPI TOLLWAY PVT LTD</Text>
+          <Text style={styles.eyebrow}>UDUPI TOLLWAY PVT LTD</Text>
           <Text style={styles.title}>{title}</Text>
           {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         </View>
