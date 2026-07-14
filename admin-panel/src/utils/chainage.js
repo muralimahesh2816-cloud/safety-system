@@ -1,8 +1,24 @@
 export const getChainageFrom = (work = {}) =>
-  String(work.chainageFrom || work.chainage || work.chainageNo || "").trim();
+  String(
+    work.chainageFrom ||
+      work["Chainage From"] ||
+      work["Chainage"] ||
+      work.chainage ||
+      work.chainageNo ||
+      ""
+  ).trim();
 
 export const getChainageTo = (work = {}) =>
-  String(work.chainageTo || work.chainageFrom || work.chainage || work.chainageNo || "").trim();
+  String(
+    work.chainageTo ||
+      work["Chainage To"] ||
+      work.chainageFrom ||
+      work["Chainage From"] ||
+      work["Chainage"] ||
+      work.chainage ||
+      work.chainageNo ||
+      ""
+  ).trim();
 
 export const parseComparableChainage = (value = "") => {
   const cleaned = String(value)
@@ -55,7 +71,15 @@ export const formatChainageRange = (work = {}, compact = false) => {
 export const matchesChainageSearch = (work = {}, query = "") => {
   const needle = String(query || "").trim().toLowerCase();
   if (!needle) return true;
-  return [getChainageFrom(work), getChainageTo(work), work.chainageNo, work.chainage]
+  return [
+    getChainageFrom(work),
+    getChainageTo(work),
+    work.chainageNo,
+    work.chainage,
+    work["Chainage From"],
+    work["Chainage To"],
+    work["Chainage"]
+  ]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(needle));
 };

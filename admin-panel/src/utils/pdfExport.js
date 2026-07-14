@@ -12,7 +12,6 @@ const reportColumns = {
     { header: "Chainage From", keys: ["Chainage From", "chainageFrom", "chainage", "chainageNo"], type: "chainageFrom" },
     { header: "Chainage To", keys: ["Chainage To", "chainageTo", "chainageFrom", "chainage", "chainageNo"], type: "chainageTo" },
     { header: "Workers", keys: ["Workers", "Workers Count", "workersCount"] },
-    { header: "Priority", keys: ["Priority", "priority"] },
     { header: "Status", keys: ["Status", "status"] },
     { header: "Reported By", keys: ["Reported By", "reportedBy", "createdBy"] },
     { header: "Approved By", keys: ["Approved By", "approvedBy"] },
