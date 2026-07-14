@@ -25,9 +25,7 @@ const parseComparableChainage = (value = "") => {
 
 const normalizeChainagePayload = (payload = {}) => {
   const chainageFrom = cleanChainage(payload.chainageFrom || payload.chainage || payload.chainageNo || "");
-  const chainageTo = cleanChainage(
-    payload.chainageTo || payload.chainageFrom || payload.chainage || payload.chainageNo || ""
-  );
+  const chainageTo = cleanChainage(payload.chainageTo || "");
 
   return {
     chainageFrom,

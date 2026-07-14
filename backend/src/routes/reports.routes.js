@@ -7,9 +7,17 @@ const Hazard = require("../models/Hazard");
 const User = require("../models/User");
 const Training = require("../models/Training");
 const { filterByPeriod, buildCsv } = require("../utils/reporting");
-const { getChainageFrom, getChainageTo } = require("../utils/chainage");
+const { getChainageFrom } = require("../utils/chainage");
 
 const router = express.Router();
+
+const normalizeChainageForCompare = (value = "") => String(value || "").trim().replace(/\s+/g, "").toLowerCase();
+
+const getStrictChainageTo = (record = {}) => {
+  const to = String(record.chainageTo || "").trim();
+  const from = getChainageFrom(record);
+  return to && normalizeChainageForCompare(to) !== normalizeChainageForCompare(from) ? to : "";
+};
 
 const toRows = ({ work, hazards, users, training }) => {
   const rows = [];
@@ -62,7 +70,7 @@ const toLegacyWorkRecord = (record) => ({
   description: record.description || "",
   location: record.location || "",
   chainageFrom: getChainageFrom(record),
-  chainageTo: getChainageTo(record),
+  chainageTo: getStrictChainageTo(record),
   chainage: record.chainage || getChainageFrom(record),
   chainageNo: record.chainageNo || record.chainage || getChainageFrom(record),
   workersCount: record.workersCount || 0,

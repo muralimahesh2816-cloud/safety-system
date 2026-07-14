@@ -2,7 +2,7 @@ import axios from "axios";
 import { client } from "./client";
 import { API_BASE_URL } from "../config/appConfig";
 import { normalizePermissions, toPermissionPayload } from "../utils/permissions";
-import { getChainageFrom, getChainageTo } from "../utils/chainage";
+import { getChainageFrom } from "../utils/chainage";
 
 const LOCAL_BACKEND_ROOT = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
 const LEGACY_BASE_URL = process.env.REACT_APP_LEGACY_API_URL || LOCAL_BACKEND_ROOT;
@@ -306,6 +306,14 @@ const toAbsoluteLegacyUpload = (value) => {
   return `${LOCAL_BACKEND_ROOT}/uploads/${normalized}`;
 };
 
+const normalizeChainageForCompare = (value = "") => String(value || "").trim().replace(/\s+/g, "").toLowerCase();
+
+const getStrictChainageTo = (item = {}) => {
+  const to = String(item.chainageTo || item["Chainage To"] || "").trim();
+  const from = getChainageFrom(item);
+  return to && normalizeChainageForCompare(to) !== normalizeChainageForCompare(from) ? to : "";
+};
+
 const mapWorkRecord = (item = {}) => {
   const beforeImages =
     item.beforeImages && item.beforeImages.length > 0
@@ -322,7 +330,7 @@ const mapWorkRecord = (item = {}) => {
       : [];
 
   const chainageFrom = getChainageFrom(item);
-  const chainageTo = getChainageTo(item);
+  const chainageTo = getStrictChainageTo(item);
 
   return {
     ...item,
@@ -455,7 +463,7 @@ const normalizeReportRows = (rows = [], type = "work") =>
       Description: item.description || "-",
       Location: item.location || "-",
       "Chainage From": getChainageFrom(item) || "-",
-      "Chainage To": getChainageTo(item) || "-",
+      "Chainage To": getStrictChainageTo(item) || "-",
       "Workers Count": item.workersCount || "-",
       Priority: item.priority || "-",
       Status: item.status || "Pending",
@@ -540,7 +548,7 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
       "Work Type": item.workType || "-",
       Location: item.location || "-",
       "Chainage From": getChainageFrom(item) || "-",
-      "Chainage To": getChainageTo(item) || "-",
+      "Chainage To": getStrictChainageTo(item) || "-",
       "Workers Count": item.workersCount || "-",
       "Approved By": item.approvedBy || "Admin",
       Status: item.status || "Approved"
@@ -748,9 +756,7 @@ export const workService = {
     const chainageFrom = String(
       payload.chainageFrom || payload.chainage || payload.chainageNo || ""
     ).trim();
-    const chainageTo = String(
-      payload.chainageTo || payload.chainageFrom || payload.chainage || payload.chainageNo || ""
-    ).trim();
+    const chainageTo = String(payload.chainageTo || "").trim();
 
     Object.entries(payload).forEach(([key, value]) => {
       if (key === "beforeImages") return;

@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { getChainageFrom, getChainageTo } from "./chainage";
+import { getChainageFrom } from "./chainage";
 
 const reportColumns = {
   work: [
@@ -10,7 +10,7 @@ const reportColumns = {
     { header: "Description", keys: ["Description", "description", "workDescription"] },
     { header: "Location", keys: ["Location", "location"] },
     { header: "Chainage From", keys: ["Chainage From", "chainageFrom", "chainage", "chainageNo"], type: "chainageFrom" },
-    { header: "Chainage To", keys: ["Chainage To", "chainageTo", "chainageFrom", "chainage", "chainageNo"], type: "chainageTo" },
+    { header: "Chainage To", keys: ["Chainage To", "chainageTo"], type: "chainageTo" },
     { header: "Workers", keys: ["Workers", "Workers Count", "workersCount"] },
     { header: "Status", keys: ["Status", "status"] },
     { header: "Reported By", keys: ["Reported By", "reportedBy", "createdBy"] },
@@ -58,7 +58,7 @@ const reportColumns = {
     { header: "Work Type", keys: ["Work Type", "workType", "title"] },
     { header: "Location", keys: ["Location", "location"] },
     { header: "Chainage From", keys: ["Chainage From", "chainageFrom", "chainage", "chainageNo"], type: "chainageFrom" },
-    { header: "Chainage To", keys: ["Chainage To", "chainageTo", "chainageFrom", "chainage", "chainageNo"], type: "chainageTo" },
+    { header: "Chainage To", keys: ["Chainage To", "chainageTo"], type: "chainageTo" },
     { header: "Workers", keys: ["Workers", "Workers Count", "workersCount"] },
     { header: "Approved By", keys: ["Approved By", "approvedBy"] },
     { header: "Status", keys: ["Status", "status"] }
@@ -79,6 +79,14 @@ const pickValue = (row, keys = []) => {
   return "-";
 };
 
+const normalizeChainageForCompare = (value = "") => String(value || "").trim().replace(/\s+/g, "").toLowerCase();
+
+const getReportChainageTo = (row = {}) => {
+  const to = String(row.chainageTo || row["Chainage To"] || "").trim();
+  const from = getChainageFrom(row);
+  return to && normalizeChainageForCompare(to) !== normalizeChainageForCompare(from) ? to : "";
+};
+
 const formatDateValue = (value) => {
   if (!value || value === "-") return "-";
   const date = new Date(value);
@@ -94,7 +102,7 @@ const formatDateValue = (value) => {
 
 const formatColumnValue = (row, column) => {
   if (column.type === "chainageFrom") return safeValue(getChainageFrom(row));
-  if (column.type === "chainageTo") return safeValue(getChainageTo(row));
+  if (column.type === "chainageTo") return safeValue(getReportChainageTo(row));
   const value = pickValue(row, column.keys);
   return column.type === "date" ? formatDateValue(value) : safeValue(value);
 };
@@ -182,6 +190,33 @@ const addHeader = (doc, { companyName, reportTitle, generatedBy, generatedDateTe
   doc.line(14, 43, pageWidth - 14, 43);
 };
 
+const reportColumnStyles = {
+  work: {
+    0: { cellWidth: 17 },
+    1: { cellWidth: 10 },
+    2: { cellWidth: 16 },
+    3: { cellWidth: 92 },
+    4: { cellWidth: 18 },
+    5: { cellWidth: 17 },
+    6: { cellWidth: 17 },
+    7: { cellWidth: 12 },
+    8: { cellWidth: 15 },
+    9: { cellWidth: 16 },
+    10: { cellWidth: 16 },
+    11: { cellWidth: 19 }
+  },
+  approved: {
+    0: { cellWidth: 24 },
+    1: { cellWidth: 28 },
+    2: { cellWidth: 34 },
+    3: { cellWidth: 28 },
+    4: { cellWidth: 28 },
+    5: { cellWidth: 18 },
+    6: { cellWidth: 34 },
+    7: { cellWidth: 24 }
+  }
+};
+
 export const exportReportPdf = async ({
   rows = [],
   type = "work",
@@ -204,23 +239,28 @@ export const exportReportPdf = async ({
 
   autoTable(doc, {
     startY: 49,
-    margin: { top: 49, bottom: 18, left: 10, right: 10 },
+    margin: { top: 49, bottom: 18, left: 8, right: 8 },
     head: [headers],
     body,
     theme: "grid",
+    showHead: "everyPage",
+    rowPageBreak: "avoid",
+    columnStyles: reportColumnStyles[type] || {},
     styles: {
-      fontSize: headers.length > 9 ? 6.8 : 8,
-      cellPadding: 2.2,
+      fontSize: headers.length > 9 ? 6.2 : 7.5,
+      cellPadding: 1.8,
+      minCellHeight: 8,
       overflow: "linebreak",
       valign: "middle",
       lineColor: [226, 232, 240],
-      lineWidth: 0.15,
+      lineWidth: 0.12,
       textColor: [30, 41, 59]
     },
     headStyles: {
       fillColor: [15, 23, 42],
       textColor: [248, 250, 252],
       fontStyle: "bold",
+      fontSize: headers.length > 9 ? 6.3 : 7.8,
       halign: "left"
     },
     alternateRowStyles: { fillColor: [248, 250, 252] }
