@@ -5,7 +5,6 @@ import { getChainageFrom } from "./chainage";
 const reportColumns = {
   work: [
     { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
-    { header: "Plaza", keys: ["Plaza", "plaza"] },
     { header: "Work Type", keys: ["Work Type", "workType", "title"] },
     { header: "Description", keys: ["Description", "description", "workDescription"] },
     { header: "Location", keys: ["Location", "location"] },
@@ -130,21 +129,47 @@ const formatGeneratedDate = (value) =>
   });
 
 const loadImageAsDataUrl = async (source) => {
-  if (!source || String(source).startsWith("data:")) return source || "";
+  if (!source) return "";
+  if (String(source).startsWith("data:")) return rasterizeImageDataUrl(source);
   try {
     const response = await fetch(source);
     if (!response.ok) return "";
     const blob = await response.blob();
-    return await new Promise((resolve, reject) => {
+    const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
+    return await rasterizeImageDataUrl(dataUrl);
   } catch (_error) {
     return "";
   }
 };
+
+const rasterizeImageDataUrl = (dataUrl) =>
+  new Promise((resolve) => {
+    if (!dataUrl) {
+      resolve("");
+      return;
+    }
+
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth || image.width || 512;
+        canvas.height = image.naturalHeight || image.height || 512;
+        const context = canvas.getContext("2d");
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/png"));
+      } catch (_error) {
+        resolve(dataUrl);
+      }
+    };
+    image.onerror = () => resolve(dataUrl);
+    image.src = dataUrl;
+  });
 
 const addHeader = (doc, { companyName, reportTitle, generatedBy, generatedDateText, logoData }) => {
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -192,18 +217,17 @@ const addHeader = (doc, { companyName, reportTitle, generatedBy, generatedDateTe
 
 const reportColumnStyles = {
   work: {
-    0: { cellWidth: 17 },
-    1: { cellWidth: 10 },
-    2: { cellWidth: 16 },
-    3: { cellWidth: 92 },
+    0: { cellWidth: 18 },
+    1: { cellWidth: 18 },
+    2: { cellWidth: 102 },
+    3: { cellWidth: 20 },
     4: { cellWidth: 18 },
-    5: { cellWidth: 17 },
-    6: { cellWidth: 17 },
-    7: { cellWidth: 12 },
-    8: { cellWidth: 15 },
-    9: { cellWidth: 16 },
-    10: { cellWidth: 16 },
-    11: { cellWidth: 19 }
+    5: { cellWidth: 18 },
+    6: { cellWidth: 12 },
+    7: { cellWidth: 16 },
+    8: { cellWidth: 17 },
+    9: { cellWidth: 17 },
+    10: { cellWidth: 20 }
   },
   approved: {
     0: { cellWidth: 24 },

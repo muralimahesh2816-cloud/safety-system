@@ -18,7 +18,7 @@ import SectionHeader from "../components/common/SectionHeader";
 import { reportService, trainingService } from "../api/services";
 import { closeLoadingPopup, showLoadingPopup, showSuccessPopup } from "../utils/alerts";
 import { exportReportPdf, normalizeReportRowsByType } from "../utils/pdfExport";
-import companyLogo from "../assets/topbarlogo.png";
+import companyLogo from "../assets/vertis-logo.svg";
 
 const periods = ["daily", "weekly", "monthly", "yearly"];
 const reportTypes = [

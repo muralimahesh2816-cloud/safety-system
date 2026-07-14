@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import companyLogoUrl from "../assets/topbarlogo.png";
+import companyLogoUrl from "../assets/vertis-logo.svg";
 import { getMediaUrl } from "./media";
 import { formatChainageRange, getChainageFrom } from "./chainage";
 
@@ -43,18 +43,43 @@ const formatCorrectiveActions = (actions = []) => {
     .join("\n");
 };
 
+const rasterizeImageDataUrl = (dataUrl) =>
+  new Promise((resolve) => {
+    if (!dataUrl) {
+      resolve("");
+      return;
+    }
+
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth || image.width || 512;
+        canvas.height = image.naturalHeight || image.height || 512;
+        const context = canvas.getContext("2d");
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/png"));
+      } catch (_error) {
+        resolve(dataUrl);
+      }
+    };
+    image.onerror = () => resolve(dataUrl);
+    image.src = dataUrl;
+  });
+
 const toDataUrl = async (url) => {
   if (!url) return "";
-  if (url.startsWith("data:")) return url;
+  if (url.startsWith("data:")) return rasterizeImageDataUrl(url);
   const response = await fetch(url, { mode: "cors" });
   if (!response.ok) throw new Error(`Unable to load image (${response.status})`);
   const blob = await response.blob();
-  return new Promise((resolve, reject) => {
+  const dataUrl = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+  return rasterizeImageDataUrl(dataUrl);
 };
 
 const loadLogo = async () => {
