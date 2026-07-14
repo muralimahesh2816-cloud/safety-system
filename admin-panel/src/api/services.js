@@ -745,13 +745,25 @@ export const workService = {
   },
   create: async (payload) => {
     const formData = new FormData();
+    const chainageFrom = String(
+      payload.chainageFrom || payload.chainage || payload.chainageNo || ""
+    ).trim();
+    const chainageTo = String(
+      payload.chainageTo || payload.chainageFrom || payload.chainage || payload.chainageNo || ""
+    ).trim();
+
     Object.entries(payload).forEach(([key, value]) => {
       if (key === "beforeImages") return;
       if (value !== undefined && value !== null) {
         formData.append(key, value);
       }
     });
+    formData.set("chainageFrom", chainageFrom);
+    formData.set("chainageTo", chainageTo);
+    formData.set("chainage", chainageFrom);
+    formData.set("chainageNo", chainageFrom);
     formData.set("description", String(payload.description || "").trim());
+    formData.set("workersCount", String(Number(payload.workersCount || 0)));
     (payload.beforeImages || []).forEach((file) => formData.append("beforeImages", file));
     const res = await client.post("/work-approvals", formData);
     return { success: true, work: mapWorkRecord(res.data.work) };

@@ -35,6 +35,41 @@ const legacyWorkTypes = [
 
 const statusList = ["Pending", "Approved", "Rejected", "Completed"];
 
+const getApiErrorMessage = (error, fallback = "Request failed") => {
+  const data = error?.response?.data;
+  const fieldErrors =
+    data?.details?.fieldErrors ||
+    data?.details ||
+    data?.errors?.fieldErrors ||
+    data?.errors ||
+    {};
+  const flattenedErrors = Object.values(fieldErrors)
+    .flat()
+    .filter(Boolean)
+    .join(" ");
+
+  return flattenedErrors || data?.message || error?.message || fallback;
+};
+
+const getWorkSubmitValidationMessage = ({ form, chainageValidation, beforeImages }) => {
+  const missing = [];
+
+  if (!form.workType) missing.push("Work Type");
+  if (!form.location) missing.push("Location");
+  if (!form.workersCount) missing.push("Workers Count");
+  if (!form.description.trim()) missing.push("Work Description");
+  if (!beforeImages.length) missing.push("Before Image");
+
+  const chainageMessages = Object.values(chainageValidation.errors).filter(Boolean);
+  if (chainageMessages.length) {
+    missing.push(...chainageMessages);
+  }
+
+  return missing.length
+    ? `Please complete: ${missing.join(", ")}.`
+    : "Please fill all required Work Approval fields.";
+};
+
 const initialForm = {
   title: "",
   workType: "",
@@ -159,8 +194,13 @@ const WorkApprovalsPage = ({ user }) => {
       !form.description.trim() ||
       beforeImages.length === 0
     ) {
-      setError("Fill all required fields from legacy workflow");
-      showValidationPopup("Please fill all required Work Approval fields.");
+      const validationMessage = getWorkSubmitValidationMessage({
+        form,
+        chainageValidation,
+        beforeImages
+      });
+      setError(validationMessage);
+      showValidationPopup(validationMessage);
       return;
     }
 
@@ -169,6 +209,7 @@ const WorkApprovalsPage = ({ user }) => {
     setSubmitting(true);
     await showLoadingPopup("Uploading Please Wait...", "Submitting work approval...");
 
+    let uploadErrorMessage = "";
     try {
       await workService.create({
         ...form,
@@ -187,11 +228,16 @@ const WorkApprovalsPage = ({ user }) => {
       await showSuccessPopup("Work Approval Submitted Successfully");
       fetchAll();
     } catch (submitError) {
-      setError(submitError?.response?.data?.message || "Failed to submit work");
+      uploadErrorMessage = getApiErrorMessage(submitError, "Failed to submit work approval.");
+      setError(uploadErrorMessage);
     } finally {
       submitLockRef.current = false;
       setSubmitting(false);
-      closeLoadingPopup();
+      await closeLoadingPopup();
+    }
+
+    if (uploadErrorMessage) {
+      await showValidationPopup(uploadErrorMessage);
     }
   };
 

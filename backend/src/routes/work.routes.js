@@ -104,7 +104,11 @@ router.post(
     { name: "beforeImage", maxCount: 1 }
   ]),
   asyncHandler(async (req, res) => {
-    const parsed = createWorkSchema.safeParse(req.body);
+    const normalizedBody = {
+      ...req.body,
+      ...normalizeChainagePayload(req.body)
+    };
+    const parsed = createWorkSchema.safeParse(normalizedBody);
     if (!parsed.success) {
       throw new ApiError(400, "Validation failed", parsed.error.flatten());
     }
