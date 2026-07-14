@@ -1,6 +1,19 @@
 const { z } = require("zod");
+const { validateChainageRange } = require("../utils/chainage");
 
-const createWorkSchema = z.object({
+const withChainageValidation = (schema) =>
+  schema.superRefine((value, ctx) => {
+    const validation = validateChainageRange(value);
+    if (!validation.valid) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [validation.field],
+        message: validation.message
+      });
+    }
+  });
+
+const createWorkSchema = withChainageValidation(z.object({
   title: z.string().optional().default(""),
   workType: z.string().min(2),
   description: z.string().trim().max(1000).optional().default(""),
@@ -9,14 +22,16 @@ const createWorkSchema = z.object({
   location: z.string().min(2),
   chainage: z.string().optional().default(""),
   chainageNo: z.string().optional().default(""),
+  chainageFrom: z.string().trim().optional().default(""),
+  chainageTo: z.string().trim().optional().default(""),
   workersCount: z.coerce.number().min(0).optional().default(0),
   priority: z.enum(["Low", "Medium", "High", "Critical"]).optional().default("Medium"),
   assignedTo: z.string().optional(),
   startDate: z.string().optional(),
   dueDate: z.string().optional()
-});
+}));
 
-const updateWorkSchema = z.object({
+const updateWorkSchema = withChainageValidation(z.object({
   title: z.string().trim().max(160).optional().default(""),
   workType: z.string().trim().min(2).optional(),
   description: z.string().trim().max(1000).optional().default(""),
@@ -25,11 +40,13 @@ const updateWorkSchema = z.object({
   location: z.string().trim().min(2).optional(),
   chainage: z.string().trim().optional().default(""),
   chainageNo: z.string().trim().optional().default(""),
+  chainageFrom: z.string().trim().optional().default(""),
+  chainageTo: z.string().trim().optional().default(""),
   workersCount: z.coerce.number().min(0).optional(),
   priority: z.enum(["Low", "Medium", "High", "Critical"]).optional().default("Medium"),
   startDate: z.string().optional(),
   dueDate: z.string().optional()
-});
+}));
 
 const workflowActionSchema = z.object({
   level: z.coerce.number().min(1),

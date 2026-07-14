@@ -3,5 +3,5 @@ import App from "./App";
 
 test("renders login shell", async () => {
   render(<App />);
-  expect(await screen.findByText(/sign in to continue/i)).toBeInTheDocument();
+  expect(await screen.findByText(/welcome back/i)).toBeInTheDocument();
 });

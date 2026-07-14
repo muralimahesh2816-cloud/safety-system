@@ -4,6 +4,7 @@ import { CalendarDays, Download, Image as ImageIcon, MapPin, Maximize2, UsersRou
 import { formatDateTime } from "../../utils/format";
 import { getMediaUrl } from "../../utils/media";
 import { exportWorkApprovalDetailsPdf } from "../../utils/detailPdfExport";
+import { formatChainageRange, getChainageFrom, getChainageTo } from "../../utils/chainage";
 
 const valueOrDash = (value) => (value === undefined || value === null || value === "" ? "-" : value);
 
@@ -148,7 +149,9 @@ const WorkApprovalDetailsModal = ({ open, work, onClose, onOpenMedia }) => {
                   </div>
                   <InfoRow label="Work Type" value={work.workType || work.title} icon={Wrench} />
                   <InfoRow label="Location" value={work.location || work.plaza} icon={MapPin} />
-                  <InfoRow label="Chainage" value={work.chainage || work.chainageNo} />
+                  <InfoRow label="Chainage From" value={getChainageFrom(work)} />
+                  <InfoRow label="Chainage To" value={getChainageTo(work)} />
+                  <InfoRow label="Chainage Range" value={formatChainageRange(work)} />
                   <InfoRow label="Workers Count" value={work.workersCount} icon={UsersRound} />
                   <InfoRow label="Reported By" value={reportedBy} icon={UserRound} />
                   <InfoRow label="Report Date" value={formatDateTime(work.reportDate || work.startDate || work.createdAt)} icon={CalendarDays} />

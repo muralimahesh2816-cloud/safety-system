@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import companyLogoUrl from "../assets/topbarlogo.png";
 import { getMediaUrl } from "./media";
+import { formatChainageRange, getChainageFrom, getChainageTo } from "./chainage";
 
 const COMPANY_NAME = "Udupi Tollway Pvt Ltd";
 const SYSTEM_NAME = "Safety HSE Enterprise System";
@@ -258,7 +259,9 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
     detailRows: [
       ["Work Type", work.workType || work.title],
       ["Location", work.location || work.plaza],
-      ["Chainage", work.chainage || work.chainageNo],
+      ["Chainage From", getChainageFrom(work)],
+      ["Chainage To", getChainageTo(work)],
+      ["Chainage Range", formatChainageRange(work)],
       ["Workers Count", work.workersCount],
       ["Reported By", work.reportedBy || work.createdBy || work.submittedBy],
       ["Report Date", formatDate(work.reportDate || work.startDate || work.createdAt)],

@@ -53,7 +53,7 @@ npm start
 - User management with role and session governance
 - Work approval workflow with timeline and digital signatures
 - Hazard risk matrix and closure workflow with evidence
-- Hotstar-style training portal and progress tracking
+- Training portal and progress tracking
 - Reporting and export (CSV / Excel / PDF client-side)
 - Company profile, branding, and security settings
 - Notification center with unread counts and browser alerts

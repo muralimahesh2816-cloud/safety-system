@@ -272,7 +272,7 @@ const TrainingPage = ({ user }) => {
     <div className="safety-bg-overlay safety-bg-training space-y-5">
       <SectionHeader
         title="Training Streaming Portal"
-        subtitle="Legacy training layout and workflows restored with enterprise Hotstar-style visual experience"
+        subtitle="Legacy training layout and workflows restored with enterprise visual experience"
       />
 
       <GlassCard className="p-5">

@@ -7,6 +7,7 @@ const Hazard = require("../models/Hazard");
 const User = require("../models/User");
 const Training = require("../models/Training");
 const { filterByPeriod, buildCsv } = require("../utils/reporting");
+const { getChainageFrom, getChainageTo } = require("../utils/chainage");
 
 const router = express.Router();
 
@@ -60,8 +61,10 @@ const toLegacyWorkRecord = (record) => ({
   workType: record.workType || record.title || "",
   description: record.description || "",
   location: record.location || "",
-  chainage: record.chainage || record.chainageNo || "",
-  chainageNo: record.chainageNo || record.chainage || "",
+  chainageFrom: getChainageFrom(record),
+  chainageTo: getChainageTo(record),
+  chainage: record.chainage || getChainageFrom(record),
+  chainageNo: record.chainageNo || record.chainage || getChainageFrom(record),
   workersCount: record.workersCount || 0,
   priority: record.priority || "Medium",
   status: record.status || "Pending",
@@ -113,7 +116,7 @@ router.get(
     const records = await WorkApproval.find()
       .populate("createdBy", "name")
       .select(
-        "title plaza workType description location chainage chainageNo workersCount priority status createdBy approvedBy beforeImages afterImages beforeImage afterImage createdAt updatedAt"
+        "title plaza workType description location chainage chainageNo chainageFrom chainageTo workersCount priority status createdBy approvedBy beforeImages afterImages beforeImage afterImage createdAt updatedAt"
       )
       .sort({ createdAt: -1 });
     res.json(records.map(toLegacyWorkRecord));

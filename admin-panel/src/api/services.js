@@ -2,6 +2,7 @@ import axios from "axios";
 import { client } from "./client";
 import { API_BASE_URL } from "../config/appConfig";
 import { normalizePermissions, toPermissionPayload } from "../utils/permissions";
+import { getChainageFrom, getChainageTo } from "../utils/chainage";
 
 const LOCAL_BACKEND_ROOT = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
 const LEGACY_BASE_URL = process.env.REACT_APP_LEGACY_API_URL || LOCAL_BACKEND_ROOT;
@@ -320,6 +321,9 @@ const mapWorkRecord = (item = {}) => {
       ? [{ url: toAbsoluteLegacyUpload(item.afterImage), legacyFilename: item.afterImage }]
       : [];
 
+  const chainageFrom = getChainageFrom(item);
+  const chainageTo = getChainageTo(item);
+
   return {
     ...item,
     title: item.title || item.workType || "Work Approval",
@@ -327,8 +331,10 @@ const mapWorkRecord = (item = {}) => {
     description: item.description || item.workDescription || "",
     category: item.category || "General",
     priority: item.priority || "Medium",
-    chainage: item.chainage || item.chainageNo || "",
-    chainageNo: item.chainageNo || item.chainage || "",
+    chainageFrom,
+    chainageTo,
+    chainage: item.chainage || chainageFrom,
+    chainageNo: item.chainageNo || item.chainage || chainageFrom,
     status: item.status || "Pending",
     beforeImages,
     afterImages,
@@ -448,7 +454,8 @@ const normalizeReportRows = (rows = [], type = "work") =>
       "Work Type": item.workType || item.title || "-",
       Description: item.description || "-",
       Location: item.location || "-",
-      Chainage: item.chainage || item.chainageNo || "-",
+      "Chainage From": getChainageFrom(item) || "-",
+      "Chainage To": getChainageTo(item) || "-",
       "Workers Count": item.workersCount || "-",
       Priority: item.priority || "-",
       Status: item.status || "Pending",
@@ -532,6 +539,8 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
       Date: item.date || item.createdAt || "-",
       "Work Type": item.workType || "-",
       Location: item.location || "-",
+      "Chainage From": getChainageFrom(item) || "-",
+      "Chainage To": getChainageTo(item) || "-",
       "Workers Count": item.workersCount || "-",
       "Approved By": item.approvedBy || "Admin",
       Status: item.status || "Approved"

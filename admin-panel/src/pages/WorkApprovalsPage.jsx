@@ -16,6 +16,13 @@ import {
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
 import { exportWorkApprovalDetailsPdf } from "../utils/detailPdfExport";
+import {
+  formatChainageRange,
+  getChainageFrom,
+  getChainageTo,
+  matchesChainageSearch,
+  validateChainageRange
+} from "../utils/chainage";
 
 const legacyWorkTypes = [
   "Road Work",
@@ -33,7 +40,8 @@ const initialForm = {
   workType: "",
   category: "General",
   location: "",
-  chainage: "",
+  chainageFrom: "",
+  chainageTo: "",
   workersCount: "",
   description: "",
   priority: "Medium",
@@ -103,8 +111,11 @@ const WorkApprovalsPage = ({ user }) => {
   const [listFilters, setListFilters] = useState({
     date: "",
     reportedBy: "",
-    workType: ""
+    workType: "",
+    chainage: ""
   });
+  const [chainageErrors, setChainageErrors] = useState({ chainageFrom: "", chainageTo: "" });
+  const [editChainageErrors, setEditChainageErrors] = useState({ chainageFrom: "", chainageTo: "" });
   const [submitting, setSubmitting] = useState(false);
   const [busyWorkId, setBusyWorkId] = useState("");
   const [editingWork, setEditingWork] = useState(null);
@@ -137,11 +148,13 @@ const WorkApprovalsPage = ({ user }) => {
   const submitWork = async (event) => {
     event.preventDefault();
     setError("");
+    const chainageValidation = validateChainageRange(form);
+    setChainageErrors(chainageValidation.errors);
 
     if (
       !form.workType ||
       !form.location ||
-      !form.chainage ||
+      !chainageValidation.isValid ||
       !form.workersCount ||
       !form.description.trim() ||
       beforeImages.length === 0
@@ -159,11 +172,15 @@ const WorkApprovalsPage = ({ user }) => {
     try {
       await workService.create({
         ...form,
+        ...chainageValidation.values,
+        chainage: chainageValidation.values.chainageFrom,
+        chainageNo: chainageValidation.values.chainageFrom,
         title: form.title || `${form.workType} - ${form.location}`,
         workersCount: Number(form.workersCount),
         beforeImages
       });
       setForm(initialForm);
+      setChainageErrors({ chainageFrom: "", chainageTo: "" });
       setBeforeImages([]);
       if (beforePreview?.startsWith("blob:")) URL.revokeObjectURL(beforePreview);
       setBeforePreview("");
@@ -284,12 +301,14 @@ const WorkApprovalsPage = ({ user }) => {
 
   const openEditWork = (work) => {
     setEditingWork(work);
+    setEditChainageErrors({ chainageFrom: "", chainageTo: "" });
     setEditForm({
       title: work.title || "",
       workType: work.workType || "",
       category: work.category || "General",
       location: work.location || "",
-      chainage: work.chainage || work.chainageNo || "",
+      chainageFrom: getChainageFrom(work),
+      chainageTo: getChainageTo(work),
       workersCount: work.workersCount ? String(work.workersCount) : "",
       description: work.description || work.workDescription || "",
       priority: work.priority || "Medium",
@@ -302,6 +321,8 @@ const WorkApprovalsPage = ({ user }) => {
   const saveWorkEdit = async (event) => {
     event.preventDefault();
     const id = getWorkRecordId(editingWork);
+    const chainageValidation = validateChainageRange(editForm);
+    setEditChainageErrors(chainageValidation.errors);
 
     if (!id) {
       showValidationPopup("Unable to edit this work record because its id is missing.");
@@ -310,7 +331,7 @@ const WorkApprovalsPage = ({ user }) => {
     if (
       !editForm.workType ||
       !editForm.location ||
-      !editForm.chainage ||
+      !chainageValidation.isValid ||
       !editForm.workersCount ||
       !editForm.description.trim()
     ) {
@@ -328,8 +349,9 @@ const WorkApprovalsPage = ({ user }) => {
         workType: editForm.workType,
         category: editForm.category,
         location: editForm.location,
-        chainage: editForm.chainage,
-        chainageNo: editForm.chainage,
+        ...chainageValidation.values,
+        chainage: chainageValidation.values.chainageFrom,
+        chainageNo: chainageValidation.values.chainageFrom,
         workersCount: Number(editForm.workersCount),
         description: editForm.description.trim(),
         priority: editForm.priority,
@@ -380,7 +402,8 @@ const WorkApprovalsPage = ({ user }) => {
       const reporterMatch =
         !reporterNeedle || getWorkReporterName(item).toLowerCase().includes(reporterNeedle);
       const workTypeMatch = !listFilters.workType || (item.workType || item.title || "") === listFilters.workType;
-      return statusMatch && dateMatch && reporterMatch && workTypeMatch;
+      const chainageMatch = matchesChainageSearch(item, listFilters.chainage);
+      return statusMatch && dateMatch && reporterMatch && workTypeMatch && chainageMatch;
     });
   }, [records, statusFilter, listFilters]);
 
@@ -437,13 +460,44 @@ const WorkApprovalsPage = ({ user }) => {
               className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
               required
             />
-            <input
-              placeholder="Chainage No"
-              value={form.chainage}
-              onChange={(event) => setForm((prev) => ({ ...prev, chainage: event.target.value }))}
-              className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
-              required
-            />
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label>
+                <span className="mb-1 block text-xs font-semibold text-slate-300">Chainage From</span>
+                <input
+                  placeholder="KM 326+500"
+                  value={form.chainageFrom}
+                  onChange={(event) => {
+                    setForm((prev) => ({ ...prev, chainageFrom: event.target.value }));
+                    if (chainageErrors.chainageFrom) {
+                      setChainageErrors((prev) => ({ ...prev, chainageFrom: "" }));
+                    }
+                  }}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                />
+                {chainageErrors.chainageFrom ? (
+                  <span className="mt-1 block text-[11px] text-rose-300">{chainageErrors.chainageFrom}</span>
+                ) : null}
+              </label>
+              <label>
+                <span className="mb-1 block text-xs font-semibold text-slate-300">Chainage To</span>
+                <input
+                  placeholder="KM 327+200"
+                  value={form.chainageTo}
+                  onChange={(event) => {
+                    setForm((prev) => ({ ...prev, chainageTo: event.target.value }));
+                    if (chainageErrors.chainageTo) {
+                      setChainageErrors((prev) => ({ ...prev, chainageTo: "" }));
+                    }
+                  }}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                />
+                {chainageErrors.chainageTo ? (
+                  <span className="mt-1 block text-[11px] text-rose-300">{chainageErrors.chainageTo}</span>
+                ) : null}
+              </label>
+            </div>
             <input
               type="number"
               min="1"
@@ -528,14 +582,14 @@ const WorkApprovalsPage = ({ user }) => {
               type="button"
               onClick={() => {
                 setStatusFilter("All");
-                setListFilters({ date: "", reportedBy: "", workType: "" });
+                setListFilters({ date: "", reportedBy: "", workType: "", chainage: "" });
               }}
               className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100"
             >
               Clear Filters
             </button>
           </div>
-          <div className="mb-4 grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-slate-950/35 p-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mb-4 grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-slate-950/35 p-3 md:grid-cols-2 xl:grid-cols-5">
             <label>
               <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                 Status
@@ -592,6 +646,17 @@ const WorkApprovalsPage = ({ user }) => {
                   </option>
                 ))}
               </select>
+            </label>
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Chainage
+              </span>
+              <input
+                value={listFilters.chainage}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, chainage: event.target.value }))}
+                placeholder="KM 326+500"
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white placeholder:text-slate-500"
+              />
             </label>
           </div>
           {loading ? (
@@ -666,7 +731,9 @@ const WorkApprovalsPage = ({ user }) => {
                         </button>
                         <div className="min-w-0">
                           <p className="truncate text-base font-semibold text-white">{work.workType || work.title || "Work Approval"}</p>
-                          <p className="mt-1 text-xs text-slate-300">{work.location || "-"} | {work.chainage || "-"}</p>
+                          <p className="mt-1 text-xs text-slate-300">
+                            {work.location || "-"} | {formatChainageRange(work, true)}
+                          </p>
                           <p className="mt-1 text-xs text-slate-300">Reported By: {work.reportedBy || work.createdBy?.name || work.submittedBy?.name || "-"}</p>
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
@@ -957,13 +1024,38 @@ const WorkApprovalsPage = ({ user }) => {
                 />
               </label>
               <label>
-                <span className="mb-1 block text-xs text-slate-300">Chainage</span>
+                <span className="mb-1 block text-xs text-slate-300">Chainage From</span>
                 <input
-                  value={editForm.chainage}
-                  onChange={(event) => setEditForm((prev) => ({ ...prev, chainage: event.target.value }))}
+                  value={editForm.chainageFrom}
+                  onChange={(event) => {
+                    setEditForm((prev) => ({ ...prev, chainageFrom: event.target.value }));
+                    if (editChainageErrors.chainageFrom) {
+                      setEditChainageErrors((prev) => ({ ...prev, chainageFrom: "" }));
+                    }
+                  }}
                   className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
                   required
                 />
+                {editChainageErrors.chainageFrom ? (
+                  <span className="mt-1 block text-[11px] text-rose-300">{editChainageErrors.chainageFrom}</span>
+                ) : null}
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Chainage To</span>
+                <input
+                  value={editForm.chainageTo}
+                  onChange={(event) => {
+                    setEditForm((prev) => ({ ...prev, chainageTo: event.target.value }));
+                    if (editChainageErrors.chainageTo) {
+                      setEditChainageErrors((prev) => ({ ...prev, chainageTo: "" }));
+                    }
+                  }}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                />
+                {editChainageErrors.chainageTo ? (
+                  <span className="mt-1 block text-[11px] text-rose-300">{editChainageErrors.chainageTo}</span>
+                ) : null}
               </label>
               <label>
                 <span className="mb-1 block text-xs text-slate-300">Workers Count</span>

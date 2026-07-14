@@ -19,6 +19,11 @@ const {
 } = require("../validators/work.validators");
 const { uploadManyAssets } = require("../utils/uploads");
 const { createNotification } = require("../services/notifications.service");
+const {
+  getChainageFrom,
+  getChainageTo,
+  normalizeChainagePayload
+} = require("../utils/chainage");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -28,14 +33,53 @@ const toLegacyWorkRecord = (record) => {
   const plain = typeof record.toObject === "function" ? record.toObject() : record;
   const beforeImage = plain.beforeImages?.[0]?.url || plain.beforeImage || "";
   const afterImage = plain.afterImages?.[0]?.url || plain.afterImage || "";
+  const chainageFrom = getChainageFrom(plain);
+  const chainageTo = getChainageTo(plain);
   return {
     ...plain,
     description: plain.description || plain.workDescription || "",
-    chainageNo: plain.chainageNo || plain.chainage || "",
+    chainageFrom,
+    chainageTo,
+    chainage: plain.chainage || chainageFrom,
+    chainageNo: plain.chainageNo || plain.chainage || chainageFrom,
     beforeImage,
     afterImage,
     approvedBy: plain.approvedBy || ""
   };
+};
+
+const buildWorkQuery = (query = {}) => {
+  const filters = {};
+  const search = String(query.search || query.q || "").trim();
+
+  if (query.status) filters.status = query.status;
+  if (query.workType) filters.workType = query.workType;
+  if (query.plaza) filters.plaza = query.plaza;
+  if (query.location) filters.location = new RegExp(query.location, "i");
+
+  if (search) {
+    const regex = new RegExp(search, "i");
+    filters.$or = [
+      { chainageFrom: regex },
+      { chainageTo: regex },
+      { chainageNo: regex },
+      { chainage: regex },
+      { location: regex },
+      { workType: regex },
+      { title: regex }
+    ];
+  }
+
+  if (query.date) {
+    const start = new Date(query.date);
+    if (!Number.isNaN(start.getTime())) {
+      const end = new Date(start);
+      end.setHours(23, 59, 59, 999);
+      filters.createdAt = { $gte: start, $lte: end };
+    }
+  }
+
+  return filters;
 };
 
 router.get(
@@ -43,7 +87,7 @@ router.get(
   authMiddleware,
   authorizePermission("work", "view"),
   asyncHandler(async (req, res) => {
-    const records = await WorkApproval.find()
+    const records = await WorkApproval.find(buildWorkQuery(req.query))
       .populate("createdBy", "name role")
       .populate("assignedTo", "name role")
       .sort({ createdAt: -1 });
@@ -76,12 +120,12 @@ router.post(
     );
 
     const payload = parsed.data;
+    const normalizedChainage = normalizeChainagePayload(payload);
     const work = await WorkApproval.create({
       ...payload,
+      ...normalizedChainage,
       title: payload.title || `${payload.workType} - ${payload.location}`,
       description: payload.description || "",
-      chainage: payload.chainage || payload.chainageNo || "",
-      chainageNo: payload.chainageNo || payload.chainage || "",
       beforeImages,
       beforeImage: beforeImages[0]?.url || "",
       createdBy: req.user.id,
@@ -150,6 +194,8 @@ router.patch(
       "location",
       "chainage",
       "chainageNo",
+      "chainageFrom",
+      "chainageTo",
       "workersCount",
       "priority"
     ];
@@ -167,8 +213,11 @@ router.patch(
       work.dueDate = parseDate(req.body.dueDate);
     }
 
-    work.chainage = work.chainage || work.chainageNo || "";
-    work.chainageNo = work.chainageNo || work.chainage || "";
+    const normalizedChainage = normalizeChainagePayload(req.body);
+    work.chainageFrom = normalizedChainage.chainageFrom;
+    work.chainageTo = normalizedChainage.chainageTo;
+    work.chainage = normalizedChainage.chainage;
+    work.chainageNo = normalizedChainage.chainageNo;
     work.title = work.title || `${work.workType} - ${work.location}`;
     work.timeline.push({
       label: "Details Edited",

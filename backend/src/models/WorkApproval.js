@@ -63,6 +63,8 @@ const workApprovalSchema = new mongoose.Schema(
     location: { type: String, required: true },
     chainage: { type: String, default: "" },
     chainageNo: { type: String, default: "" },
+    chainageFrom: { type: String, required: true, trim: true },
+    chainageTo: { type: String, required: true, trim: true },
     workersCount: { type: Number, default: 0 },
     priority: {
       type: String,
@@ -99,6 +101,16 @@ const workApprovalSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+workApprovalSchema.pre("validate", function normalizeChainageRange(next) {
+  const legacyChainage = this.chainageNo || this.chainage || "";
+  if (!this.chainageFrom) this.chainageFrom = legacyChainage;
+  if (!this.chainageTo) this.chainageTo = this.chainageFrom || legacyChainage;
+  if (!this.chainage) this.chainage = this.chainageFrom;
+  if (!this.chainageNo) this.chainageNo = this.chainageFrom;
+  next();
+});
+
 workApprovalSchema.index({ status: 1, priority: 1, createdAt: -1 });
+workApprovalSchema.index({ chainageFrom: 1, chainageTo: 1, chainageNo: 1 });
 
 module.exports = mongoose.model("WorkApproval", workApprovalSchema);

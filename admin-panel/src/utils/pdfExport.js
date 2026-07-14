@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { getChainageFrom, getChainageTo } from "./chainage";
 
 const reportColumns = {
   work: [
@@ -8,7 +9,8 @@ const reportColumns = {
     { header: "Work Type", keys: ["Work Type", "workType", "title"] },
     { header: "Description", keys: ["Description", "description", "workDescription"] },
     { header: "Location", keys: ["Location", "location"] },
-    { header: "Chainage", keys: ["Chainage", "chainage", "chainageNo"] },
+    { header: "Chainage From", keys: ["Chainage From", "chainageFrom", "chainage", "chainageNo"], type: "chainageFrom" },
+    { header: "Chainage To", keys: ["Chainage To", "chainageTo", "chainageFrom", "chainage", "chainageNo"], type: "chainageTo" },
     { header: "Workers", keys: ["Workers", "Workers Count", "workersCount"] },
     { header: "Priority", keys: ["Priority", "priority"] },
     { header: "Status", keys: ["Status", "status"] },
@@ -56,6 +58,8 @@ const reportColumns = {
     { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
     { header: "Work Type", keys: ["Work Type", "workType", "title"] },
     { header: "Location", keys: ["Location", "location"] },
+    { header: "Chainage From", keys: ["Chainage From", "chainageFrom", "chainage", "chainageNo"], type: "chainageFrom" },
+    { header: "Chainage To", keys: ["Chainage To", "chainageTo", "chainageFrom", "chainage", "chainageNo"], type: "chainageTo" },
     { header: "Workers", keys: ["Workers", "Workers Count", "workersCount"] },
     { header: "Approved By", keys: ["Approved By", "approvedBy"] },
     { header: "Status", keys: ["Status", "status"] }
@@ -89,14 +93,20 @@ const formatDateValue = (value) => {
   });
 };
 
+const formatColumnValue = (row, column) => {
+  if (column.type === "chainageFrom") return safeValue(getChainageFrom(row));
+  if (column.type === "chainageTo") return safeValue(getChainageTo(row));
+  const value = pickValue(row, column.keys);
+  return column.type === "date" ? formatDateValue(value) : safeValue(value);
+};
+
 export const getReportColumns = (type = "work") => reportColumns[type] || reportColumns.work;
 
 export const normalizeReportRowsByType = (rows = [], type = "work") => {
   const columns = getReportColumns(type);
   return rows.map((row) =>
     columns.reduce((acc, column) => {
-      const value = pickValue(row, column.keys);
-      acc[column.header] = column.type === "date" ? formatDateValue(value) : safeValue(value);
+      acc[column.header] = formatColumnValue(row, column);
       return acc;
     }, {})
   );
