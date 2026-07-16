@@ -85,6 +85,7 @@ const normalizePagePermissions = (permissions = {}, role = ROLES.USER) => {
 const toActionPermissions = (permissions = {}, role = ROLES.USER) => {
   const resolvedRole = normalizeRole(role);
   const legacyDefaults = ROLE_DEFAULT_PERMISSIONS[resolvedRole] || ROLE_DEFAULT_PERMISSIONS[ROLES.USER] || {};
+  const actionKeys = ["view", "create", "update", "delete", "check", "recommend", "approve", "complete", "return"];
   const modules = {
     dashboard: "dashboard",
     work: "work",
@@ -98,12 +99,10 @@ const toActionPermissions = (permissions = {}, role = ROLES.USER) => {
 
   const resolved = Object.entries(modules).reduce((acc, [moduleName, pageKey]) => {
     const legacyEntry = legacyDefaults[moduleName] || {};
-    acc[moduleName] = {
-      view: Boolean(legacyEntry.view),
-      create: Boolean(legacyEntry.create),
-      update: Boolean(legacyEntry.update),
-      delete: Boolean(legacyEntry.delete)
-    };
+    acc[moduleName] = actionKeys.reduce((moduleAcc, action) => {
+      moduleAcc[action] = Boolean(legacyEntry[action]);
+      return moduleAcc;
+    }, {});
 
     const candidateKeys =
       pageKey === "hazard" ? ["hazard", "hazards"] : [pageKey];
@@ -129,12 +128,11 @@ const toActionPermissions = (permissions = {}, role = ROLES.USER) => {
         break;
       }
       if (raw && typeof raw === "object") {
-        acc[moduleName] = {
-          view: typeof raw.view === "boolean" ? raw.view : acc[moduleName].view,
-          create: typeof raw.create === "boolean" ? raw.create : acc[moduleName].create,
-          update: typeof raw.update === "boolean" ? raw.update : acc[moduleName].update,
-          delete: typeof raw.delete === "boolean" ? raw.delete : acc[moduleName].delete
-        };
+        actionKeys.forEach((action) => {
+          if (typeof raw[action] === "boolean") {
+            acc[moduleName][action] = raw[action];
+          }
+        });
         break;
       }
     }
@@ -143,12 +141,10 @@ const toActionPermissions = (permissions = {}, role = ROLES.USER) => {
 
   if (resolvedRole === ROLES.SUPER_ADMIN) {
     Object.keys(resolved).forEach((moduleName) => {
-      resolved[moduleName] = {
-        view: true,
-        create: true,
-        update: true,
-        delete: true
-      };
+      resolved[moduleName] = actionKeys.reduce((moduleAcc, action) => {
+        moduleAcc[action] = true;
+        return moduleAcc;
+      }, {});
     });
   }
 

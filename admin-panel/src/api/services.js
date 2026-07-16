@@ -386,12 +386,29 @@ const mapWorkRecord = (item = {}) => {
     createdByRole,
     reportedBy: createdByName,
     checkedBy: item.checkedBy || "",
+    checkedByRole: item.checkedByRole || "",
+    checkedDescription: item.checkedDescription || "",
+    checkedAt: item.checkedAt || "",
     recommendedBy: item.recommendedBy || "",
+    recommendedByRole: item.recommendedByRole || "",
+    recommendedDescription: item.recommendedDescription || "",
+    recommendedAt: item.recommendedAt || "",
     approvedBy: approvedByName,
     approvedByName,
     approvedByRole: item.approvedByRole || "",
+    approvalDescription: item.approvalDescription || "",
     approvedAt: item.approvedAt || item.approvalDate || "",
     approvalDate: item.approvalDate || item.approvedAt || "",
+    workflowStage: item.workflowStage || item.status || "Pending Check",
+    returnedBy: item.returnedBy || "",
+    returnedByRole: item.returnedByRole || "",
+    returnDescription: item.returnDescription || "",
+    returnStage: item.returnStage || "",
+    returnedAt: item.returnedAt || "",
+    completedBy: item.completedBy || "",
+    completedByRole: item.completedByRole || "",
+    completionDescription: item.completionDescription || "",
+    completedAt: item.completedAt || "",
     completionDate: item.completionDate || (item.status === "Completed" ? item.updatedAt : "")
   };
 };
@@ -507,10 +524,21 @@ const normalizeReportRows = (rows = [], type = "work") =>
       "Workers Count": item.workersCount || "-",
       "Created By": item.createdByName || item.reportedBy || item.createdBy?.name || "-",
       "Checked By": item.checkedBy || "-",
+      "Checked Date": item.checkedAt || "-",
+      "Checked Description": item.checkedDescription || "-",
       "Recommended By": item.recommendedBy || "-",
-      Status: item.status || "Pending",
+      "Recommended Date": item.recommendedAt || "-",
+      "Recommended Description": item.recommendedDescription || "-",
+      "Workflow Stage": item.workflowStage || item.status || "Pending Check",
+      Status: item.status || item.workflowStage || "Pending Check",
       "Approved By": item.approvedByName || item.approvedBy || "-",
       "Approval Date": item.approvedAt || item.approvalDate || "-",
+      "Approval Description": item.approvalDescription || "-",
+      "Returned By": item.returnedBy || "-",
+      "Returned Date": item.returnedAt || "-",
+      "Return Description": item.returnDescription || "-",
+      "Completed By": item.completedBy || "-",
+      "Completion Description": item.completionDescription || "-",
       "Completion Date": item.completionDate || "-",
       "Before Image": item.beforeImage || item.beforeImages || "",
       "After Image": item.afterImage || item.afterImages || "",
@@ -600,10 +628,19 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
       "Workers Count": item.workersCount || "-",
       "Created By": item.createdByName || item.reportedBy || item.createdBy?.name || "-",
       "Checked By": item.checkedBy || "-",
+      "Checked Date": item.checkedAt || "-",
+      "Checked Description": item.checkedDescription || "-",
       "Recommended By": item.recommendedBy || "-",
+      "Recommended Date": item.recommendedAt || "-",
+      "Recommended Description": item.recommendedDescription || "-",
       "Approved By": item.approvedByName || item.approvedBy || "Admin",
       "Approval Date": item.approvedAt || item.approvalDate || "-",
-      Status: item.status || "Approved",
+      "Approval Description": item.approvalDescription || "-",
+      "Workflow Stage": item.workflowStage || item.status || "Approved",
+      Status: item.status || item.workflowStage || "Approved",
+      "Completed By": item.completedBy || "-",
+      "Completion Description": item.completionDescription || "-",
+      "Completion Date": item.completionDate || "-",
       "Before Image": item.beforeImage || item.beforeImages || "",
       "After Image": item.afterImage || item.afterImages || "",
       "Before Video": item.beforeVideo || item.beforeVideos || "",
@@ -840,16 +877,35 @@ export const workService = {
     (await client.patch(`/work-approvals/${id}/workflow`, payload)).data,
   updateStatus: async (id, payload) =>
     (await client.patch(`/work-approvals/${id}/status`, payload)).data,
+  check: async (id, description) => {
+    const res = await client.post(`/work-approvals/${id}/check`, { description });
+    return { success: true, work: mapWorkRecord(res.data.work) };
+  },
+  recommend: async (id, description) => {
+    const res = await client.post(`/work-approvals/${id}/recommend`, { description });
+    return { success: true, work: mapWorkRecord(res.data.work) };
+  },
+  approve: async (id, description) => {
+    const res = await client.post(`/work-approvals/${id}/approve`, { description });
+    return { success: true, work: mapWorkRecord(res.data.work) };
+  },
+  returnForCorrection: async (id, description) => {
+    const res = await client.post(`/work-approvals/${id}/return`, { description });
+    return { success: true, work: mapWorkRecord(res.data.work) };
+  },
   addComment: async (id, payload) =>
     (await client.post(`/work-approvals/${id}/comments`, payload)).data,
   addSignature: async (id, payload) =>
     (await client.post(`/work-approvals/${id}/signatures`, payload)).data,
-  uploadAfterImages: async (id, files) => {
+  uploadAfterImages: async (id, files, description = "") => {
     const formData = new FormData();
+    formData.append("description", description);
+    formData.append("completionDescription", description);
     files.forEach((file) => {
       formData.append(isVideoUpload(file) ? "afterVideos" : "afterImages", file);
     });
-    return (await client.post(`/work-approvals/${id}/images/after`, formData)).data;
+    const res = await client.post(`/work-approvals/${id}/complete`, formData);
+    return { success: true, work: mapWorkRecord(res.data.work) };
   },
   remove: async (id) => {
     if (!id) {

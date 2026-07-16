@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2, Clock3, Eye, ImagePlus, Pencil, Trash2, UploadCloud, XCircle } from "lucide-react";
+import { Clock3, Eye, ImagePlus, Pencil, RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import GlassCard from "../components/common/GlassCard";
 import SectionHeader from "../components/common/SectionHeader";
@@ -27,6 +27,30 @@ import { checkedByUsers, recommendedByUsers, statusColors, workTypes } from "../
 
 const WORK_FORM_COLLAPSED_KEY = "workFormCollapsed";
 const LEGACY_WORK_FORM_COLLAPSED_KEY = "workApprovalFormCollapsed";
+const WORK_FILTERS_VISIBLE_KEY = "workFiltersVisible";
+const WORKFLOW_STAGES = [
+  "Pending Check",
+  "Pending Recommendation",
+  "Pending Approval",
+  "Approved",
+  "Completed",
+  "Returned for Correction"
+];
+const getWorkflowStage = (work = {}) => {
+  const status = work.workflowStage || work.status || "";
+  if (WORKFLOW_STAGES.includes(status)) return status;
+  if (status === "Pending" || status === "Under Review" || !status) return "Pending Check";
+  if (status === "Rejected") return "Returned for Correction";
+  return status;
+};
+const getRequiredAction = (work = {}) => ({
+  "Pending Check": "Awaiting Check",
+  "Pending Recommendation": "Awaiting Recommendation",
+  "Pending Approval": "Awaiting Final Approval",
+  Approved: "Awaiting Completion",
+  Completed: "Completed",
+  "Returned for Correction": "Returned for Correction"
+}[getWorkflowStage(work)] || "Awaiting Review");
 
 const getApiErrorMessage = (error, fallback = "Request failed") => {
   const data = error?.response?.data;
@@ -95,7 +119,6 @@ const initialForm = {
 
 const getWorkRecordId = (work = {}) => work._id || work.id || work.workId || "";
 const normalizeStatus = (status = "Pending") => String(status || "Pending").toLowerCase();
-const isCompletedStatus = (status) => normalizeStatus(status) === "completed";
 const toDateInputValue = (value) => {
   if (!value) return "";
   const date = new Date(value);
@@ -119,7 +142,7 @@ const formatElapsedDuration = (value) => {
   return `${years} year${years === 1 ? "" : "s"}`;
 };
 const getWorkStatusSinceText = (work = {}) => {
-  const status = work.status || "Pending";
+  const status = getWorkflowStage(work);
   const lowerStatus = normalizeStatus(status);
   const timeline = Array.isArray(work.timeline) ? work.timeline : [];
   const statusEvent = [...timeline]
@@ -132,12 +155,22 @@ const getWorkStatusSinceText = (work = {}) => {
       : statusEvent?.at || work.updatedAt || createdAt;
   return `${status} since ${formatElapsedDuration(changedAt)}`;
 };
+const getStageBadgeClass = (stage = "Pending Check") => ({
+  "Pending Check": "border-cyan-400/30 bg-cyan-500/10 text-cyan-100",
+  "Pending Recommendation": "border-violet-400/30 bg-violet-500/10 text-violet-100",
+  "Pending Approval": "border-amber-400/30 bg-amber-500/10 text-amber-100",
+  Approved: "border-sky-400/30 bg-sky-500/10 text-sky-100",
+  Completed: "border-emerald-400/30 bg-emerald-500/10 text-emerald-100",
+  "Returned for Correction": "border-rose-400/30 bg-rose-500/10 text-rose-100"
+}[stage] || statusColors.Pending.badge);
 const getWorkReporterName = (work = {}) =>
   work.createdByName || work.reportedBy || work.createdBy?.name || work.submittedBy?.name || "";
 const getApprovedByName = (work = {}) => work.approvedByName || work.approvedBy || "";
 const getInitialFormCollapsed = () =>
   typeof window !== "undefined" &&
   (localStorage.getItem(WORK_FORM_COLLAPSED_KEY) ?? localStorage.getItem(LEGACY_WORK_FORM_COLLAPSED_KEY)) === "true";
+const getInitialFiltersVisible = () =>
+  typeof window !== "undefined" && localStorage.getItem(WORK_FILTERS_VISIBLE_KEY) === "true";
 const MEDIA_IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
 const MEDIA_VIDEO_LIMIT_BYTES = 100 * 1024 * 1024;
 const isVideoUpload = (file) => file?.type?.startsWith("video/");
@@ -184,8 +217,6 @@ const WorkApprovalsPage = ({ user }) => {
   const [beforeImages, setBeforeImages] = useState([]);
   const [beforeVideos, setBeforeVideos] = useState([]);
   const [beforePreview, setBeforePreview] = useState("");
-  const [afterImages, setAfterImages] = useState({});
-  const [afterPreviewMap, setAfterPreviewMap] = useState({});
   const [modal, setModal] = useState({ open: false, items: [], index: 0, compare: null });
   const [selectedWork, setSelectedWork] = useState(null);
   const [error, setError] = useState("");
@@ -203,6 +234,7 @@ const WorkApprovalsPage = ({ user }) => {
     chainage: ""
   });
   const [formCollapsed, setFormCollapsed] = useState(getInitialFormCollapsed);
+  const [filtersVisible, setFiltersVisible] = useState(getInitialFiltersVisible);
   const [chainageErrors, setChainageErrors] = useState({ chainageFrom: "", chainageTo: "" });
   const [editChainageErrors, setEditChainageErrors] = useState({ chainageFrom: "", chainageTo: "" });
   const [submitting, setSubmitting] = useState(false);
@@ -210,37 +242,12 @@ const WorkApprovalsPage = ({ user }) => {
   const [editingWork, setEditingWork] = useState(null);
   const [editForm, setEditForm] = useState(initialForm);
   const [editSaving, setEditSaving] = useState(false);
-  const [reviewDrafts, setReviewDrafts] = useState({});
   const submitLockRef = useRef(false);
   const workActionLockRef = useRef(false);
   const editLockRef = useRef(false);
 
   const canDelete = ["super_admin", "admin"].includes(user?.role);
   const canApprove = ["super_admin", "admin"].includes(user?.role);
-
-  const getReviewDraft = useCallback(
-    (work = {}) => {
-      const id = getWorkRecordId(work);
-      return {
-        checkedBy: reviewDrafts[id]?.checkedBy ?? work.checkedBy ?? "",
-        recommendedBy: reviewDrafts[id]?.recommendedBy ?? work.recommendedBy ?? ""
-      };
-    },
-    [reviewDrafts]
-  );
-
-  const setReviewField = (work, field, value) => {
-    const id = getWorkRecordId(work);
-    if (!id) return;
-    setReviewDrafts((prev) => ({
-      ...prev,
-      [id]: {
-        checkedBy: prev[id]?.checkedBy ?? work.checkedBy ?? "",
-        recommendedBy: prev[id]?.recommendedBy ?? work.recommendedBy ?? "",
-        [field]: value
-      }
-    }));
-  };
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -262,6 +269,10 @@ const WorkApprovalsPage = ({ user }) => {
   useEffect(() => {
     localStorage.setItem(WORK_FORM_COLLAPSED_KEY, String(formCollapsed));
   }, [formCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem(WORK_FILTERS_VISIBLE_KEY, String(filtersVisible));
+  }, [filtersVisible]);
 
   const submitWork = async (event) => {
     event.preventDefault();
@@ -326,43 +337,70 @@ const WorkApprovalsPage = ({ user }) => {
     }
   };
 
-  const updateStatus = async (work, status) => {
+  const runStageAction = async (work, action, description) => {
     const id = getWorkRecordId(work);
     if (!id) {
       showValidationPopup("Unable to update this work record because its id is missing.");
       return;
     }
-    if (isCompletedStatus(work?.status)) {
+    if (getWorkflowStage(work) === "Completed") {
       showValidationPopup("Completed work is locked and cannot be changed.");
       return;
     }
-    const reviewDraft = getReviewDraft(work);
-    const reviewPayload = {
-      checkedBy: reviewDraft.checkedBy.trim(),
-      recommendedBy: reviewDraft.recommendedBy.trim()
-    };
-    if (status === "Approved" && (!reviewPayload.checkedBy || !reviewPayload.recommendedBy)) {
-      showValidationPopup("Please select Checked By and Recommended By before approving this Work Approval.");
+    const cleanDescription = String(description || "").trim();
+    if (!cleanDescription) {
+      showValidationPopup("Please enter the mandatory workflow description.");
       return;
     }
+    const actionConfig = {
+      check: {
+        label: "Check Work",
+        confirmText: "Confirm that you have reviewed the work details and media evidence.",
+        service: () => workService.check(id, cleanDescription),
+        success: "Work Checked Successfully"
+      },
+      recommend: {
+        label: "Recommend Work",
+        confirmText: "Confirm that you recommend this work for final approval.",
+        service: () => workService.recommend(id, cleanDescription),
+        success: "Work Recommended Successfully"
+      },
+      approve: {
+        label: "Final Approval",
+        confirmText: "Confirm final approval of this work.",
+        service: () => workService.approve(id, cleanDescription),
+        success: "Work Approved Successfully"
+      },
+      return: {
+        label: "Return for Correction",
+        confirmText: "Return this work approval to the creator for correction?",
+        service: () => workService.returnForCorrection(id, cleanDescription),
+        success: "Work Returned for Correction"
+      }
+    }[action];
+    if (!actionConfig) return;
+    const confirmed = await showConfirmPopup({
+      title: actionConfig.label,
+      text: actionConfig.confirmText,
+      confirmText: actionConfig.label,
+      cancelText: "Cancel",
+      icon: action === "return" ? "warning" : "question"
+    });
+    if (!confirmed) return;
     if (workActionLockRef.current) return;
     workActionLockRef.current = true;
     setBusyWorkId(id);
-    await showLoadingPopup("Uploading Please Wait...", `Updating work status to ${status}...`);
+    await showLoadingPopup("Uploading Please Wait...", `${actionConfig.label} in progress...`);
     let statusErrorMessage = "";
     try {
-      await workService.updateStatus(id, status === "Approved" ? { status, ...reviewPayload } : { status });
-      if (status === "Approved") {
-        setReviewDrafts((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
-      }
-      await showSuccessPopup(`Work ${status} Successfully`);
+      const response = await actionConfig.service();
+      const updatedWork = response.work;
+      setRecords((prev) => prev.map((item) => (getWorkRecordId(item) === id ? updatedWork : item)));
+      setSelectedWork((prev) => (prev && getWorkRecordId(prev) === id ? updatedWork : prev));
+      await showSuccessPopup(actionConfig.success);
       fetchAll();
     } catch (statusError) {
-      statusErrorMessage = getApiErrorMessage(statusError, "Status update failed");
+      statusErrorMessage = getApiErrorMessage(statusError, "Workflow action failed");
       setError(statusErrorMessage);
     } finally {
       workActionLockRef.current = false;
@@ -375,36 +413,44 @@ const WorkApprovalsPage = ({ user }) => {
     }
   };
 
-  const uploadCompletion = async (work) => {
+  const completeWork = async (work, files, description) => {
     const id = getWorkRecordId(work);
     if (!id) {
       showValidationPopup("Unable to complete this work record because its id is missing.");
       return;
     }
-    if (isCompletedStatus(work?.status)) {
+    if (getWorkflowStage(work) === "Completed") {
       showValidationPopup("Completed work is already locked.");
       return;
     }
-    const files = afterImages[id] || [];
+    const cleanDescription = String(description || "").trim();
+    if (!cleanDescription) {
+      showValidationPopup("Please enter the completion description.");
+      return;
+    }
     if (!files.length) {
       setError("Upload completion evidence");
       showValidationPopup("Please upload a completion image or video before marking work completed.");
       return;
     }
+    const confirmed = await showConfirmPopup({
+      title: "Complete Work",
+      text: "Confirm that completion media is uploaded and the work can be marked completed.",
+      confirmText: "Mark Completed",
+      cancelText: "Cancel",
+      icon: "question"
+    });
+    if (!confirmed) return;
     if (workActionLockRef.current) return;
     workActionLockRef.current = true;
     setBusyWorkId(id);
     await showLoadingPopup("Uploading Please Wait...", "Uploading completion evidence...");
     let uploadErrorMessage = "";
     try {
-      await workService.uploadAfterImages(id, files);
-      setAfterImages((prev) => ({ ...prev, [id]: [] }));
-      if (afterPreviewMap[id]?.startsWith("blob:")) URL.revokeObjectURL(afterPreviewMap[id]);
-      setAfterPreviewMap((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
+      const response = await workService.uploadAfterImages(id, files, cleanDescription);
+      const updatedWork = response.work;
+      setRecords((prev) => prev.map((item) => (getWorkRecordId(item) === id ? updatedWork : item)));
+      setSelectedWork((prev) => (prev && getWorkRecordId(prev) === id ? updatedWork : prev));
       await showSuccessPopup("Work Marked Completed Successfully");
       fetchAll();
     } catch (uploadError) {
@@ -462,8 +508,6 @@ const WorkApprovalsPage = ({ user }) => {
       chainageTo: getChainageTo(work),
       workersCount: work.workersCount ? String(work.workersCount) : "",
       description: work.description || work.workDescription || "",
-      checkedBy: work.checkedBy || "",
-      recommendedBy: work.recommendedBy || "",
       priority: work.priority || "Medium",
       assignedTo: "",
       startDate: toDateInputValue(work.startDate),
@@ -486,9 +530,7 @@ const WorkApprovalsPage = ({ user }) => {
       !editForm.location ||
       !chainageValidation.isValid ||
       !editForm.workersCount ||
-      !editForm.description.trim() ||
-      !editForm.checkedBy ||
-      !editForm.recommendedBy
+      !editForm.description.trim()
     ) {
       showValidationPopup("Please fill all required Work Approval edit fields.");
       return;
@@ -509,8 +551,6 @@ const WorkApprovalsPage = ({ user }) => {
         chainageNo: chainageValidation.values.chainageFrom,
         workersCount: Number(editForm.workersCount),
         description: editForm.description.trim(),
-        checkedBy: editForm.checkedBy,
-        recommendedBy: editForm.recommendedBy,
         priority: editForm.priority,
         startDate: editForm.startDate,
         dueDate: editForm.dueDate
@@ -568,7 +608,8 @@ const WorkApprovalsPage = ({ user }) => {
 
     return records.filter((item) => {
       const createdAt = new Date(item.createdAt || item.date || "");
-      const statusMatch = statusFilter === "All" || (item.status || "Pending") === statusFilter;
+      const itemStage = getWorkflowStage(item);
+      const statusMatch = statusFilter === "All" || itemStage === statusFilter || (item.status || "") === statusFilter;
       const dateMatch =
         (!fromDate || (!Number.isNaN(createdAt.getTime()) && createdAt >= fromDate)) &&
         (!toDate || (!Number.isNaN(createdAt.getTime()) && createdAt <= toDate));
@@ -600,19 +641,37 @@ const WorkApprovalsPage = ({ user }) => {
 
   const chartData = useMemo(
     () => [
-      { name: "Approved", value: records.filter((item) => item.status === "Approved").length },
+      { name: "Approved", value: records.filter((item) => getWorkflowStage(item) === "Approved").length },
       {
         name: "Pending",
-        value: records.filter((item) => item.status === "Pending" || !item.status).length
+        value: records.filter((item) => getWorkflowStage(item).startsWith("Pending")).length
       },
-      { name: "Completed", value: records.filter((item) => item.status === "Completed").length },
-      { name: "Rejected", value: records.filter((item) => item.status === "Rejected").length }
+      { name: "Completed", value: records.filter((item) => getWorkflowStage(item) === "Completed").length },
+      { name: "Returned", value: records.filter((item) => getWorkflowStage(item) === "Returned for Correction").length }
     ],
     [records]
   );
 
+  const stageCounts = useMemo(
+    () =>
+      WORKFLOW_STAGES.reduce((acc, stage) => {
+        acc[stage] = records.filter((item) => getWorkflowStage(item) === stage).length;
+        return acc;
+      }, {}),
+    [records]
+  );
+
   const statusTone = (status) => {
-    return statusColors[status]?.text || statusColors.Pending.text;
+    const stage = status || "Pending Check";
+    const stageTone = {
+      "Pending Check": "text-cyan-300",
+      "Pending Recommendation": "text-violet-300",
+      "Pending Approval": "text-amber-300",
+      Approved: "text-emerald-300",
+      Completed: "text-teal-300",
+      "Returned for Correction": "text-rose-300"
+    };
+    return stageTone[stage] || statusColors[stage]?.text || statusColors.Pending.text;
   };
 
   return (
@@ -622,14 +681,39 @@ const WorkApprovalsPage = ({ user }) => {
         subtitle="Legacy fields restored with single-admin approval lifecycle and image evidence"
       />
 
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => setFormCollapsed((prev) => !prev)}
-          className="rounded-2xl border border-cyan-300/25 bg-cyan-500/10 px-4 py-2 text-xs font-semibold text-cyan-100 shadow-[0_12px_30px_rgba(8,145,178,.14)] transition hover:border-cyan-200/60 hover:bg-cyan-500/20"
-        >
-          {formCollapsed ? "Show Form" : "Hide Form"}
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-white/10 bg-slate-950/35 p-3 backdrop-blur-xl">
+        <div className="flex flex-wrap gap-2">
+          {["Pending Check", "Pending Recommendation", "Pending Approval", "Approved"].map((stage) => (
+            <span key={stage} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-[11px] font-semibold text-slate-200">
+              {stage}: <span className="text-cyan-200">{stageCounts[stage] || 0}</span>
+            </span>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setFormCollapsed((prev) => !prev)}
+            className="rounded-2xl border border-cyan-300/25 bg-cyan-500/10 px-4 py-2 text-xs font-semibold text-cyan-100 shadow-[0_12px_30px_rgba(8,145,178,.14)] transition hover:border-cyan-200/60 hover:bg-cyan-500/20"
+          >
+            {formCollapsed ? "Show Form" : "Hide Form"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFiltersVisible((prev) => !prev)}
+            className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-cyan-200/40 hover:bg-white/15"
+          >
+            <SlidersHorizontal size={14} />
+            {filtersVisible ? "Hide Filters" : "Show Filters"}
+          </button>
+          <button
+            type="button"
+            onClick={fetchAll}
+            className="inline-flex items-center gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-100 transition hover:border-emerald-200/50 hover:bg-emerald-500/20"
+          >
+            <RefreshCw size={14} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className={`grid grid-cols-1 gap-4 xl:h-[calc(100vh-120px)] ${formCollapsed ? "xl:grid-cols-1" : "xl:grid-cols-3"}`}>
@@ -827,7 +911,15 @@ const WorkApprovalsPage = ({ user }) => {
               Clear Filters
             </button>
           </div>
-          <div className="sticky top-0 z-10 mb-4 grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-slate-950/80 p-3 backdrop-blur-xl md:grid-cols-2 xl:grid-cols-5">
+          <AnimatePresence initial={false}>
+            {filtersVisible ? (
+              <motion.div
+                initial={{ opacity: 0, height: 0, y: -8 }}
+                animate={{ opacity: 1, height: "auto", y: 0 }}
+                exit={{ opacity: 0, height: 0, y: -8 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+                className="sticky top-0 z-10 mb-4 grid grid-cols-1 gap-2 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/80 p-3 backdrop-blur-xl md:grid-cols-2 xl:grid-cols-5"
+              >
             <label>
               <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                 Status
@@ -837,7 +929,7 @@ const WorkApprovalsPage = ({ user }) => {
                 onChange={(event) => setStatusFilter(event.target.value)}
                 className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
               >
-                {["All", "Pending", "Approved", "Rejected", "Completed"].map((status) => (
+                {["All", ...WORKFLOW_STAGES].map((status) => (
                   <option key={status} value={status} className="bg-slate-900 text-white">
                     {status}
                   </option>
@@ -959,11 +1051,13 @@ const WorkApprovalsPage = ({ user }) => {
                 className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white placeholder:text-slate-500"
               />
             </label>
-          </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
           {loading ? (
             <p className="text-sm text-slate-300">Loading work approvals...</p>
           ) : (
-            <div className="module-list-scroll space-y-4 xl:max-h-[calc(100vh-270px)] xl:overflow-y-auto xl:pr-1">
+            <div className={`module-list-scroll space-y-4 xl:overflow-y-auto xl:pr-1 ${filtersVisible ? "xl:max-h-[calc(100vh-270px)]" : "xl:max-h-[calc(100vh-165px)]"}`}>
               {filteredRecords.map((work) => {
                 const beforeItems = (
                   work.beforeImages?.length ? work.beforeImages : work.beforeImage ? [work.beforeImage] : []
@@ -1004,11 +1098,10 @@ const WorkApprovalsPage = ({ user }) => {
                   .slice(-4);
 
                 const recordId = getWorkRecordId(work);
-                const workCompleted = isCompletedStatus(work.status);
-                const workBusy = busyWorkId === recordId;
+                const workflowStage = getWorkflowStage(work);
+                const workCompleted = workflowStage === "Completed";
                 const statusSinceText = getWorkStatusSinceText(work);
-                const reviewDraft = getReviewDraft(work);
-                const approvalBlocked = !reviewDraft.checkedBy || !reviewDraft.recommendedBy;
+                const actionRequired = getRequiredAction(work);
 
                 return (
                   <div
@@ -1054,17 +1147,24 @@ const WorkApprovalsPage = ({ user }) => {
                             {work.location || "-"} | {formatChainageRange(work, true)}
                           </p>
                           <p className="mt-1 text-xs text-slate-300">Created By: {getWorkReporterName(work) || "-"}</p>
-                          <p className="mt-1 text-xs text-slate-400">
-                            Checked: {work.checkedBy || "-"} | Recommended: {work.recommendedBy || "-"}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-400">
-                            Approved By: {getApprovedByName(work) || "-"}
-                          </p>
+                          {work.checkedBy || work.recommendedBy ? (
+                            <p className="mt-1 text-xs text-slate-400">
+                              {work.checkedBy ? `Checked: ${work.checkedBy}` : ""}
+                              {work.checkedBy && work.recommendedBy ? " | " : ""}
+                              {work.recommendedBy ? `Recommended: ${work.recommendedBy}` : ""}
+                            </p>
+                          ) : null}
+                          {getApprovedByName(work) ? (
+                            <p className="mt-1 text-xs text-slate-400">
+                              Approved By: {getApprovedByName(work)}
+                            </p>
+                          ) : null}
                           <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                              statusColors[work.status]?.badge || statusColors.Pending.badge
-                            }`}>
-                              {work.status || "Pending"}
+                            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getStageBadgeClass(workflowStage)}`}>
+                              {workflowStage}
+                            </span>
+                            <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-100">
+                              {actionRequired}
                             </span>
                             <span className="text-[11px] text-slate-400">Workers: {work.workersCount || "-"}</span>
                           </div>
@@ -1072,33 +1172,6 @@ const WorkApprovalsPage = ({ user }) => {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {canApprove && !workCompleted && normalizeStatus(work.status) !== "approved" ? (
-                          <motion.button
-                            type="button"
-                            disabled={workBusy || approvalBlocked}
-                            onClick={() => updateStatus(work, "Approved")}
-                            whileHover={approvalBlocked ? undefined : { y: -2, scale: 1.04 }}
-                            whileTap={approvalBlocked ? undefined : { scale: 0.97 }}
-                            title={approvalBlocked ? "Select Checked By and Recommended By first" : "Approve work approval"}
-                            className="inline-flex items-center gap-1.5 rounded-2xl border border-emerald-300/50 bg-gradient-to-r from-emerald-500/25 to-cyan-500/20 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-50 shadow-[0_12px_32px_rgba(16,185,129,.18)] disabled:cursor-not-allowed disabled:opacity-45"
-                          >
-                            <CheckCircle2 size={14} />
-                            Approve
-                          </motion.button>
-                        ) : null}
-                        {canApprove && !workCompleted && normalizeStatus(work.status) !== "rejected" ? (
-                          <motion.button
-                            type="button"
-                            disabled={workBusy}
-                            onClick={() => updateStatus(work, "Rejected")}
-                            whileHover={{ y: -2, scale: 1.04 }}
-                            whileTap={{ scale: 0.97 }}
-                            className="inline-flex items-center gap-1.5 rounded-2xl border border-rose-300/50 bg-gradient-to-r from-rose-500/25 to-orange-500/15 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-rose-50 shadow-[0_12px_32px_rgba(244,63,94,.18)] disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <XCircle size={14} />
-                            Reject
-                          </motion.button>
-                        ) : null}
                         <motion.button
                           type="button"
                           onClick={() => setSelectedWork(work)}
@@ -1145,70 +1218,6 @@ const WorkApprovalsPage = ({ user }) => {
                         ) : null}
                       </div>
                     </div>
-
-                    {canApprove && !workCompleted && normalizeStatus(work.status) !== "approved" ? (
-                      <div className="mt-3 rounded-2xl border border-cyan-300/15 bg-cyan-500/[0.06] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,.08)]">
-                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200">
-                              Admin Review Panel
-                            </p>
-                            <p className="text-xs text-slate-400">
-                              Select review names before approving. Approved By is captured automatically as {user?.name || "logged-in admin"}.
-                            </p>
-                          </div>
-                          {approvalBlocked ? (
-                            <span className="rounded-full border border-amber-300/25 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
-                              Approval locked
-                            </span>
-                          ) : (
-                            <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-100">
-                              Ready to approve
-                            </span>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                          <label>
-                            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                              Checked By
-                            </span>
-                            <select
-                              value={reviewDraft.checkedBy}
-                              onChange={(event) => setReviewField(work, "checkedBy", event.target.value)}
-                              className="w-full rounded-xl border border-white/15 bg-slate-950/75 px-3 py-2 text-xs text-white"
-                            >
-                              <option value="" className="bg-slate-900 text-white">
-                                Select Checked By
-                              </option>
-                              {checkedByUsers.map((item) => (
-                                <option key={item} value={item} className="bg-slate-900 text-white">
-                                  {item}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label>
-                            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                              Recommended By
-                            </span>
-                            <select
-                              value={reviewDraft.recommendedBy}
-                              onChange={(event) => setReviewField(work, "recommendedBy", event.target.value)}
-                              className="w-full rounded-xl border border-white/15 bg-slate-950/75 px-3 py-2 text-xs text-white"
-                            >
-                              <option value="" className="bg-slate-900 text-white">
-                                Select Recommended By
-                              </option>
-                              {recommendedByUsers.map((item) => (
-                                <option key={item} value={item} className="bg-slate-900 text-white">
-                                  {item}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
-                      </div>
-                    ) : null}
 
                     <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                       <div className="rounded-xl border border-white/10 bg-white/5 p-2">
@@ -1279,72 +1288,10 @@ const WorkApprovalsPage = ({ user }) => {
                       </div>
                     </div>
 
-                    {canApprove && workCompleted ? (
+                    {workCompleted ? (
                       <p className="mt-3 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100">
                         Completed work is locked. Status cannot be changed.
                       </p>
-                    ) : null}
-
-                    {normalizeStatus(work.status) === "approved" ? (
-                      <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-2.5">
-                        <p className="mb-1 text-xs text-slate-300">Upload Completion Evidence</p>
-                        <div className="flex flex-wrap gap-2">
-                          <input
-                            type="file"
-                            accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/webm"
-                            multiple
-                            onChange={(event) => {
-                              const { images, videos, errors } = splitWorkMediaSelection(event.target.files || []);
-                              if (errors.length) showValidationPopup(errors.join(". "));
-                              const selectedFiles = [...images, ...videos];
-                              const selected = selectedFiles[0] || null;
-                              setAfterImages((prev) => ({
-                                ...prev,
-                                [work._id]: selectedFiles
-                              }));
-                              if (afterPreviewMap[work._id]?.startsWith("blob:")) {
-                                URL.revokeObjectURL(afterPreviewMap[work._id]);
-                              }
-                              setAfterPreviewMap((prev) => ({
-                                ...prev,
-                                [work._id]: selected ? URL.createObjectURL(selected) : ""
-                              }));
-                            }}
-                            className="flex-1 rounded-lg border border-dashed border-white/20 bg-slate-900/70 px-2 py-1.5 text-xs text-slate-300"
-                          />
-                          <button
-                            type="button"
-                            disabled={workBusy}
-                            onClick={() => uploadCompletion(work)}
-                            className="rounded-lg bg-indigo-500/25 px-3 py-1.5 text-xs text-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <span className="inline-flex items-center gap-1">
-                              <UploadCloud size={12} />
-                              Upload
-                            </span>
-                          </button>
-                        </div>
-                        {afterPreviewMap[work._id] ? (
-                          isVideoUpload((afterImages[work._id] || [])[0]) ? (
-                            <video
-                              src={afterPreviewMap[work._id]}
-                              controls
-                              className="mt-2 h-24 w-full rounded-xl border border-white/10 object-contain"
-                            />
-                          ) : (
-                            <img
-                              src={afterPreviewMap[work._id]}
-                              alt="After Work Preview"
-                              className="mt-2 h-24 w-full rounded-xl border border-white/10 object-contain"
-                            />
-                          )
-                        ) : null}
-                        {afterImages[work._id]?.length ? (
-                          <p className="mt-2 text-[11px] text-slate-400">
-                            Selected {afterImages[work._id].length} completion file(s)
-                          </p>
-                        ) : null}
-                      </div>
                     ) : null}
 
                     <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-2.5">
@@ -1505,42 +1452,6 @@ const WorkApprovalsPage = ({ user }) => {
                   className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
                 />
               </label>
-              <label>
-                <span className="mb-1 block text-xs text-slate-300">Checked By</span>
-                <select
-                  value={editForm.checkedBy}
-                  onChange={(event) => setEditForm((prev) => ({ ...prev, checkedBy: event.target.value }))}
-                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
-                  required
-                >
-                  <option value="" className="bg-slate-900 text-white">
-                    Select Checked By
-                  </option>
-                  {checkedByUsers.map((item) => (
-                    <option key={item} value={item} className="bg-slate-900 text-white">
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span className="mb-1 block text-xs text-slate-300">Recommended By</span>
-                <select
-                  value={editForm.recommendedBy}
-                  onChange={(event) => setEditForm((prev) => ({ ...prev, recommendedBy: event.target.value }))}
-                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
-                  required
-                >
-                  <option value="" className="bg-slate-900 text-white">
-                    Select Recommended By
-                  </option>
-                  {recommendedByUsers.map((item) => (
-                    <option key={item} value={item} className="bg-slate-900 text-white">
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </label>
               <label className="md:col-span-2">
                 <span className="mb-1 block text-xs text-slate-300">Work Description</span>
                 <textarea
@@ -1580,10 +1491,14 @@ const WorkApprovalsPage = ({ user }) => {
       <WorkApprovalDetailsModal
         open={Boolean(selectedWork)}
         work={selectedWork}
+        user={user}
+        busy={Boolean(selectedWork) && busyWorkId === getWorkRecordId(selectedWork)}
         onClose={() => setSelectedWork(null)}
         onOpenMedia={(items, index) =>
           setModal({ open: true, items, index, compare: null })
         }
+        onStageAction={(action, description) => runStageAction(selectedWork, action, description)}
+        onComplete={(files, description) => completeWork(selectedWork, files, description)}
       />
 
       <MediaStudioModal

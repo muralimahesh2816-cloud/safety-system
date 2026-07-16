@@ -284,7 +284,7 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
   const after = normalizeMedia(work.afterImages, work.afterImage);
   const beforeVideos = normalizeMedia(work.beforeVideos, work.beforeVideo);
   const afterVideos = normalizeMedia(work.afterVideos, work.afterVideo);
-  const status = work.status || "Pending";
+  const status = work.workflowStage || work.status || "Pending Check";
   const completionDate = status === "Completed"
     ? work.completedAt || work.completionDate || work.updatedAt
     : work.completionDate;
@@ -301,19 +301,30 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
       ["Workers Count", work.workersCount],
       ["Created By", work.createdByName || work.reportedBy || work.createdBy || work.submittedBy],
       ["Created Role", work.createdByRole],
+      ["Workflow Stage", status],
       ["Checked By", work.checkedBy],
+      ["Checked Role", work.checkedByRole],
+      ["Checked Date", formatDate(work.checkedAt)],
+      ["Checked Description", work.checkedDescription],
       ["Recommended By", work.recommendedBy],
+      ["Recommended Role", work.recommendedByRole],
+      ["Recommended Date", formatDate(work.recommendedAt)],
+      ["Recommended Description", work.recommendedDescription],
       ["Created Date", formatDate(work.reportDate || work.startDate || work.createdAt)],
-      ["Status", status],
       ["Approved By", work.approvedByName || work.approvedBy],
       ["Approved Role", work.approvedByRole],
       ["Approval Date", formatDate(work.approvedAt || work.approvalDate)],
+      ["Approval Description", work.approvalDescription],
+      ["Returned By", work.returnedBy],
+      ["Returned Date", formatDate(work.returnedAt)],
+      ["Return Description", work.returnDescription],
+      ["Completed By", work.completedBy],
       ["Completion Date", formatDate(completionDate)],
+      ["Completion Description", work.completionDescription],
       ["Before Images", before.length],
       ["Before Videos", beforeVideos.length],
       ["After Images", after.length],
-      ["After Videos", afterVideos.length],
-      ["Priority", work.priority]
+      ["After Videos", afterVideos.length]
     ],
     descriptionTitle: "Work Description",
     description: work.description || work.workDescription || work.details || "No description entered.",

@@ -41,11 +41,12 @@ const MODULES = [
   "notifications"
 ];
 
-const createPermissionSet = ({ view, create, update, remove }) => ({
+const createPermissionSet = ({ view, create, update, remove, ...extra }) => ({
   view,
   create,
   update,
-  delete: remove
+  delete: remove,
+  ...extra
 });
 
 const ROLE_DEFAULT_PERMISSIONS = {
@@ -75,7 +76,12 @@ const ROLE_DEFAULT_PERMISSIONS = {
       view: true,
       create: true,
       update: true,
-      remove: true
+      remove: true,
+      check: true,
+      recommend: true,
+      approve: true,
+      complete: true,
+      return: true
     }),
     hazards: createPermissionSet({
       view: true,
@@ -125,7 +131,12 @@ const ROLE_DEFAULT_PERMISSIONS = {
       view: true,
       create: true,
       update: true,
-      remove: false
+      remove: false,
+      check: true,
+      recommend: true,
+      approve: false,
+      complete: true,
+      return: true
     }),
     hazards: createPermissionSet({
       view: true,
@@ -175,7 +186,12 @@ const ROLE_DEFAULT_PERMISSIONS = {
       view: true,
       create: true,
       update: true,
-      remove: false
+      remove: false,
+      check: true,
+      recommend: false,
+      approve: false,
+      complete: true,
+      return: true
     }),
     hazards: createPermissionSet({
       view: true,
@@ -225,7 +241,12 @@ const ROLE_DEFAULT_PERMISSIONS = {
       view: true,
       create: true,
       update: false,
-      remove: false
+      remove: false,
+      check: false,
+      recommend: false,
+      approve: false,
+      complete: false,
+      return: false
     }),
     hazards: createPermissionSet({
       view: true,
@@ -275,7 +296,12 @@ const ROLE_DEFAULT_PERMISSIONS = {
       view: true,
       create: false,
       update: false,
-      remove: false
+      remove: false,
+      check: false,
+      recommend: false,
+      approve: false,
+      complete: false,
+      return: false
     }),
     hazards: createPermissionSet({
       view: true,

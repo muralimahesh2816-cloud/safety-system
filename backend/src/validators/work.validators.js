@@ -59,11 +59,33 @@ const workflowActionSchema = z.object({
 });
 
 const statusUpdateSchema = z.object({
-  status: z.enum(["Pending", "Under Review", "Approved", "Rejected", "Completed"]),
+  status: z.enum([
+    "Pending",
+    "Under Review",
+    "Pending Check",
+    "Pending Recommendation",
+    "Pending Approval",
+    "Approved",
+    "Rejected",
+    "Returned for Correction",
+    "Completed"
+  ]),
   comment: z.string().optional().default(""),
   approvedBy: z.string().optional().default(""),
   checkedBy: z.string().trim().optional(),
   recommendedBy: z.string().trim().optional()
+});
+
+const stageActionSchema = z.object({
+  description: z.string().trim().min(1, "Description is required")
+});
+
+const returnWorkSchema = z.object({
+  description: z.string().trim().min(1, "Return description is required")
+});
+
+const completeWorkSchema = z.object({
+  description: z.string().trim().min(1, "Completion description is required")
 });
 
 const commentSchema = z.object({
@@ -79,6 +101,9 @@ module.exports = {
   updateWorkSchema,
   workflowActionSchema,
   statusUpdateSchema,
+  stageActionSchema,
+  returnWorkSchema,
+  completeWorkSchema,
   commentSchema,
   signatureSchema
 };

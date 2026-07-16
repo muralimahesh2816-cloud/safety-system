@@ -77,20 +77,40 @@ const toLegacyWorkRecord = (record) => ({
   workersCount: record.workersCount || 0,
   priority: record.priority || "Medium",
   status: record.status || "Pending",
+  workflowStage: record.workflowStage || record.status || "Pending Check",
   reportedBy: record.createdByName || record.createdBy?.name || "",
   createdByName: record.createdByName || record.createdBy?.name || "",
   createdByRole: record.createdByRole || record.createdBy?.role || "",
   checkedBy: record.checkedBy || "",
+  checkedByRole: record.checkedByRole || "",
+  checkedDescription: record.checkedDescription || "",
+  checkedAt: record.checkedAt || "",
   recommendedBy: record.recommendedBy || "",
+  recommendedByRole: record.recommendedByRole || "",
+  recommendedDescription: record.recommendedDescription || "",
+  recommendedAt: record.recommendedAt || "",
   approvedBy: record.approvedBy || "",
   approvedByRole: record.approvedByRole || "",
+  approvalDescription: record.approvalDescription || "",
   approvedAt: record.approvedAt || "",
   approvalDate: record.approvedAt || "",
-  completionDate: record.status === "Completed" ? record.updatedAt : "",
+  returnedBy: record.returnedBy || "",
+  returnedByRole: record.returnedByRole || "",
+  returnDescription: record.returnDescription || "",
+  returnStage: record.returnStage || "",
+  returnedAt: record.returnedAt || "",
+  completedBy: record.completedBy || "",
+  completedByRole: record.completedByRole || "",
+  completionDescription: record.completionDescription || "",
+  completedAt: record.completedAt || "",
+  completionDate: record.completedAt || (record.status === "Completed" ? record.updatedAt : ""),
+  timeline: record.timeline || [],
   beforeImage: record.beforeImages?.[0]?.url || record.beforeImage || "",
   afterImage: record.afterImages?.[0]?.url || record.afterImage || "",
   beforeVideo: record.beforeVideos?.[0]?.url || record.beforeVideo || "",
   afterVideo: record.afterVideos?.[0]?.url || record.afterVideo || "",
+  beforeImages: record.beforeImages || [],
+  afterImages: record.afterImages || [],
   beforeVideos: record.beforeVideos || [],
   afterVideos: record.afterVideos || [],
   mediaCount:
@@ -141,7 +161,7 @@ router.get(
     const records = await WorkApproval.find()
       .populate("createdBy", "name role")
       .select(
-        "title plaza approvalNumber workType description location chainage chainageNo chainageFrom chainageTo workersCount priority status createdBy createdByName createdByRole checkedBy recommendedBy approvedBy approvedByRole approvedAt beforeImages afterImages beforeVideos afterVideos beforeImage afterImage beforeVideo afterVideo createdAt updatedAt"
+        "title plaza approvalNumber workType description location chainage chainageNo chainageFrom chainageTo workersCount priority status workflowStage createdBy createdByName createdByRole checkedBy checkedByRole checkedDescription checkedAt recommendedBy recommendedByRole recommendedDescription recommendedAt approvedBy approvedByRole approvalDescription approvedAt returnedBy returnedByRole returnDescription returnStage returnedAt completedBy completedByRole completionDescription completedAt beforeImages afterImages beforeVideos afterVideos beforeImage afterImage beforeVideo afterVideo timeline createdAt updatedAt"
       )
       .sort({ createdAt: -1 });
     res.json(records.map(toLegacyWorkRecord));

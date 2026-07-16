@@ -9,6 +9,17 @@ const assetSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const stageActorSchema = new mongoose.Schema(
+  {
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    name: { type: String, default: "" },
+    role: { type: String, default: "" },
+    description: { type: String, default: "" },
+    date: Date
+  },
+  { _id: false }
+);
+
 const workflowSchema = new mongoose.Schema(
   {
     level: Number,
@@ -73,8 +84,30 @@ const workApprovalSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["Pending", "Under Review", "Approved", "Rejected", "Completed"],
-      default: "Pending"
+      enum: [
+        "Pending",
+        "Under Review",
+        "Pending Check",
+        "Pending Recommendation",
+        "Pending Approval",
+        "Approved",
+        "Rejected",
+        "Returned for Correction",
+        "Completed"
+      ],
+      default: "Pending Check"
+    },
+    workflowStage: {
+      type: String,
+      enum: [
+        "Pending Check",
+        "Pending Recommendation",
+        "Pending Approval",
+        "Approved",
+        "Returned for Correction",
+        "Completed"
+      ],
+      default: "Pending Check"
     },
     beforeImages: [assetSchema],
     afterImages: [assetSchema],
@@ -86,11 +119,36 @@ const workApprovalSchema = new mongoose.Schema(
     afterVideo: { type: String, default: "" },
     approvalNumber: { type: String, default: "" },
     checkedBy: { type: String, default: "", trim: true },
+    checkedById: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    checkedByRole: { type: String, default: "" },
+    checkedDescription: { type: String, default: "", trim: true },
+    checkedAt: Date,
+    checked: stageActorSchema,
     recommendedBy: { type: String, default: "", trim: true },
+    recommendedById: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    recommendedByRole: { type: String, default: "" },
+    recommendedDescription: { type: String, default: "", trim: true },
+    recommendedAt: Date,
+    recommended: stageActorSchema,
     approvedBy: { type: String, default: "" },
     approvedById: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     approvedByRole: { type: String, default: "" },
+    approvalDescription: { type: String, default: "", trim: true },
     approvedAt: Date,
+    approved: stageActorSchema,
+    returnedBy: { type: String, default: "" },
+    returnedById: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    returnedByRole: { type: String, default: "" },
+    returnDescription: { type: String, default: "", trim: true },
+    returnStage: { type: String, default: "" },
+    returnedAt: Date,
+    returned: stageActorSchema,
+    completedBy: { type: String, default: "" },
+    completedById: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    completedByRole: { type: String, default: "" },
+    completionDescription: { type: String, default: "", trim: true },
+    completedAt: Date,
+    completion: stageActorSchema,
     workflow: [workflowSchema],
     comments: [commentSchema],
     approvalHistory: [
@@ -122,9 +180,21 @@ workApprovalSchema.pre("validate", function normalizeChainageRange() {
   if (!this.approvalNumber && this._id) {
     this.approvalNumber = `WA-${String(this._id).slice(-8).toUpperCase()}`;
   }
+  if (!this.workflowStage) {
+    if (this.status === "Completed") this.workflowStage = "Completed";
+    else if (this.status === "Approved") this.workflowStage = "Approved";
+    else if (this.status === "Rejected") this.workflowStage = "Returned for Correction";
+    else if (this.recommendedAt || this.recommendedBy) this.workflowStage = "Pending Approval";
+    else if (this.checkedAt || this.checkedBy) this.workflowStage = "Pending Recommendation";
+    else this.workflowStage = "Pending Check";
+  }
+  if (!this.status || this.status === "Pending" || this.status === "Under Review") {
+    this.status = this.workflowStage;
+  }
 });
 
 workApprovalSchema.index({ status: 1, priority: 1, createdAt: -1 });
 workApprovalSchema.index({ chainageFrom: 1, chainageTo: 1, chainageNo: 1 });
+workApprovalSchema.index({ workflowStage: 1, createdAt: -1 });
 
 module.exports = mongoose.model("WorkApproval", workApprovalSchema);
