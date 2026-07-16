@@ -6,6 +6,7 @@ const authMiddleware = require("../middleware/auth.middleware");
 const { authorizePermission, authorizeRoles } = require("../middleware/rbac.middleware");
 const validate = require("../middleware/validate.middleware");
 const audit = require("../middleware/audit.middleware");
+const logger = require("../utils/logger");
 const WorkApproval = require("../models/WorkApproval");
 const { ROLES } = require("../constants/roles");
 const {
@@ -86,7 +87,21 @@ const assertStagePermission = (req, action) => {
   const fallbackRoles = STAGE_ROLE_FALLBACKS[action] || [];
   if (fallbackRoles.includes(role)) return;
 
-  throw new ApiError(403, `Permission denied for ${WORK_STAGE_LABELS[action] || action}`);
+  const code = {
+    check: "WORK_CHECK_FORBIDDEN",
+    recommend: "WORK_RECOMMEND_FORBIDDEN",
+    approve: "WORK_APPROVE_FORBIDDEN",
+    complete: "WORK_COMPLETE_FORBIDDEN",
+    return: "WORK_RETURN_FORBIDDEN"
+  }[action] || "PERMISSION_DENIED";
+  logger.warn("Work stage permission denied", {
+    route: req.originalUrl,
+    method: req.method,
+    userId: req.user?.id,
+    role,
+    permission: `work.${action}`
+  });
+  throw new ApiError(403, `You do not have permission to ${String(WORK_STAGE_LABELS[action] || action).toLowerCase()}`, null, code);
 };
 
 const createStageActor = (req, description = "") => ({
@@ -128,7 +143,12 @@ const validateWorkMedia = ({ images = [], videos = [], label = "Work media" }) =
 const assertWorkflowStage = (work, expectedStage) => {
   const currentStage = deriveWorkflowStage(work);
   if (currentStage !== expectedStage) {
-    throw new ApiError(400, `This work approval is currently ${currentStage}. Required stage: ${expectedStage}`);
+    throw new ApiError(
+      409,
+      `This item has already moved to ${currentStage}. Refresh the list before continuing.`,
+      { currentStage, expectedStage },
+      "INVALID_WORKFLOW_STAGE"
+    );
   }
   return currentStage;
 };
@@ -426,7 +446,7 @@ router.patch(
     const canUpdate = req.user.role === ROLES.SUPER_ADMIN || req.user.permissions?.work?.update === true;
     const canResubmitReturned = currentStage === WORK_STAGES.RETURNED && sameUser(work.createdBy, req.user.id);
     if (!canUpdate && !canResubmitReturned) {
-      throw new ApiError(403, "You do not have permission to update this work approval");
+      throw new ApiError(403, "You do not have permission to update this work approval", null, "WORK_UPDATE_FORBIDDEN");
     }
     if (currentStage === WORK_STAGES.COMPLETED) {
       throw new ApiError(400, "Completed work is locked and cannot be edited");
@@ -526,7 +546,7 @@ router.post(
     if (!work) throw new ApiError(404, "Work approval not found");
     assertWorkflowStage(work, WORK_STAGES.PENDING_CHECK);
     if (req.user.role !== ROLES.SUPER_ADMIN && sameUser(work.createdBy, req.user.id)) {
-      throw new ApiError(403, "Checker cannot be the same user as creator");
+      throw new ApiError(403, "Checker cannot be the same user as creator", null, "WORK_CHECK_FORBIDDEN");
     }
 
     const actor = createStageActor(req, payload.description);
@@ -556,10 +576,10 @@ router.post(
     if (!work) throw new ApiError(404, "Work approval not found");
     assertWorkflowStage(work, WORK_STAGES.PENDING_RECOMMENDATION);
     if (req.user.role !== ROLES.SUPER_ADMIN && sameUser(work.createdBy, req.user.id)) {
-      throw new ApiError(403, "Recommender cannot be the same user as creator");
+      throw new ApiError(403, "Recommender cannot be the same user as creator", null, "WORK_RECOMMEND_FORBIDDEN");
     }
     if (req.user.role !== ROLES.SUPER_ADMIN && sameUser(work.checkedById, req.user.id)) {
-      throw new ApiError(403, "Recommender cannot be the same person as checker");
+      throw new ApiError(403, "Recommender cannot be the same person as checker", null, "WORK_RECOMMEND_FORBIDDEN");
     }
 
     const actor = createStageActor(req, payload.description);
@@ -621,7 +641,12 @@ router.post(
     if (!work) throw new ApiError(404, "Work approval not found");
     const currentStage = deriveWorkflowStage(work);
     if (![WORK_STAGES.PENDING_CHECK, WORK_STAGES.PENDING_RECOMMENDATION, WORK_STAGES.PENDING_APPROVAL].includes(currentStage)) {
-      throw new ApiError(400, `Work cannot be returned while it is ${currentStage}`);
+      throw new ApiError(
+        409,
+        `This work approval cannot be returned while it is ${currentStage}`,
+        { currentStage },
+        "INVALID_WORKFLOW_STAGE"
+      );
     }
 
     const actor = createStageActor(req, payload.description);

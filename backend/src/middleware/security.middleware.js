@@ -8,12 +8,19 @@ const cookieParser = require("cookie-parser");
 const morgan = require("morgan");
 const { env, isProduction } = require("../config/env");
 const sanitizeMiddleware = require("./sanitize.middleware");
+const ApiError = require("../utils/api-error");
+const logger = require("../utils/logger");
 
 const applySecurityMiddleware = (app) => {
-  const allowedOrigins = env.frontendUrl
+  const configuredOrigins = env.frontendUrl
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
+  const developmentOrigins = isProduction
+    ? []
+    : ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"];
+  const allowedOrigins = Array.from(new Set([...configuredOrigins, ...developmentOrigins]));
+
   app.use(
     cors({
       origin: (origin, callback) => {
@@ -21,9 +28,13 @@ const applySecurityMiddleware = (app) => {
           callback(null, true);
           return;
         }
-        callback(new Error("CORS policy denied this origin"));
+        logger.warn("CORS origin denied", { origin });
+        callback(new ApiError(403, "Origin is not allowed", null, "CORS_BLOCKED"));
       },
-      credentials: true
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization", "x-csrf-token"],
+      optionsSuccessStatus: 204
     })
   );
   app.use(

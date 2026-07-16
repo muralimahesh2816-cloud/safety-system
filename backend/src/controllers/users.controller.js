@@ -11,7 +11,7 @@ const updateUserPermissions = async (req, res) => {
   }
 
   if (user.role === ROLES.SUPER_ADMIN && req.user.role !== ROLES.SUPER_ADMIN) {
-    throw new ApiError(403, "Only Super Admin can modify Super Admin permissions");
+    throw new ApiError(403, "Only Super Admin can modify Super Admin permissions", null, "PERMISSION_DENIED");
   }
 
   const payload = req.body?.permissions || req.body || {};

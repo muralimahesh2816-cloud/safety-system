@@ -47,6 +47,7 @@ const getWorkflowStage = (work = {}) => {
 const hasWorkAction = (user = {}, action) => {
   const role = normalizeRole(user?.role);
   if (role === "super_admin") return true;
+  if (user?.permissionMatrix?.work?.[action] === true) return true;
   if (user?.permissions?.work?.[action] === true) return true;
   const roleFallbacks = {
     check: ["admin", "safety_manager", "supervisor"],
@@ -300,18 +301,19 @@ const ActionPanel = ({
         {completionFiles.length ? (
           <p className="mt-2 text-xs text-slate-400">Selected {completionFiles.length} completion file(s)</p>
         ) : null}
-        <button
-          type="button"
-          disabled={busy || !canComplete}
-          onClick={() => onComplete?.(completionFiles, completionDescription)}
-          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-black uppercase tracking-[0.16em] text-white shadow-[0_20px_45px_rgba(16,185,129,.2)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <CheckCircle2 size={16} />
-          MARK COMPLETED
-        </button>
-        {!canComplete ? (
+        {canComplete ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onComplete?.(completionFiles, completionDescription)}
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-black uppercase tracking-[0.16em] text-white shadow-[0_20px_45px_rgba(16,185,129,.2)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <CheckCircle2 size={16} />
+            MARK COMPLETED
+          </button>
+        ) : (
           <p className="mt-2 text-xs text-amber-200">Your role can view this stage, but cannot complete it.</p>
-        ) : null}
+        )}
       </div>
     );
   }
@@ -343,42 +345,45 @@ const ActionPanel = ({
           className="w-full resize-none rounded-2xl border border-white/12 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-cyan-300/60 focus:outline-none"
         />
       </label>
-      <button
-        type="button"
-        disabled={busy || !canPrimary}
-        onClick={() => onStageAction?.(currentAction.action, stageDescription)}
-        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-500 to-teal-500 px-4 py-3 text-sm font-black uppercase tracking-[0.16em] text-white shadow-[0_20px_45px_rgba(8,145,178,.2)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        <Icon size={16} />
-        {currentAction.button}
-      </button>
-      {!canPrimary ? (
-        <p className="mt-2 text-xs text-amber-200">Your role can view this stage, but cannot perform this action.</p>
-      ) : null}
-
-      <div className="mt-4 rounded-2xl border border-rose-300/15 bg-rose-500/[0.055] p-3">
-        <div className="flex items-center gap-2 text-rose-100">
-          <RotateCcw size={15} />
-          <p className="text-sm font-semibold">Return for Correction</p>
-        </div>
-        <textarea
-          value={returnDescription}
-          onChange={(event) => setReturnDescription(event.target.value)}
-          rows={3}
-          maxLength={1000}
-          placeholder="Enter correction reason before returning this work."
-          className="mt-3 w-full resize-none rounded-2xl border border-white/12 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-rose-300/60 focus:outline-none"
-        />
+      {canPrimary ? (
         <button
           type="button"
-          disabled={busy || !canReturn}
-          onClick={() => onStageAction?.("return", returnDescription)}
-          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-rose-300/30 bg-rose-500/15 px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-rose-100 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={busy}
+          onClick={() => onStageAction?.(currentAction.action, stageDescription)}
+          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-500 to-teal-500 px-4 py-3 text-sm font-black uppercase tracking-[0.16em] text-white shadow-[0_20px_45px_rgba(8,145,178,.2)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <RotateCcw size={14} />
-          RETURN
+          <Icon size={16} />
+          {currentAction.button}
         </button>
-      </div>
+      ) : (
+        <p className="mt-2 text-xs text-amber-200">Your role can view this stage, but cannot perform this action.</p>
+      )}
+
+      {canReturn ? (
+        <div className="mt-4 rounded-2xl border border-rose-300/15 bg-rose-500/[0.055] p-3">
+          <div className="flex items-center gap-2 text-rose-100">
+            <RotateCcw size={15} />
+            <p className="text-sm font-semibold">Return for Correction</p>
+          </div>
+          <textarea
+            value={returnDescription}
+            onChange={(event) => setReturnDescription(event.target.value)}
+            rows={3}
+            maxLength={1000}
+            placeholder="Enter correction reason before returning this work."
+            className="mt-3 w-full resize-none rounded-2xl border border-white/12 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-rose-300/60 focus:outline-none"
+          />
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onStageAction?.("return", returnDescription)}
+            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-rose-300/30 bg-rose-500/15 px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-rose-100 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RotateCcw size={14} />
+            RETURN
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 };

@@ -111,19 +111,15 @@ const toActionPermissions = (permissions = {}, role = ROLES.USER) => {
       const raw = permissions[candidateKeys[index]];
       if (typeof raw === "boolean") {
         if (!raw) {
-          acc[moduleName] = {
-            view: false,
-            create: false,
-            update: false,
-            delete: false
-          };
+          acc[moduleName] = actionKeys.reduce((moduleAcc, action) => {
+            moduleAcc[action] = false;
+            return moduleAcc;
+          }, {});
         } else {
-          acc[moduleName] = {
-            view: true,
-            create: Boolean(legacyEntry.create),
-            update: Boolean(legacyEntry.update),
-            delete: Boolean(legacyEntry.delete)
-          };
+          acc[moduleName] = actionKeys.reduce((moduleAcc, action) => {
+            moduleAcc[action] = action === "view" ? true : Boolean(legacyEntry[action]);
+            return moduleAcc;
+          }, {});
         }
         break;
       }

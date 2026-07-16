@@ -6,6 +6,8 @@ import { normalizePermissions } from "../utils/permissions";
 const ACCESS_TOKEN_KEY = "hse_access_token";
 const USER_KEY = "hse_user";
 const CSRF_KEY = "hse_csrf_token";
+const LEGACY_ACCESS_TOKEN_KEYS = ["accessToken", "token"];
+const LEGACY_CSRF_KEYS = ["csrfToken"];
 const MUTATING_METHODS = ["post", "put", "patch", "delete"];
 
 const client = axios.create({
@@ -17,6 +19,25 @@ const csrfClient = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true
 });
+
+const getCookie = (name) => {
+  if (typeof document === "undefined") return "";
+  const cookie = document.cookie
+    .split("; ")
+    .find((item) => item.startsWith(`${name}=`));
+  return cookie ? decodeURIComponent(cookie.split("=").slice(1).join("=")) : "";
+};
+
+const getStoredAccessToken = () =>
+  localStorage.getItem(ACCESS_TOKEN_KEY) ||
+  LEGACY_ACCESS_TOKEN_KEYS.map((key) => localStorage.getItem(key)).find(Boolean) ||
+  "";
+
+const getStoredCsrfToken = () =>
+  localStorage.getItem(CSRF_KEY) ||
+  LEGACY_CSRF_KEYS.map((key) => localStorage.getItem(key)).find(Boolean) ||
+  getCookie(CSRF_KEY) ||
+  "";
 
 const setSession = ({ token, user, csrfToken }) => {
   const normalizedUser = user
@@ -38,8 +59,10 @@ const setSession = ({ token, user, csrfToken }) => {
   );
 
   if (token) localStorage.setItem(ACCESS_TOKEN_KEY, token);
+  if (token) localStorage.setItem("accessToken", token);
   if (normalizedUser) localStorage.setItem(USER_KEY, JSON.stringify(normalizedUser));
   if (csrfToken) localStorage.setItem(CSRF_KEY, csrfToken);
+  if (csrfToken) localStorage.setItem("csrfToken", csrfToken);
 
   // Legacy key compatibility for existing business modules.
   if (token) localStorage.setItem("token", token);
@@ -62,6 +85,8 @@ const clearSession = () => {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(CSRF_KEY);
+  localStorage.removeItem("accessToken");
+  localStorage.removeItem("csrfToken");
   localStorage.removeItem("token");
   localStorage.removeItem("id");
   localStorage.removeItem("userId");
@@ -89,10 +114,10 @@ const getStoredUser = () => {
 };
 
 client.interceptors.request.use(async (config) => {
-  const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+  const token = getStoredAccessToken();
   const method = (config.method || "get").toLowerCase();
   const isMutating = MUTATING_METHODS.includes(method);
-  let csrfToken = localStorage.getItem(CSRF_KEY);
+  let csrfToken = getStoredCsrfToken();
   config.headers = config.headers || {};
 
   if (token) {
@@ -120,6 +145,7 @@ const refreshCsrfToken = async () => {
         const csrfToken = res.data?.csrfToken || "";
         if (csrfToken) {
           localStorage.setItem(CSRF_KEY, csrfToken);
+          localStorage.setItem("csrfToken", csrfToken);
         }
         return csrfToken;
       })
@@ -166,7 +192,7 @@ client.interceptors.response.use(
       !original?._csrfRetry &&
       !original?._skipCsrfRetry &&
       MUTATING_METHODS.includes(method) &&
-      message.toLowerCase().includes("csrf")
+      (error.response?.data?.code === "CSRF_INVALID" || message.toLowerCase().includes("csrf"))
     ) {
       original._csrfRetry = true;
       try {
@@ -177,8 +203,21 @@ client.interceptors.response.use(
         }
         return client(original);
       } catch (_csrfError) {
+        if (error.response?.data) {
+          error.response.data.message = "Your security session expired. Refreshing security token. Please try again.";
+        }
         return Promise.reject(error);
       }
+    }
+
+    if (status === 403 && error.response?.data?.code === "CSRF_INVALID") {
+      error.response.data.message = "Your security session expired. Refreshing security token. Please try again.";
+    }
+    if (status === 403 && ["PERMISSION_DENIED", "ROLE_DENIED"].includes(error.response?.data?.code)) {
+      error.response.data.message = "You do not have permission to perform this action.";
+    }
+    if (status === 409 && error.response?.data?.code === "INVALID_WORKFLOW_STAGE") {
+      error.response.data.message = "This item has already moved to another approval stage. Refresh the list.";
     }
 
     if (

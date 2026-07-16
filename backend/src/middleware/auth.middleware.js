@@ -3,6 +3,7 @@ const { verifyAccessToken } = require("../utils/tokens");
 const User = require("../models/User");
 const { toActionPermissions } = require("./permission.middleware");
 const { normalizeRole } = require("../constants/roles");
+const logger = require("../utils/logger");
 
 const authMiddleware = async (req, _res, next) => {
   const authHeader = req.headers.authorization || "";
@@ -11,7 +12,7 @@ const authMiddleware = async (req, _res, next) => {
     : null;
 
   if (!token) {
-    next(new ApiError(401, "Authentication token missing"));
+    next(new ApiError(401, "Authentication token missing", null, "AUTH_TOKEN_MISSING"));
     return;
   }
 
@@ -20,12 +21,18 @@ const authMiddleware = async (req, _res, next) => {
     const user = await User.findById(payload.sub).select("-password");
 
     if (!user) {
-      next(new ApiError(401, "Invalid authentication token"));
+      next(new ApiError(401, "Invalid authentication token", null, "AUTH_TOKEN_INVALID"));
       return;
     }
 
     if (user.status === "blocked") {
-      next(new ApiError(403, "User is blocked"));
+      logger.warn("Blocked user attempted access", {
+        route: req.originalUrl,
+        method: req.method,
+        userId: user._id.toString(),
+        role: user.role
+      });
+      next(new ApiError(403, "User is blocked", null, "USER_BLOCKED"));
       return;
     }
 
@@ -40,7 +47,7 @@ const authMiddleware = async (req, _res, next) => {
     };
     next();
   } catch (error) {
-    next(new ApiError(401, "Invalid or expired authentication token"));
+    next(new ApiError(401, "Invalid or expired authentication token", null, "AUTH_TOKEN_INVALID"));
   }
 };
 

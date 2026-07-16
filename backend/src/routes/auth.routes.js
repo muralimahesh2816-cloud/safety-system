@@ -125,7 +125,7 @@ router.post(
     }
     const creator = await User.findById(payload.sub);
     if (!creator || ![ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(creator.role)) {
-      throw new ApiError(403, "Only admins can create users");
+      throw new ApiError(403, "Only admins can create users", null, "PERMISSION_DENIED");
     }
 
     const password = await bcrypt.hash(req.body.password, env.bcryptRounds);
@@ -184,7 +184,7 @@ router.post(
     }
 
     if (user.status === "blocked") {
-      throw new ApiError(403, "User is blocked");
+      throw new ApiError(403, "User is blocked", null, "USER_BLOCKED");
     }
 
     user.failedLoginAttempts = 0;
