@@ -35,8 +35,12 @@ const toLegacyWorkRecord = (record) => {
   const afterImage = plain.afterImages?.[0]?.url || plain.afterImage || "";
   const chainageFrom = getChainageFrom(plain);
   const chainageTo = getChainageTo(plain);
+  const createdByName = plain.createdByName || plain.createdBy?.name || "";
+  const createdByRole = plain.createdByRole || plain.createdBy?.role || "";
+  const approvedBy = plain.approvedBy || plain.approvedById?.name || "";
   return {
     ...plain,
+    approvalNumber: plain.approvalNumber || (plain._id ? `WA-${String(plain._id).slice(-8).toUpperCase()}` : ""),
     description: plain.description || plain.workDescription || "",
     chainageFrom,
     chainageTo,
@@ -44,7 +48,17 @@ const toLegacyWorkRecord = (record) => {
     chainageNo: plain.chainageNo || plain.chainage || chainageFrom,
     beforeImage,
     afterImage,
-    approvedBy: plain.approvedBy || ""
+    createdByName,
+    createdByRole,
+    reportedBy: plain.reportedBy || createdByName,
+    checkedBy: plain.checkedBy || "",
+    recommendedBy: plain.recommendedBy || "",
+    approvedBy,
+    approvedByName: approvedBy,
+    approvedByRole: plain.approvedByRole || "",
+    approvedAt: plain.approvedAt || "",
+    approvalDate: plain.approvedAt || "",
+    completionDate: plain.completionDate || (plain.status === "Completed" ? plain.updatedAt : "")
   };
 };
 
@@ -66,7 +80,11 @@ const buildWorkQuery = (query = {}) => {
       { chainage: regex },
       { location: regex },
       { workType: regex },
-      { title: regex }
+      { title: regex },
+      { checkedBy: regex },
+      { recommendedBy: regex },
+      { approvedBy: regex },
+      { createdByName: regex }
     ];
   }
 
@@ -133,6 +151,10 @@ router.post(
       beforeImages,
       beforeImage: beforeImages[0]?.url || "",
       createdBy: req.user.id,
+      createdByName: req.user.name || "",
+      createdByRole: req.user.role || "",
+      checkedBy: payload.checkedBy,
+      recommendedBy: payload.recommendedBy,
       assignedTo: payload.assignedTo || null,
       startDate: parseDate(payload.startDate),
       dueDate: parseDate(payload.dueDate),
@@ -144,7 +166,17 @@ router.post(
       timeline: [
         {
           label: "Created",
-          description: "Work approval request created",
+          description: `Created by ${req.user.name || "User"}`,
+          user: req.user.id
+        },
+        {
+          label: "Checked",
+          description: `Checked by ${payload.checkedBy}`,
+          user: req.user.id
+        },
+        {
+          label: "Recommended",
+          description: `Recommended by ${payload.recommendedBy}`,
           user: req.user.id
         }
       ]
@@ -201,6 +233,8 @@ router.patch(
       "chainageFrom",
       "chainageTo",
       "workersCount",
+      "checkedBy",
+      "recommendedBy",
       "priority"
     ];
 
@@ -273,6 +307,9 @@ router.patch(
     } else if (approved) {
       work.status = "Approved";
       work.approvedBy = req.user.name || work.approvedBy;
+      work.approvedById = req.user.id;
+      work.approvedByRole = req.user.role || "";
+      work.approvedAt = new Date();
     } else {
       work.status = "Under Review";
     }
@@ -299,10 +336,16 @@ router.patch(
     }
 
     work.status = req.body.status;
-    if (req.body.approvedBy) {
-      work.approvedBy = req.body.approvedBy;
-    } else if (["Approved", "Rejected", "Completed"].includes(req.body.status)) {
+    if (req.body.status === "Approved") {
       work.approvedBy = req.user.name || work.approvedBy;
+      work.approvedById = req.user.id;
+      work.approvedByRole = req.user.role || "";
+      work.approvedAt = new Date();
+    } else if (req.body.status === "Rejected") {
+      work.approvedBy = "";
+      work.approvedById = null;
+      work.approvedByRole = "";
+      work.approvedAt = null;
     }
     work.approvalHistory.push({
       action: `status_${req.body.status}`,
@@ -311,7 +354,7 @@ router.patch(
     });
     work.timeline.push({
       label: "Status Updated",
-      description: `${req.body.status}${req.body.comment ? `: ${req.body.comment}` : ""}`,
+      description: `${req.body.status} by ${req.user.name || "Admin"}${req.body.comment ? `: ${req.body.comment}` : ""}`,
       user: req.user.id
     });
 
@@ -401,6 +444,11 @@ router.post(
     work.timeline.push({
       label: "After Images Uploaded",
       description: `${uploads.length} file(s) added`,
+      user: req.user.id
+    });
+    work.timeline.push({
+      label: "Completed",
+      description: `Completion evidence uploaded by ${req.user.name || "User"}`,
       user: req.user.id
     });
     await work.save();

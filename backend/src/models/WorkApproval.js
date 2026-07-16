@@ -80,7 +80,13 @@ const workApprovalSchema = new mongoose.Schema(
     afterImages: [assetSchema],
     beforeImage: { type: String, default: "" },
     afterImage: { type: String, default: "" },
+    approvalNumber: { type: String, default: "" },
+    checkedBy: { type: String, default: "", trim: true },
+    recommendedBy: { type: String, default: "", trim: true },
     approvedBy: { type: String, default: "" },
+    approvedById: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    approvedByRole: { type: String, default: "" },
+    approvedAt: Date,
     workflow: [workflowSchema],
     comments: [commentSchema],
     approvalHistory: [
@@ -94,6 +100,8 @@ const workApprovalSchema = new mongoose.Schema(
     timeline: [timelineSchema],
     digitalSignatures: [signatureSchema],
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    createdByName: { type: String, default: "" },
+    createdByRole: { type: String, default: "" },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     startDate: Date,
     dueDate: Date
@@ -104,9 +112,12 @@ const workApprovalSchema = new mongoose.Schema(
 workApprovalSchema.pre("validate", function normalizeChainageRange() {
   const legacyChainage = this.chainageNo || this.chainage || "";
   if (!this.chainageFrom) this.chainageFrom = legacyChainage;
-  if (!this.chainageTo) this.chainageTo = this.chainageFrom || legacyChainage;
+  if (!this.chainageTo) this.chainageTo = legacyChainage;
   if (!this.chainage) this.chainage = this.chainageFrom;
   if (!this.chainageNo) this.chainageNo = this.chainageFrom;
+  if (!this.approvalNumber && this._id) {
+    this.approvalNumber = `WA-${String(this._id).slice(-8).toUpperCase()}`;
+  }
 });
 
 workApprovalSchema.index({ status: 1, priority: 1, createdAt: -1 });

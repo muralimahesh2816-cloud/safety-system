@@ -331,9 +331,18 @@ const mapWorkRecord = (item = {}) => {
 
   const chainageFrom = getChainageFrom(item);
   const chainageTo = getStrictChainageTo(item);
+  const createdByName =
+    item.createdByName ||
+    item.reportedBy ||
+    item.createdBy?.name ||
+    item.submittedBy?.name ||
+    "";
+  const createdByRole = item.createdByRole || item.createdBy?.role || "";
+  const approvedByName = item.approvedByName || item.approvedBy || item.approvedById?.name || "";
 
   return {
     ...item,
+    approvalNumber: item.approvalNumber || (item._id ? `WA-${String(item._id).slice(-8).toUpperCase()}` : ""),
     title: item.title || item.workType || "Work Approval",
     workType: item.workType || item.title || "",
     description: item.description || item.workDescription || "",
@@ -353,7 +362,17 @@ const mapWorkRecord = (item = {}) => {
     approvalHistory: item.approvalHistory || [],
     timeline: item.timeline || [],
     digitalSignatures: item.digitalSignatures || [],
-    approvedBy: item.approvedBy || ""
+    createdByName,
+    createdByRole,
+    reportedBy: createdByName,
+    checkedBy: item.checkedBy || "",
+    recommendedBy: item.recommendedBy || "",
+    approvedBy: approvedByName,
+    approvedByName,
+    approvedByRole: item.approvedByRole || "",
+    approvedAt: item.approvedAt || item.approvalDate || "",
+    approvalDate: item.approvalDate || item.approvedAt || "",
+    completionDate: item.completionDate || (item.status === "Completed" ? item.updatedAt : "")
   };
 };
 
@@ -457,6 +476,7 @@ const normalizeReportRows = (rows = [], type = "work") =>
     }
 
     return {
+      "Approval No": item.approvalNumber || (item._id ? `WA-${String(item._id).slice(-8).toUpperCase()}` : "-"),
       Date: item.date || item.createdAt || "-",
       Plaza: item.plaza || "-",
       "Work Type": item.workType || item.title || "-",
@@ -465,11 +485,15 @@ const normalizeReportRows = (rows = [], type = "work") =>
       "Chainage From": getChainageFrom(item) || "-",
       "Chainage To": getStrictChainageTo(item) || "-",
       "Workers Count": item.workersCount || "-",
-      Priority: item.priority || "-",
+      "Created By": item.createdByName || item.reportedBy || item.createdBy?.name || "-",
+      "Checked By": item.checkedBy || "-",
+      "Recommended By": item.recommendedBy || "-",
       Status: item.status || "Pending",
-      "Reported By": item.reportedBy || "-",
-      "Approved By": item.approvedBy || "-",
-      "Completion Date": item.completionDate || "-"
+      "Approved By": item.approvedByName || item.approvedBy || "-",
+      "Approval Date": item.approvedAt || item.approvalDate || "-",
+      "Completion Date": item.completionDate || "-",
+      "Before Image": item.beforeImage || item.beforeImages || "",
+      "After Image": item.afterImage || item.afterImages || ""
     };
   });
 
@@ -544,14 +568,21 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
         item.status === "Approved"
     );
     return filtered.map((item) => ({
+      "Approval No": item.approvalNumber || (item._id ? `WA-${String(item._id).slice(-8).toUpperCase()}` : "-"),
       Date: item.date || item.createdAt || "-",
       "Work Type": item.workType || "-",
       Location: item.location || "-",
       "Chainage From": getChainageFrom(item) || "-",
       "Chainage To": getStrictChainageTo(item) || "-",
       "Workers Count": item.workersCount || "-",
-      "Approved By": item.approvedBy || "Admin",
-      Status: item.status || "Approved"
+      "Created By": item.createdByName || item.reportedBy || item.createdBy?.name || "-",
+      "Checked By": item.checkedBy || "-",
+      "Recommended By": item.recommendedBy || "-",
+      "Approved By": item.approvedByName || item.approvedBy || "Admin",
+      "Approval Date": item.approvedAt || item.approvalDate || "-",
+      Status: item.status || "Approved",
+      "Before Image": item.beforeImage || item.beforeImages || "",
+      "After Image": item.afterImage || item.afterImages || ""
     }));
   }
 

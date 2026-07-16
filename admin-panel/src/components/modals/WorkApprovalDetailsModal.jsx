@@ -80,7 +80,12 @@ const WorkApprovalDetailsModal = ({ open, work, onClose, onOpenMedia }) => {
   const completionDate = status === "Completed"
     ? work?.completedAt || work?.completionDate || work?.updatedAt
     : work?.completionDate;
-  const reportedBy = work?.reportedBy || work?.createdBy?.name || work?.submittedBy?.name || work?.employeeName;
+  const createdBy =
+    work?.createdByName ||
+    work?.reportedBy ||
+    work?.createdBy?.name ||
+    work?.submittedBy?.name ||
+    work?.employeeName;
 
   const downloadPdf = async () => {
     if (exporting || !work) return;
@@ -147,16 +152,22 @@ const WorkApprovalDetailsModal = ({ open, work, onClose, onOpenMedia }) => {
                     <Wrench size={19} className="text-cyan-300" />
                     <h3 className="font-display text-base font-semibold text-white">Work Information</h3>
                   </div>
+                  <InfoRow label="Approval No" value={work.approvalNumber} />
                   <InfoRow label="Work Type" value={work.workType || work.title} icon={Wrench} />
                   <InfoRow label="Location" value={work.location || work.plaza} icon={MapPin} />
                   <InfoRow label="Chainage From" value={getChainageFrom(work)} />
                   <InfoRow label="Chainage To" value={getChainageTo(work)} />
                   <InfoRow label="Chainage Range" value={formatChainageRange(work)} />
                   <InfoRow label="Workers Count" value={work.workersCount} icon={UsersRound} />
-                  <InfoRow label="Reported By" value={reportedBy} icon={UserRound} />
-                  <InfoRow label="Report Date" value={formatDateTime(work.reportDate || work.startDate || work.createdAt)} icon={CalendarDays} />
+                  <InfoRow label="Created By" value={createdBy} icon={UserRound} />
+                  <InfoRow label="Created Role" value={work.createdByRole} />
+                  <InfoRow label="Checked By" value={work.checkedBy} />
+                  <InfoRow label="Recommended By" value={work.recommendedBy} />
+                  <InfoRow label="Created Date" value={formatDateTime(work.reportDate || work.startDate || work.createdAt)} icon={CalendarDays} />
                   <InfoRow label="Status" value={status} />
-                  <InfoRow label="Approved By" value={work.approvedBy || work.approvedByName} />
+                  <InfoRow label="Approved By" value={work.approvedByName || work.approvedBy} />
+                  <InfoRow label="Approved Role" value={work.approvedByRole} />
+                  <InfoRow label="Approval Date" value={work.approvedAt || work.approvalDate ? formatDateTime(work.approvedAt || work.approvalDate) : "-"} />
                   <InfoRow label="Completion Date" value={completionDate ? formatDateTime(completionDate) : "-"} />
 
                   <div className="mt-5 rounded-2xl border border-cyan-400/15 bg-cyan-500/[0.06] p-4">

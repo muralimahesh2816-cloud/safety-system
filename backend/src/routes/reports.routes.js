@@ -62,6 +62,7 @@ const toRows = ({ work, hazards, users, training }) => {
 
 const toLegacyWorkRecord = (record) => ({
   _id: record._id,
+  approvalNumber: record.approvalNumber || `WA-${String(record._id).slice(-8).toUpperCase()}`,
   date: record.createdAt,
   createdAt: record.createdAt,
   updatedAt: record.updatedAt,
@@ -76,8 +77,15 @@ const toLegacyWorkRecord = (record) => ({
   workersCount: record.workersCount || 0,
   priority: record.priority || "Medium",
   status: record.status || "Pending",
-  reportedBy: record.createdBy?.name || "",
+  reportedBy: record.createdByName || record.createdBy?.name || "",
+  createdByName: record.createdByName || record.createdBy?.name || "",
+  createdByRole: record.createdByRole || record.createdBy?.role || "",
+  checkedBy: record.checkedBy || "",
+  recommendedBy: record.recommendedBy || "",
   approvedBy: record.approvedBy || "",
+  approvedByRole: record.approvedByRole || "",
+  approvedAt: record.approvedAt || "",
+  approvalDate: record.approvedAt || "",
   completionDate: record.status === "Completed" ? record.updatedAt : "",
   beforeImage: record.beforeImages?.[0]?.url || record.beforeImage || "",
   afterImage: record.afterImages?.[0]?.url || record.afterImage || ""
@@ -122,9 +130,9 @@ router.get(
   authorizePermission("reports", "view"),
   asyncHandler(async (_req, res) => {
     const records = await WorkApproval.find()
-      .populate("createdBy", "name")
+      .populate("createdBy", "name role")
       .select(
-        "title plaza workType description location chainage chainageNo chainageFrom chainageTo workersCount priority status createdBy approvedBy beforeImages afterImages beforeImage afterImage createdAt updatedAt"
+        "title plaza approvalNumber workType description location chainage chainageNo chainageFrom chainageTo workersCount priority status createdBy createdByName createdByRole checkedBy recommendedBy approvedBy approvedByRole approvedAt beforeImages afterImages beforeImage afterImage createdAt updatedAt"
       )
       .sort({ createdAt: -1 });
     res.json(records.map(toLegacyWorkRecord));

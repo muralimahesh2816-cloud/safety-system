@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Clock3, UploadCloud } from "lucide-react";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import GlassCard from "../components/common/GlassCard";
@@ -23,17 +24,9 @@ import {
   matchesChainageSearch,
   validateChainageRange
 } from "../utils/chainage";
+import { checkedByUsers, recommendedByUsers, statusColors, workTypes } from "../config/workApprovalConfig";
 
-const legacyWorkTypes = [
-  "Road Work",
-  "Lights Changing",
-  "Height Work",
-  "Grass Cutting",
-  "Watering Plants",
-  "Plaza Maintenance"
-];
-
-const statusList = ["Pending", "Approved", "Rejected"];
+const WORK_FORM_COLLAPSED_KEY = "workApprovalFormCollapsed";
 
 const getApiErrorMessage = (error, fallback = "Request failed") => {
   const data = error?.response?.data;
@@ -73,6 +66,8 @@ const getWorkSubmitValidationMessage = ({ form, chainageValidation, beforeImages
   if (!form.location) missing.push("Location");
   if (!form.workersCount) missing.push("Workers Count");
   if (!form.description.trim()) missing.push("Work Description");
+  if (!form.checkedBy) missing.push("Checked By");
+  if (!form.recommendedBy) missing.push("Recommended By");
   if (!beforeImages.length) missing.push("Before Image");
 
   const chainageMessages = Object.values(chainageValidation.errors).filter(Boolean);
@@ -94,6 +89,8 @@ const initialForm = {
   chainageTo: "",
   workersCount: "",
   description: "",
+  checkedBy: "",
+  recommendedBy: "",
   priority: "Medium",
   assignedTo: "",
   startDate: "",
@@ -140,12 +137,10 @@ const getWorkStatusSinceText = (work = {}) => {
   return `${status} since ${formatElapsedDuration(changedAt)}`;
 };
 const getWorkReporterName = (work = {}) =>
-  work.reportedBy || work.createdBy?.name || work.submittedBy?.name || "";
-const isSameDate = (value, filterDate) => {
-  if (!filterDate) return true;
-  return toDateInputValue(value) === filterDate;
-};
-
+  work.createdByName || work.reportedBy || work.createdBy?.name || work.submittedBy?.name || "";
+const getApprovedByName = (work = {}) => work.approvedByName || work.approvedBy || "";
+const getInitialFormCollapsed = () =>
+  typeof window !== "undefined" && localStorage.getItem(WORK_FORM_COLLAPSED_KEY) === "true";
 const WorkApprovalsPage = ({ user }) => {
   const [records, setRecords] = useState([]);
   const [form, setForm] = useState(initialForm);
@@ -159,11 +154,17 @@ const WorkApprovalsPage = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("All");
   const [listFilters, setListFilters] = useState({
-    date: "",
-    reportedBy: "",
+    dateFrom: "",
+    dateTo: "",
+    createdBy: "",
+    approvedBy: "",
+    checkedBy: "",
+    recommendedBy: "",
     workType: "",
+    location: "",
     chainage: ""
   });
+  const [formCollapsed, setFormCollapsed] = useState(getInitialFormCollapsed);
   const [chainageErrors, setChainageErrors] = useState({ chainageFrom: "", chainageTo: "" });
   const [editChainageErrors, setEditChainageErrors] = useState({ chainageFrom: "", chainageTo: "" });
   const [submitting, setSubmitting] = useState(false);
@@ -195,6 +196,10 @@ const WorkApprovalsPage = ({ user }) => {
     fetchAll();
   }, [fetchAll]);
 
+  useEffect(() => {
+    localStorage.setItem(WORK_FORM_COLLAPSED_KEY, String(formCollapsed));
+  }, [formCollapsed]);
+
   const submitWork = async (event) => {
     event.preventDefault();
     setError("");
@@ -207,6 +212,8 @@ const WorkApprovalsPage = ({ user }) => {
       !chainageValidation.isValid ||
       !form.workersCount ||
       !form.description.trim() ||
+      !form.checkedBy ||
+      !form.recommendedBy ||
       beforeImages.length === 0
     ) {
       const validationMessage = getWorkSubmitValidationMessage({
@@ -269,14 +276,10 @@ const WorkApprovalsPage = ({ user }) => {
     if (workActionLockRef.current) return;
     workActionLockRef.current = true;
     setBusyWorkId(id);
-    const approvedBy = user?.name || localStorage.getItem("name") || "Admin";
     await showLoadingPopup("Uploading Please Wait...", `Updating work status to ${status}...`);
     let statusErrorMessage = "";
     try {
-      await workService.updateStatus(id, {
-        status,
-        approvedBy
-      });
+      await workService.updateStatus(id, { status });
       await showSuccessPopup(`Work ${status} Successfully`);
       fetchAll();
     } catch (statusError) {
@@ -380,6 +383,8 @@ const WorkApprovalsPage = ({ user }) => {
       chainageTo: getChainageTo(work),
       workersCount: work.workersCount ? String(work.workersCount) : "",
       description: work.description || work.workDescription || "",
+      checkedBy: work.checkedBy || "",
+      recommendedBy: work.recommendedBy || "",
       priority: work.priority || "Medium",
       assignedTo: "",
       startDate: toDateInputValue(work.startDate),
@@ -402,7 +407,9 @@ const WorkApprovalsPage = ({ user }) => {
       !editForm.location ||
       !chainageValidation.isValid ||
       !editForm.workersCount ||
-      !editForm.description.trim()
+      !editForm.description.trim() ||
+      !editForm.checkedBy ||
+      !editForm.recommendedBy
     ) {
       showValidationPopup("Please fill all required Work Approval edit fields.");
       return;
@@ -423,6 +430,8 @@ const WorkApprovalsPage = ({ user }) => {
         chainageNo: chainageValidation.values.chainageFrom,
         workersCount: Number(editForm.workersCount),
         description: editForm.description.trim(),
+        checkedBy: editForm.checkedBy,
+        recommendedBy: editForm.recommendedBy,
         priority: editForm.priority,
         startDate: editForm.startDate,
         dueDate: editForm.dueDate
@@ -463,16 +472,44 @@ const WorkApprovalsPage = ({ user }) => {
   };
 
   const filteredRecords = useMemo(() => {
-    const reporterNeedle = listFilters.reportedBy.trim().toLowerCase();
+    const createdByNeedle = listFilters.createdBy.trim().toLowerCase();
+    const approvedByNeedle = listFilters.approvedBy.trim().toLowerCase();
+    const checkedByNeedle = listFilters.checkedBy.trim().toLowerCase();
+    const recommendedByNeedle = listFilters.recommendedBy.trim().toLowerCase();
+    const locationNeedle = listFilters.location.trim().toLowerCase();
+    const fromDate = listFilters.dateFrom ? new Date(listFilters.dateFrom) : null;
+    const toDate = listFilters.dateTo ? new Date(listFilters.dateTo) : null;
+    if (toDate) toDate.setHours(23, 59, 59, 999);
 
     return records.filter((item) => {
+      const createdAt = new Date(item.createdAt || item.date || "");
       const statusMatch = statusFilter === "All" || (item.status || "Pending") === statusFilter;
-      const dateMatch = isSameDate(item.createdAt || item.date, listFilters.date);
-      const reporterMatch =
-        !reporterNeedle || getWorkReporterName(item).toLowerCase().includes(reporterNeedle);
+      const dateMatch =
+        (!fromDate || (!Number.isNaN(createdAt.getTime()) && createdAt >= fromDate)) &&
+        (!toDate || (!Number.isNaN(createdAt.getTime()) && createdAt <= toDate));
+      const createdByMatch =
+        !createdByNeedle || getWorkReporterName(item).toLowerCase().includes(createdByNeedle);
+      const approvedByMatch =
+        !approvedByNeedle || getApprovedByName(item).toLowerCase().includes(approvedByNeedle);
+      const checkedByMatch =
+        !checkedByNeedle || String(item.checkedBy || "").toLowerCase().includes(checkedByNeedle);
+      const recommendedByMatch =
+        !recommendedByNeedle || String(item.recommendedBy || "").toLowerCase().includes(recommendedByNeedle);
+      const locationMatch =
+        !locationNeedle || String(item.location || "").toLowerCase().includes(locationNeedle);
       const workTypeMatch = !listFilters.workType || (item.workType || item.title || "") === listFilters.workType;
       const chainageMatch = matchesChainageSearch(item, listFilters.chainage);
-      return statusMatch && dateMatch && reporterMatch && workTypeMatch && chainageMatch;
+      return (
+        statusMatch &&
+        dateMatch &&
+        createdByMatch &&
+        approvedByMatch &&
+        checkedByMatch &&
+        recommendedByMatch &&
+        locationMatch &&
+        workTypeMatch &&
+        chainageMatch
+      );
     });
   }, [records, statusFilter, listFilters]);
 
@@ -490,10 +527,7 @@ const WorkApprovalsPage = ({ user }) => {
   );
 
   const statusTone = (status) => {
-    if (status === "Approved") return "text-green-300";
-    if (status === "Rejected") return "text-rose-300";
-    if (status === "Completed") return "text-blue-300";
-    return "text-amber-300";
+    return statusColors[status]?.text || statusColors.Pending.text;
   };
 
   return (
@@ -503,8 +537,28 @@ const WorkApprovalsPage = ({ user }) => {
         subtitle="Legacy fields restored with single-admin approval lifecycle and image evidence"
       />
 
-      <div className="grid grid-cols-1 gap-4 xl:h-[calc(100vh-120px)] xl:grid-cols-3">
-        <GlassCard className="module-sticky-card p-5 xl:col-span-1">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setFormCollapsed((prev) => !prev)}
+          className="rounded-2xl border border-cyan-300/25 bg-cyan-500/10 px-4 py-2 text-xs font-semibold text-cyan-100 shadow-[0_12px_30px_rgba(8,145,178,.14)] transition hover:border-cyan-200/60 hover:bg-cyan-500/20"
+        >
+          {formCollapsed ? "Show Form" : "Hide Form"}
+        </button>
+      </div>
+
+      <div className={`grid grid-cols-1 gap-4 xl:h-[calc(100vh-120px)] ${formCollapsed ? "xl:grid-cols-1" : "xl:grid-cols-3"}`}>
+        <AnimatePresence initial={false}>
+          {!formCollapsed ? (
+            <motion.div
+              key="work-submit-form"
+              initial={{ opacity: 0, x: -24, scale: 0.98 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: -24, scale: 0.98 }}
+              transition={{ duration: 0.24, ease: "easeOut" }}
+              className="xl:col-span-1"
+            >
+        <GlassCard className="module-sticky-card p-5">
           <h3 className="mb-3 text-lg font-semibold text-white">Submit Work Approval</h3>
           <form className="space-y-3" onSubmit={submitWork}>
             <select
@@ -516,7 +570,7 @@ const WorkApprovalsPage = ({ user }) => {
               <option value="" className="bg-slate-900 text-white">
                 Select Work Type
               </option>
-              {legacyWorkTypes.map((item) => (
+              {workTypes.map((item) => (
                 <option key={item} value={item} className="bg-slate-900 text-white">
                   {item}
                 </option>
@@ -576,6 +630,38 @@ const WorkApprovalsPage = ({ user }) => {
               className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
               required
             />
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <select
+                value={form.checkedBy}
+                onChange={(event) => setForm((prev) => ({ ...prev, checkedBy: event.target.value }))}
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                required
+              >
+                <option value="" className="bg-slate-900 text-white">
+                  Checked By
+                </option>
+                {checkedByUsers.map((item) => (
+                  <option key={item} value={item} className="bg-slate-900 text-white">
+                    {item}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={form.recommendedBy}
+                onChange={(event) => setForm((prev) => ({ ...prev, recommendedBy: event.target.value }))}
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                required
+              >
+                <option value="" className="bg-slate-900 text-white">
+                  Recommended By
+                </option>
+                {recommendedByUsers.map((item) => (
+                  <option key={item} value={item} className="bg-slate-900 text-white">
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </div>
             <textarea
               value={form.description}
               onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
@@ -638,8 +724,11 @@ const WorkApprovalsPage = ({ user }) => {
           </div>
           {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
         </GlassCard>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
-        <GlassCard className="p-5 xl:col-span-2 xl:max-h-[calc(100vh-120px)] xl:overflow-hidden">
+        <GlassCard className={`p-5 xl:max-h-[calc(100vh-120px)] xl:overflow-hidden ${formCollapsed ? "xl:col-span-1" : "xl:col-span-2"}`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="text-lg font-semibold text-white">Work List</h3>
@@ -651,14 +740,24 @@ const WorkApprovalsPage = ({ user }) => {
               type="button"
               onClick={() => {
                 setStatusFilter("All");
-                setListFilters({ date: "", reportedBy: "", workType: "", chainage: "" });
+                setListFilters({
+                  dateFrom: "",
+                  dateTo: "",
+                  createdBy: "",
+                  approvedBy: "",
+                  checkedBy: "",
+                  recommendedBy: "",
+                  workType: "",
+                  location: "",
+                  chainage: ""
+                });
               }}
               className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100"
             >
               Clear Filters
             </button>
           </div>
-          <div className="mb-4 grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-slate-950/35 p-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="sticky top-0 z-10 mb-4 grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-slate-950/80 p-3 backdrop-blur-xl md:grid-cols-2 xl:grid-cols-5">
             <label>
               <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                 Status
@@ -677,22 +776,33 @@ const WorkApprovalsPage = ({ user }) => {
             </label>
             <label>
               <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                Date
+                Date From
               </span>
               <input
                 type="date"
-                value={listFilters.date}
-                onChange={(event) => setListFilters((prev) => ({ ...prev, date: event.target.value }))}
+                value={listFilters.dateFrom}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, dateFrom: event.target.value }))}
                 className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
               />
             </label>
             <label>
               <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                Reported By
+                Date To
               </span>
               <input
-                value={listFilters.reportedBy}
-                onChange={(event) => setListFilters((prev) => ({ ...prev, reportedBy: event.target.value }))}
+                type="date"
+                value={listFilters.dateTo}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, dateTo: event.target.value }))}
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
+              />
+            </label>
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Created By
+              </span>
+              <input
+                value={listFilters.createdBy}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, createdBy: event.target.value }))}
                 placeholder="Search name"
                 className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white placeholder:text-slate-500"
               />
@@ -709,10 +819,62 @@ const WorkApprovalsPage = ({ user }) => {
                 <option value="" className="bg-slate-900 text-white">
                   All Work Types
                 </option>
-                {legacyWorkTypes.map((item) => (
+                {workTypes.map((item) => (
                   <option key={item} value={item} className="bg-slate-900 text-white">
                     {item}
                   </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Location
+              </span>
+              <input
+                value={listFilters.location}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, location: event.target.value }))}
+                placeholder="Search location"
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white placeholder:text-slate-500"
+              />
+            </label>
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Approved By
+              </span>
+              <input
+                value={listFilters.approvedBy}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, approvedBy: event.target.value }))}
+                placeholder="Admin name"
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white placeholder:text-slate-500"
+              />
+            </label>
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Checked By
+              </span>
+              <select
+                value={listFilters.checkedBy}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, checkedBy: event.target.value }))}
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
+              >
+                <option value="" className="bg-slate-900 text-white">All</option>
+                {checkedByUsers.map((item) => (
+                  <option key={item} value={item} className="bg-slate-900 text-white">{item}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Recommended By
+              </span>
+              <select
+                value={listFilters.recommendedBy}
+                onChange={(event) => setListFilters((prev) => ({ ...prev, recommendedBy: event.target.value }))}
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
+              >
+                <option value="" className="bg-slate-900 text-white">All</option>
+                {recommendedByUsers.map((item) => (
+                  <option key={item} value={item} className="bg-slate-900 text-white">{item}</option>
                 ))}
               </select>
             </label>
@@ -803,16 +965,16 @@ const WorkApprovalsPage = ({ user }) => {
                           <p className="mt-1 text-xs text-slate-300">
                             {work.location || "-"} | {formatChainageRange(work, true)}
                           </p>
-                          <p className="mt-1 text-xs text-slate-300">Reported By: {work.reportedBy || work.createdBy?.name || work.submittedBy?.name || "-"}</p>
+                          <p className="mt-1 text-xs text-slate-300">Created By: {getWorkReporterName(work) || "-"}</p>
+                          <p className="mt-1 text-xs text-slate-400">
+                            Checked: {work.checkedBy || "-"} | Recommended: {work.recommendedBy || "-"}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-400">
+                            Approved By: {getApprovedByName(work) || "-"}
+                          </p>
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                              normalizeStatus(work.status) === "completed"
-                                ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
-                                : normalizeStatus(work.status) === "approved"
-                                ? "border-sky-400/30 bg-sky-500/10 text-sky-200"
-                                : normalizeStatus(work.status) === "rejected"
-                                ? "border-rose-400/30 bg-rose-500/10 text-rose-200"
-                                : "border-amber-400/30 bg-amber-500/10 text-amber-200"
+                              statusColors[work.status]?.badge || statusColors.Pending.badge
                             }`}>
                               {work.status || "Pending"}
                             </span>
@@ -822,6 +984,26 @@ const WorkApprovalsPage = ({ user }) => {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        {canApprove && !workCompleted && normalizeStatus(work.status) !== "approved" ? (
+                          <button
+                            type="button"
+                            disabled={workBusy}
+                            onClick={() => updateStatus(work, "Approved")}
+                            className="rounded-xl border border-sky-400/40 bg-sky-500/15 px-2.5 py-1.5 text-xs font-semibold text-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Approve
+                          </button>
+                        ) : null}
+                        {canApprove && !workCompleted && normalizeStatus(work.status) !== "rejected" ? (
+                          <button
+                            type="button"
+                            disabled={workBusy}
+                            onClick={() => updateStatus(work, "Rejected")}
+                            className="rounded-xl border border-rose-400/40 bg-rose-500/15 px-2.5 py-1.5 text-xs font-semibold text-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Reject
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => setSelectedWork(work)}
@@ -921,26 +1103,10 @@ const WorkApprovalsPage = ({ user }) => {
                       </div>
                     </div>
 
-                    {canApprove ? (
-                      workCompleted ? (
-                        <p className="mt-3 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100">
-                          Completed work is locked. Status cannot be changed.
-                        </p>
-                      ) : (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {statusList.map((status) => (
-                          <button
-                            key={`${recordId}-${status}`}
-                            type="button"
-                            disabled={workBusy}
-                            onClick={() => updateStatus(work, status)}
-                            className="rounded-lg border border-white/15 bg-white/10 px-2.5 py-1 text-xs text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {status}
-                          </button>
-                        ))}
-                      </div>
-                      )
+                    {canApprove && workCompleted ? (
+                      <p className="mt-3 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100">
+                        Completed work is locked. Status cannot be changed.
+                      </p>
                     ) : null}
 
                     {normalizeStatus(work.status) === "approved" ? (
@@ -1062,7 +1228,7 @@ const WorkApprovalsPage = ({ user }) => {
                   <option value="" className="bg-slate-900 text-white">
                     Select Work Type
                   </option>
-                  {legacyWorkTypes.map((item) => (
+                  {workTypes.map((item) => (
                     <option key={item} value={item} className="bg-slate-900 text-white">
                       {item}
                     </option>
@@ -1145,6 +1311,42 @@ const WorkApprovalsPage = ({ user }) => {
                   placeholder="Optional title"
                   className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
                 />
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Checked By</span>
+                <select
+                  value={editForm.checkedBy}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, checkedBy: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                >
+                  <option value="" className="bg-slate-900 text-white">
+                    Select Checked By
+                  </option>
+                  {checkedByUsers.map((item) => (
+                    <option key={item} value={item} className="bg-slate-900 text-white">
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-xs text-slate-300">Recommended By</span>
+                <select
+                  value={editForm.recommendedBy}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, recommendedBy: event.target.value }))}
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
+                  required
+                >
+                  <option value="" className="bg-slate-900 text-white">
+                    Select Recommended By
+                  </option>
+                  {recommendedByUsers.map((item) => (
+                    <option key={item} value={item} className="bg-slate-900 text-white">
+                      {item}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="md:col-span-2">
                 <span className="mb-1 block text-xs text-slate-300">Work Description</span>

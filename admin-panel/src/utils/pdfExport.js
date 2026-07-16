@@ -4,6 +4,7 @@ import { getChainageFrom } from "./chainage";
 
 const reportColumns = {
   work: [
+    { header: "Approval No", keys: ["Approval No", "approvalNumber"] },
     { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
     { header: "Work Type", keys: ["Work Type", "workType", "title"] },
     { header: "Description", keys: ["Description", "description", "workDescription"] },
@@ -11,10 +12,15 @@ const reportColumns = {
     { header: "Chainage From", keys: ["Chainage From", "chainageFrom", "chainage", "chainageNo"], type: "chainageFrom" },
     { header: "Chainage To", keys: ["Chainage To", "chainageTo"], type: "chainageTo" },
     { header: "Workers", keys: ["Workers", "Workers Count", "workersCount"] },
+    { header: "Created By", keys: ["Created By", "createdByName", "reportedBy", "createdBy"] },
+    { header: "Checked By", keys: ["Checked By", "checkedBy"] },
+    { header: "Recommended By", keys: ["Recommended By", "recommendedBy"] },
+    { header: "Approved By", keys: ["Approved By", "approvedByName", "approvedBy"] },
+    { header: "Approval Date", keys: ["Approval Date", "approvedAt", "approvalDate"], type: "date" },
+    { header: "Completion Date", keys: ["Completion Date", "completionDate", "completedAt"], type: "date" },
     { header: "Status", keys: ["Status", "status"] },
-    { header: "Reported By", keys: ["Reported By", "reportedBy", "createdBy"] },
-    { header: "Approved By", keys: ["Approved By", "approvedBy"] },
-    { header: "Completion Date", keys: ["Completion Date", "completionDate", "completedAt"], type: "date" }
+    { header: "Before Image", keys: ["Before Image", "beforeImage", "beforeImages"], type: "imageStatus" },
+    { header: "After Image", keys: ["After Image", "afterImage", "afterImages"], type: "imageStatus" }
   ],
   hazard: [
     { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
@@ -53,14 +59,21 @@ const reportColumns = {
     { header: "Closure Rate", keys: ["Closure Rate", "closureRate"] }
   ],
   approved: [
+    { header: "Approval No", keys: ["Approval No", "approvalNumber"] },
     { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
     { header: "Work Type", keys: ["Work Type", "workType", "title"] },
     { header: "Location", keys: ["Location", "location"] },
     { header: "Chainage From", keys: ["Chainage From", "chainageFrom", "chainage", "chainageNo"], type: "chainageFrom" },
     { header: "Chainage To", keys: ["Chainage To", "chainageTo"], type: "chainageTo" },
     { header: "Workers", keys: ["Workers", "Workers Count", "workersCount"] },
-    { header: "Approved By", keys: ["Approved By", "approvedBy"] },
-    { header: "Status", keys: ["Status", "status"] }
+    { header: "Created By", keys: ["Created By", "createdByName", "reportedBy", "createdBy"] },
+    { header: "Checked By", keys: ["Checked By", "checkedBy"] },
+    { header: "Recommended By", keys: ["Recommended By", "recommendedBy"] },
+    { header: "Approved By", keys: ["Approved By", "approvedByName", "approvedBy"] },
+    { header: "Approval Date", keys: ["Approval Date", "approvedAt", "approvalDate"], type: "date" },
+    { header: "Status", keys: ["Status", "status"] },
+    { header: "Before Image", keys: ["Before Image", "beforeImage", "beforeImages"], type: "imageStatus" },
+    { header: "After Image", keys: ["After Image", "afterImage", "afterImages"], type: "imageStatus" }
   ]
 };
 
@@ -76,6 +89,13 @@ const pickValue = (row, keys = []) => {
     if (row[key] !== undefined && row[key] !== null && row[key] !== "") return row[key];
   }
   return "-";
+};
+
+const hasMediaValue = (value) => {
+  if (!value || value === "-") return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Boolean(value.url || value.secure_url || value.path || value.filename);
+  return Boolean(String(value).trim());
 };
 
 const normalizeChainageForCompare = (value = "") => String(value || "").trim().replace(/\s+/g, "").toLowerCase();
@@ -103,6 +123,7 @@ const formatColumnValue = (row, column) => {
   if (column.type === "chainageFrom") return safeValue(getChainageFrom(row));
   if (column.type === "chainageTo") return safeValue(getReportChainageTo(row));
   const value = pickValue(row, column.keys);
+  if (column.type === "imageStatus") return hasMediaValue(value) ? "Available" : "Not Uploaded";
   return column.type === "date" ? formatDateValue(value) : safeValue(value);
 };
 
@@ -217,17 +238,23 @@ const addHeader = (doc, { companyName, reportTitle, generatedBy, generatedDateTe
 
 const reportColumnStyles = {
   work: {
-    0: { cellWidth: 18 },
-    1: { cellWidth: 18 },
-    2: { cellWidth: 102 },
-    3: { cellWidth: 20 },
-    4: { cellWidth: 18 },
-    5: { cellWidth: 18 },
-    6: { cellWidth: 12 },
-    7: { cellWidth: 16 },
-    8: { cellWidth: 17 },
-    9: { cellWidth: 17 },
-    10: { cellWidth: 20 }
+    0: { cellWidth: 14 },
+    1: { cellWidth: 16 },
+    2: { cellWidth: 14 },
+    3: { cellWidth: 46 },
+    4: { cellWidth: 15 },
+    5: { cellWidth: 14 },
+    6: { cellWidth: 14 },
+    7: { cellWidth: 10 },
+    8: { cellWidth: 15 },
+    9: { cellWidth: 15 },
+    10: { cellWidth: 17 },
+    11: { cellWidth: 15 },
+    12: { cellWidth: 16 },
+    13: { cellWidth: 16 },
+    14: { cellWidth: 13 },
+    15: { cellWidth: 13 },
+    16: { cellWidth: 13 }
   },
   approved: {
     0: { cellWidth: 24 },
@@ -255,6 +282,7 @@ export const exportReportPdf = async ({
 
   const headers = getReportColumns(type).map((column) => column.header);
   const body = normalizedRows.map((row) => headers.map((header) => row[header] ?? "-"));
+  const compactTable = headers.length > 14;
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -271,8 +299,8 @@ export const exportReportPdf = async ({
     rowPageBreak: "avoid",
     columnStyles: reportColumnStyles[type] || {},
     styles: {
-      fontSize: headers.length > 9 ? 6.2 : 7.5,
-      cellPadding: 1.8,
+      fontSize: compactTable ? 5.2 : headers.length > 9 ? 6.2 : 7.5,
+      cellPadding: compactTable ? 1.25 : 1.8,
       minCellHeight: 8,
       overflow: "linebreak",
       valign: "middle",
@@ -284,7 +312,7 @@ export const exportReportPdf = async ({
       fillColor: [15, 23, 42],
       textColor: [248, 250, 252],
       fontStyle: "bold",
-      fontSize: headers.length > 9 ? 6.3 : 7.8,
+      fontSize: compactTable ? 5.4 : headers.length > 9 ? 6.3 : 7.8,
       halign: "left"
     },
     alternateRowStyles: { fillColor: [248, 250, 252] }
