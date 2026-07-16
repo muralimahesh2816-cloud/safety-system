@@ -25,8 +25,8 @@ const createWorkSchema = withChainageValidation(z.object({
   chainageFrom: z.string().trim().optional().default(""),
   chainageTo: z.string().trim().optional().default(""),
   workersCount: z.coerce.number().min(1, "Workers Count must be greater than zero").optional().default(1),
-  checkedBy: z.string().trim().min(1, "Checked By is required"),
-  recommendedBy: z.string().trim().min(1, "Recommended By is required"),
+  checkedBy: z.string().trim().optional().default(""),
+  recommendedBy: z.string().trim().optional().default(""),
   priority: z.enum(["Low", "Medium", "High", "Critical"]).optional().default("Medium"),
   assignedTo: z.string().optional(),
   startDate: z.string().optional(),
@@ -61,7 +61,9 @@ const workflowActionSchema = z.object({
 const statusUpdateSchema = z.object({
   status: z.enum(["Pending", "Under Review", "Approved", "Rejected", "Completed"]),
   comment: z.string().optional().default(""),
-  approvedBy: z.string().optional().default("")
+  approvedBy: z.string().optional().default(""),
+  checkedBy: z.string().trim().optional(),
+  recommendedBy: z.string().trim().optional()
 });
 
 const commentSchema = z.object({

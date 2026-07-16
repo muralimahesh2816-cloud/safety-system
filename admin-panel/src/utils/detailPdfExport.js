@@ -282,6 +282,8 @@ export const exportHazardDetailsPdf = async (hazard = {}) => {
 export const exportWorkApprovalDetailsPdf = async (work = {}) => {
   const before = normalizeMedia(work.beforeImages, work.beforeImage);
   const after = normalizeMedia(work.afterImages, work.afterImage);
+  const beforeVideos = normalizeMedia(work.beforeVideos, work.beforeVideo);
+  const afterVideos = normalizeMedia(work.afterVideos, work.afterVideo);
   const status = work.status || "Pending";
   const completionDate = status === "Completed"
     ? work.completedAt || work.completionDate || work.updatedAt
@@ -307,6 +309,10 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
       ["Approved Role", work.approvedByRole],
       ["Approval Date", formatDate(work.approvedAt || work.approvalDate)],
       ["Completion Date", formatDate(completionDate)],
+      ["Before Images", before.length],
+      ["Before Videos", beforeVideos.length],
+      ["After Images", after.length],
+      ["After Videos", afterVideos.length],
       ["Priority", work.priority]
     ],
     descriptionTitle: "Work Description",

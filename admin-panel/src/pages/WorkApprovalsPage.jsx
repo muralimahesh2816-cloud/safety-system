@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Clock3, UploadCloud } from "lucide-react";
+import { CheckCircle2, Clock3, Eye, ImagePlus, Pencil, Trash2, UploadCloud, XCircle } from "lucide-react";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import GlassCard from "../components/common/GlassCard";
 import SectionHeader from "../components/common/SectionHeader";
@@ -16,7 +16,6 @@ import {
 } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
-import { exportWorkApprovalDetailsPdf } from "../utils/detailPdfExport";
 import {
   formatChainageRange,
   getChainageFrom,
@@ -26,7 +25,8 @@ import {
 } from "../utils/chainage";
 import { checkedByUsers, recommendedByUsers, statusColors, workTypes } from "../config/workApprovalConfig";
 
-const WORK_FORM_COLLAPSED_KEY = "workApprovalFormCollapsed";
+const WORK_FORM_COLLAPSED_KEY = "workFormCollapsed";
+const LEGACY_WORK_FORM_COLLAPSED_KEY = "workApprovalFormCollapsed";
 
 const getApiErrorMessage = (error, fallback = "Request failed") => {
   const data = error?.response?.data;
@@ -66,8 +66,6 @@ const getWorkSubmitValidationMessage = ({ form, chainageValidation, beforeImages
   if (!form.location) missing.push("Location");
   if (!form.workersCount) missing.push("Workers Count");
   if (!form.description.trim()) missing.push("Work Description");
-  if (!form.checkedBy) missing.push("Checked By");
-  if (!form.recommendedBy) missing.push("Recommended By");
   if (!beforeImages.length) missing.push("Before Image");
 
   const chainageMessages = Object.values(chainageValidation.errors).filter(Boolean);
@@ -89,8 +87,6 @@ const initialForm = {
   chainageTo: "",
   workersCount: "",
   description: "",
-  checkedBy: "",
-  recommendedBy: "",
   priority: "Medium",
   assignedTo: "",
   startDate: "",
@@ -140,11 +136,53 @@ const getWorkReporterName = (work = {}) =>
   work.createdByName || work.reportedBy || work.createdBy?.name || work.submittedBy?.name || "";
 const getApprovedByName = (work = {}) => work.approvedByName || work.approvedBy || "";
 const getInitialFormCollapsed = () =>
-  typeof window !== "undefined" && localStorage.getItem(WORK_FORM_COLLAPSED_KEY) === "true";
+  typeof window !== "undefined" &&
+  (localStorage.getItem(WORK_FORM_COLLAPSED_KEY) ?? localStorage.getItem(LEGACY_WORK_FORM_COLLAPSED_KEY)) === "true";
+const MEDIA_IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
+const MEDIA_VIDEO_LIMIT_BYTES = 100 * 1024 * 1024;
+const isVideoUpload = (file) => file?.type?.startsWith("video/");
+const isVideoUrl = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url);
+const splitWorkMediaSelection = (fileList = []) => {
+  const images = [];
+  const videos = [];
+  const errors = [];
+
+  Array.from(fileList).forEach((file) => {
+    if (isVideoUpload(file)) {
+      if (file.size > MEDIA_VIDEO_LIMIT_BYTES) {
+        errors.push(`${file.name} exceeds 100MB video limit`);
+      } else if (videos.length < 10) {
+        videos.push(file);
+      }
+      return;
+    }
+
+    if (file.type?.startsWith("image/")) {
+      if (file.size > MEDIA_IMAGE_LIMIT_BYTES) {
+        errors.push(`${file.name} exceeds 10MB image limit`);
+      } else if (images.length < 10) {
+        images.push(file);
+      }
+      return;
+    }
+
+    errors.push(`${file.name} is not a supported image/video file`);
+  });
+
+  if (Array.from(fileList).filter((file) => file.type?.startsWith("image/")).length > 10) {
+    errors.push("Maximum 10 images are allowed");
+  }
+  if (Array.from(fileList).filter((file) => file.type?.startsWith("video/")).length > 10) {
+    errors.push("Maximum 10 videos are allowed");
+  }
+
+  return { images, videos, errors };
+};
 const WorkApprovalsPage = ({ user }) => {
   const [records, setRecords] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [beforeImages, setBeforeImages] = useState([]);
+  const [beforeVideos, setBeforeVideos] = useState([]);
   const [beforePreview, setBeforePreview] = useState("");
   const [afterImages, setAfterImages] = useState({});
   const [afterPreviewMap, setAfterPreviewMap] = useState({});
@@ -172,12 +210,37 @@ const WorkApprovalsPage = ({ user }) => {
   const [editingWork, setEditingWork] = useState(null);
   const [editForm, setEditForm] = useState(initialForm);
   const [editSaving, setEditSaving] = useState(false);
+  const [reviewDrafts, setReviewDrafts] = useState({});
   const submitLockRef = useRef(false);
   const workActionLockRef = useRef(false);
   const editLockRef = useRef(false);
 
   const canDelete = ["super_admin", "admin"].includes(user?.role);
   const canApprove = ["super_admin", "admin"].includes(user?.role);
+
+  const getReviewDraft = useCallback(
+    (work = {}) => {
+      const id = getWorkRecordId(work);
+      return {
+        checkedBy: reviewDrafts[id]?.checkedBy ?? work.checkedBy ?? "",
+        recommendedBy: reviewDrafts[id]?.recommendedBy ?? work.recommendedBy ?? ""
+      };
+    },
+    [reviewDrafts]
+  );
+
+  const setReviewField = (work, field, value) => {
+    const id = getWorkRecordId(work);
+    if (!id) return;
+    setReviewDrafts((prev) => ({
+      ...prev,
+      [id]: {
+        checkedBy: prev[id]?.checkedBy ?? work.checkedBy ?? "",
+        recommendedBy: prev[id]?.recommendedBy ?? work.recommendedBy ?? "",
+        [field]: value
+      }
+    }));
+  };
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -212,8 +275,6 @@ const WorkApprovalsPage = ({ user }) => {
       !chainageValidation.isValid ||
       !form.workersCount ||
       !form.description.trim() ||
-      !form.checkedBy ||
-      !form.recommendedBy ||
       beforeImages.length === 0
     ) {
       const validationMessage = getWorkSubmitValidationMessage({
@@ -240,11 +301,13 @@ const WorkApprovalsPage = ({ user }) => {
         chainageNo: chainageValidation.values.chainageFrom,
         title: form.title || `${form.workType} - ${form.location}`,
         workersCount: Number(form.workersCount),
-        beforeImages
+        beforeImages,
+        beforeVideos
       });
       setForm(initialForm);
       setChainageErrors({ chainageFrom: "", chainageTo: "" });
       setBeforeImages([]);
+      setBeforeVideos([]);
       if (beforePreview?.startsWith("blob:")) URL.revokeObjectURL(beforePreview);
       setBeforePreview("");
       await showSuccessPopup("Work Approval Submitted Successfully");
@@ -273,13 +336,29 @@ const WorkApprovalsPage = ({ user }) => {
       showValidationPopup("Completed work is locked and cannot be changed.");
       return;
     }
+    const reviewDraft = getReviewDraft(work);
+    const reviewPayload = {
+      checkedBy: reviewDraft.checkedBy.trim(),
+      recommendedBy: reviewDraft.recommendedBy.trim()
+    };
+    if (status === "Approved" && (!reviewPayload.checkedBy || !reviewPayload.recommendedBy)) {
+      showValidationPopup("Please select Checked By and Recommended By before approving this Work Approval.");
+      return;
+    }
     if (workActionLockRef.current) return;
     workActionLockRef.current = true;
     setBusyWorkId(id);
     await showLoadingPopup("Uploading Please Wait...", `Updating work status to ${status}...`);
     let statusErrorMessage = "";
     try {
-      await workService.updateStatus(id, { status });
+      await workService.updateStatus(id, status === "Approved" ? { status, ...reviewPayload } : { status });
+      if (status === "Approved") {
+        setReviewDrafts((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+      }
       await showSuccessPopup(`Work ${status} Successfully`);
       fetchAll();
     } catch (statusError) {
@@ -308,14 +387,14 @@ const WorkApprovalsPage = ({ user }) => {
     }
     const files = afterImages[id] || [];
     if (!files.length) {
-      setError("Upload completion image");
-      showValidationPopup("Please upload a completion image before marking work completed.");
+      setError("Upload completion evidence");
+      showValidationPopup("Please upload a completion image or video before marking work completed.");
       return;
     }
     if (workActionLockRef.current) return;
     workActionLockRef.current = true;
     setBusyWorkId(id);
-    await showLoadingPopup("Uploading Please Wait...", "Uploading completion image...");
+    await showLoadingPopup("Uploading Please Wait...", "Uploading completion evidence...");
     let uploadErrorMessage = "";
     try {
       await workService.uploadAfterImages(id, files);
@@ -457,12 +536,18 @@ const WorkApprovalsPage = ({ user }) => {
 
   const openGallery = (work, startAt = 0) => {
     const before = (work.beforeImages?.length ? work.beforeImages : work.beforeImage ? [work.beforeImage] : [])
-      .map((item) => ({ url: getMediaUrl(item) }))
+      .map((item) => ({ url: getMediaUrl(item), title: "Before Work" }))
       .filter((item) => Boolean(item.url));
     const after = (work.afterImages?.length ? work.afterImages : work.afterImage ? [work.afterImage] : [])
-      .map((item) => ({ url: getMediaUrl(item) }))
+      .map((item) => ({ url: getMediaUrl(item), title: "After Work" }))
       .filter((item) => Boolean(item.url));
-    const combined = [...before, ...after];
+    const beforeVideos = (work.beforeVideos?.length ? work.beforeVideos : work.beforeVideo ? [work.beforeVideo] : [])
+      .map((item) => ({ url: getMediaUrl(item), title: "Before Work Video" }))
+      .filter((item) => Boolean(item.url));
+    const afterVideos = (work.afterVideos?.length ? work.afterVideos : work.afterVideo ? [work.afterVideo] : [])
+      .map((item) => ({ url: getMediaUrl(item), title: "After Work Video" }))
+      .filter((item) => Boolean(item.url));
+    const combined = [...before, ...beforeVideos, ...after, ...afterVideos];
     setModal({
       open: true,
       items: combined,
@@ -630,38 +715,6 @@ const WorkApprovalsPage = ({ user }) => {
               className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
               required
             />
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <select
-                value={form.checkedBy}
-                onChange={(event) => setForm((prev) => ({ ...prev, checkedBy: event.target.value }))}
-                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
-                required
-              >
-                <option value="" className="bg-slate-900 text-white">
-                  Checked By
-                </option>
-                {checkedByUsers.map((item) => (
-                  <option key={item} value={item} className="bg-slate-900 text-white">
-                    {item}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={form.recommendedBy}
-                onChange={(event) => setForm((prev) => ({ ...prev, recommendedBy: event.target.value }))}
-                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
-                required
-              >
-                <option value="" className="bg-slate-900 text-white">
-                  Recommended By
-                </option>
-                {recommendedByUsers.map((item) => (
-                  <option key={item} value={item} className="bg-slate-900 text-white">
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
             <textarea
               value={form.description}
               onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
@@ -673,21 +726,38 @@ const WorkApprovalsPage = ({ user }) => {
             />
             <input
               type="file"
-              accept="image/*"
+              accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/webm"
+              multiple
               onChange={(event) => {
-                const selected = event.target.files?.[0] || null;
-                setBeforeImages(selected ? [selected] : []);
+                const { images, videos, errors } = splitWorkMediaSelection(event.target.files || []);
+                if (errors.length) showValidationPopup(errors.join(". "));
+                const selected = [...images, ...videos][0] || null;
+                setBeforeImages(images);
+                setBeforeVideos(videos);
                 if (beforePreview?.startsWith("blob:")) URL.revokeObjectURL(beforePreview);
                 setBeforePreview(selected ? URL.createObjectURL(selected) : "");
               }}
               className="w-full rounded-xl border border-dashed border-white/20 bg-white/5 px-3 py-2 text-xs text-slate-300"
             />
             {beforePreview ? (
-              <img
-                src={beforePreview}
-                alt="Before Work Preview"
-                className="h-28 w-full rounded-xl border border-white/10 object-contain"
-              />
+              isVideoUpload([...beforeImages, ...beforeVideos][0]) ? (
+                <video
+                  src={beforePreview}
+                  controls
+                  className="h-28 w-full rounded-xl border border-white/10 object-contain"
+                />
+              ) : (
+                <img
+                  src={beforePreview}
+                  alt="Before Work Preview"
+                  className="h-28 w-full rounded-xl border border-white/10 object-contain"
+                />
+              )
+            ) : null}
+            {beforeImages.length || beforeVideos.length ? (
+              <p className="text-[11px] text-slate-400">
+                Selected: {beforeImages.length} image(s), {beforeVideos.length} video(s)
+              </p>
             ) : null}
             <button
               type="submit"
@@ -905,8 +975,20 @@ const WorkApprovalsPage = ({ user }) => {
                 )
                   .map((item) => ({ url: getMediaUrl(item) }))
                   .filter((item) => Boolean(item.url));
-                const beforePreview = beforeItems[0]?.url || "";
-                const afterPreview = afterItems[0]?.url || "";
+                const beforeVideoItems = (
+                  work.beforeVideos?.length ? work.beforeVideos : work.beforeVideo ? [work.beforeVideo] : []
+                )
+                  .map((item) => ({ url: getMediaUrl(item), type: "video" }))
+                  .filter((item) => Boolean(item.url));
+                const afterVideoItems = (
+                  work.afterVideos?.length ? work.afterVideos : work.afterVideo ? [work.afterVideo] : []
+                )
+                  .map((item) => ({ url: getMediaUrl(item), type: "video" }))
+                  .filter((item) => Boolean(item.url));
+                const beforeMediaItems = [...beforeItems, ...beforeVideoItems];
+                const afterMediaItems = [...afterItems, ...afterVideoItems];
+                const beforePreview = beforeMediaItems[0]?.url || "";
+                const afterPreview = afterMediaItems[0]?.url || "";
                 const timeline = (work.timeline || [])
                   .filter((item) => {
                     const payload = `${item?.label || ""} ${item?.description || ""}`.toLowerCase();
@@ -925,6 +1007,8 @@ const WorkApprovalsPage = ({ user }) => {
                 const workCompleted = isCompletedStatus(work.status);
                 const workBusy = busyWorkId === recordId;
                 const statusSinceText = getWorkStatusSinceText(work);
+                const reviewDraft = getReviewDraft(work);
+                const approvalBlocked = !reviewDraft.checkedBy || !reviewDraft.recommendedBy;
 
                 return (
                   <div
@@ -955,7 +1039,11 @@ const WorkApprovalsPage = ({ user }) => {
                           aria-label="View work approval details"
                         >
                           {beforePreview ? (
-                            <img src={beforePreview} alt="Before work" loading="lazy" className="h-full w-full object-cover transition duration-300 hover:scale-105" />
+                            isVideoUrl(beforePreview) ? (
+                              <video src={beforePreview} muted playsInline className="h-full w-full object-cover transition duration-300 hover:scale-105" />
+                            ) : (
+                              <img src={beforePreview} alt="Before work" loading="lazy" className="h-full w-full object-cover transition duration-300 hover:scale-105" />
+                            )
                           ) : (
                             <span className="flex h-full items-center justify-center px-2 text-center text-[11px] text-slate-500">No Image Available</span>
                           )}
@@ -985,72 +1073,142 @@ const WorkApprovalsPage = ({ user }) => {
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {canApprove && !workCompleted && normalizeStatus(work.status) !== "approved" ? (
-                          <button
+                          <motion.button
                             type="button"
-                            disabled={workBusy}
+                            disabled={workBusy || approvalBlocked}
                             onClick={() => updateStatus(work, "Approved")}
-                            className="rounded-xl border border-sky-400/40 bg-sky-500/15 px-2.5 py-1.5 text-xs font-semibold text-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            whileHover={approvalBlocked ? undefined : { y: -2, scale: 1.04 }}
+                            whileTap={approvalBlocked ? undefined : { scale: 0.97 }}
+                            title={approvalBlocked ? "Select Checked By and Recommended By first" : "Approve work approval"}
+                            className="inline-flex items-center gap-1.5 rounded-2xl border border-emerald-300/50 bg-gradient-to-r from-emerald-500/25 to-cyan-500/20 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-50 shadow-[0_12px_32px_rgba(16,185,129,.18)] disabled:cursor-not-allowed disabled:opacity-45"
                           >
+                            <CheckCircle2 size={14} />
                             Approve
-                          </button>
+                          </motion.button>
                         ) : null}
                         {canApprove && !workCompleted && normalizeStatus(work.status) !== "rejected" ? (
-                          <button
+                          <motion.button
                             type="button"
                             disabled={workBusy}
                             onClick={() => updateStatus(work, "Rejected")}
-                            className="rounded-xl border border-rose-400/40 bg-rose-500/15 px-2.5 py-1.5 text-xs font-semibold text-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            whileHover={{ y: -2, scale: 1.04 }}
+                            whileTap={{ scale: 0.97 }}
+                            className="inline-flex items-center gap-1.5 rounded-2xl border border-rose-300/50 bg-gradient-to-r from-rose-500/25 to-orange-500/15 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-rose-50 shadow-[0_12px_32px_rgba(244,63,94,.18)] disabled:cursor-not-allowed disabled:opacity-50"
                           >
+                            <XCircle size={14} />
                             Reject
-                          </button>
+                          </motion.button>
                         ) : null}
-                        <button
+                        <motion.button
                           type="button"
                           onClick={() => setSelectedWork(work)}
-                          className="rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-2.5 py-1.5 text-xs font-semibold text-cyan-100"
+                          whileHover={{ y: -2, scale: 1.04 }}
+                          whileTap={{ scale: 0.97 }}
+                          className="inline-flex items-center gap-1.5 rounded-2xl border border-cyan-300/40 bg-cyan-500/15 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-cyan-100"
                         >
+                          <Eye size={13} />
                           View Details
-                        </button>
+                        </motion.button>
                         {canApprove ? (
-                          <button
+                          <motion.button
                             type="button"
                             onClick={() => openEditWork(work)}
-                            className="rounded-xl border border-amber-400/40 bg-amber-500/15 px-2.5 py-1.5 text-xs font-semibold text-amber-100"
+                            whileHover={{ y: -2, scale: 1.04 }}
+                            whileTap={{ scale: 0.97 }}
+                            className="inline-flex items-center gap-1.5 rounded-2xl border border-amber-300/40 bg-amber-500/15 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-amber-100"
                           >
+                            <Pencil size={13} />
                             Edit
-                          </button>
+                          </motion.button>
                         ) : null}
-                        <button
+                        <motion.button
                           type="button"
                           onClick={() => openGallery(work, 0)}
-                          className="rounded-xl border border-white/20 px-2.5 py-1.5 text-xs text-white"
+                          whileHover={{ y: -2, scale: 1.04 }}
+                          whileTap={{ scale: 0.97 }}
+                          className="inline-flex items-center gap-1.5 rounded-2xl border border-white/20 bg-white/5 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-white"
                         >
+                          <ImagePlus size={13} />
                           Image Gallery
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await exportWorkApprovalDetailsPdf(work);
-                            } catch (_error) {
-                              setError("Unable to generate the Work Approval PDF");
-                            }
-                          }}
-                          className="rounded-xl border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-1.5 text-xs text-emerald-100"
-                        >
-                          PDF
-                        </button>
+                        </motion.button>
                         {canDelete ? (
-                          <button
+                          <motion.button
                             type="button"
                             onClick={() => deleteWork(work)}
-                            className="rounded-xl border border-rose-400/40 bg-rose-500/20 px-2.5 py-1.5 text-xs text-rose-100"
+                            whileHover={{ y: -2, scale: 1.04 }}
+                            whileTap={{ scale: 0.97 }}
+                            className="inline-flex items-center gap-1.5 rounded-2xl border border-rose-400/40 bg-rose-500/20 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-rose-100"
                           >
+                            <Trash2 size={13} />
                             Delete
-                          </button>
+                          </motion.button>
                         ) : null}
                       </div>
                     </div>
+
+                    {canApprove && !workCompleted && normalizeStatus(work.status) !== "approved" ? (
+                      <div className="mt-3 rounded-2xl border border-cyan-300/15 bg-cyan-500/[0.06] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,.08)]">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200">
+                              Admin Review Panel
+                            </p>
+                            <p className="text-xs text-slate-400">
+                              Select review names before approving. Approved By is captured automatically as {user?.name || "logged-in admin"}.
+                            </p>
+                          </div>
+                          {approvalBlocked ? (
+                            <span className="rounded-full border border-amber-300/25 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
+                              Approval locked
+                            </span>
+                          ) : (
+                            <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-100">
+                              Ready to approve
+                            </span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                          <label>
+                            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                              Checked By
+                            </span>
+                            <select
+                              value={reviewDraft.checkedBy}
+                              onChange={(event) => setReviewField(work, "checkedBy", event.target.value)}
+                              className="w-full rounded-xl border border-white/15 bg-slate-950/75 px-3 py-2 text-xs text-white"
+                            >
+                              <option value="" className="bg-slate-900 text-white">
+                                Select Checked By
+                              </option>
+                              {checkedByUsers.map((item) => (
+                                <option key={item} value={item} className="bg-slate-900 text-white">
+                                  {item}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                              Recommended By
+                            </span>
+                            <select
+                              value={reviewDraft.recommendedBy}
+                              onChange={(event) => setReviewField(work, "recommendedBy", event.target.value)}
+                              className="w-full rounded-xl border border-white/15 bg-slate-950/75 px-3 py-2 text-xs text-white"
+                            >
+                              <option value="" className="bg-slate-900 text-white">
+                                Select Recommended By
+                              </option>
+                              {recommendedByUsers.map((item) => (
+                                <option key={item} value={item} className="bg-slate-900 text-white">
+                                  {item}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                      </div>
+                    ) : null}
 
                     <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                       <div className="rounded-xl border border-white/10 bg-white/5 p-2">
@@ -1064,12 +1222,21 @@ const WorkApprovalsPage = ({ user }) => {
                             }}
                             className="w-full overflow-hidden rounded-xl border border-white/10 bg-slate-900/60"
                           >
-                            <img
-                              src={beforePreview}
-                              alt="Before Work"
-                              loading="lazy"
-                              className="h-36 w-full object-cover transition duration-300 hover:scale-105"
-                            />
+                            {isVideoUrl(beforePreview) ? (
+                              <video
+                                src={beforePreview}
+                                muted
+                                playsInline
+                                className="h-36 w-full object-contain transition duration-300 hover:scale-105"
+                              />
+                            ) : (
+                              <img
+                                src={beforePreview}
+                                alt="Before Work"
+                                loading="lazy"
+                                className="h-36 w-full object-cover transition duration-300 hover:scale-105"
+                              />
+                            )}
                           </button>
                         ) : (
                           <div className="flex h-36 w-full items-center justify-center rounded-xl border border-dashed border-white/15 bg-slate-900/50 text-xs text-slate-400">
@@ -1084,16 +1251,25 @@ const WorkApprovalsPage = ({ user }) => {
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              openGallery(work, Math.max(beforeItems.length, 0));
+                              openGallery(work, Math.max(beforeMediaItems.length, 0));
                             }}
                             className="w-full overflow-hidden rounded-xl border border-white/10 bg-slate-900/60"
                           >
-                            <img
-                              src={afterPreview}
-                              alt="After Work"
-                              loading="lazy"
-                              className="h-36 w-full object-cover transition duration-300 hover:scale-105"
-                            />
+                            {isVideoUrl(afterPreview) ? (
+                              <video
+                                src={afterPreview}
+                                muted
+                                playsInline
+                                className="h-36 w-full object-contain transition duration-300 hover:scale-105"
+                              />
+                            ) : (
+                              <img
+                                src={afterPreview}
+                                alt="After Work"
+                                loading="lazy"
+                                className="h-36 w-full object-cover transition duration-300 hover:scale-105"
+                              />
+                            )}
                           </button>
                         ) : (
                           <div className="flex h-36 w-full items-center justify-center rounded-xl border border-dashed border-white/15 bg-slate-900/50 text-xs text-slate-400">
@@ -1111,16 +1287,20 @@ const WorkApprovalsPage = ({ user }) => {
 
                     {normalizeStatus(work.status) === "approved" ? (
                       <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-2.5">
-                        <p className="mb-1 text-xs text-slate-300">Upload Completion Image</p>
+                        <p className="mb-1 text-xs text-slate-300">Upload Completion Evidence</p>
                         <div className="flex flex-wrap gap-2">
                           <input
                             type="file"
-                            accept="image/*"
+                            accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/webm"
+                            multiple
                             onChange={(event) => {
-                              const selected = event.target.files?.[0] || null;
+                              const { images, videos, errors } = splitWorkMediaSelection(event.target.files || []);
+                              if (errors.length) showValidationPopup(errors.join(". "));
+                              const selectedFiles = [...images, ...videos];
+                              const selected = selectedFiles[0] || null;
                               setAfterImages((prev) => ({
                                 ...prev,
-                                [work._id]: selected ? [selected] : []
+                                [work._id]: selectedFiles
                               }));
                               if (afterPreviewMap[work._id]?.startsWith("blob:")) {
                                 URL.revokeObjectURL(afterPreviewMap[work._id]);
@@ -1145,11 +1325,24 @@ const WorkApprovalsPage = ({ user }) => {
                           </button>
                         </div>
                         {afterPreviewMap[work._id] ? (
-                          <img
-                            src={afterPreviewMap[work._id]}
-                            alt="After Work Preview"
-                            className="mt-2 h-24 w-full rounded-xl border border-white/10 object-contain"
-                          />
+                          isVideoUpload((afterImages[work._id] || [])[0]) ? (
+                            <video
+                              src={afterPreviewMap[work._id]}
+                              controls
+                              className="mt-2 h-24 w-full rounded-xl border border-white/10 object-contain"
+                            />
+                          ) : (
+                            <img
+                              src={afterPreviewMap[work._id]}
+                              alt="After Work Preview"
+                              className="mt-2 h-24 w-full rounded-xl border border-white/10 object-contain"
+                            />
+                          )
+                        ) : null}
+                        {afterImages[work._id]?.length ? (
+                          <p className="mt-2 text-[11px] text-slate-400">
+                            Selected {afterImages[work._id].length} completion file(s)
+                          </p>
                         ) : null}
                       </div>
                     ) : null}

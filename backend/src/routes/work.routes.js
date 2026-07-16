@@ -17,7 +17,7 @@ const {
   signatureSchema
 } = require("../validators/work.validators");
 const { uploadManyAssets } = require("../utils/uploads");
-const { createMemoryUpload } = require("../utils/multer");
+const { createMemoryUpload, IMAGE_MIME_TYPES, VIDEO_MIME_TYPES } = require("../utils/multer");
 const { createNotification } = require("../services/notifications.service");
 const {
   getChainageFrom,
@@ -26,13 +26,48 @@ const {
 } = require("../utils/chainage");
 
 const router = express.Router();
-const upload = createMemoryUpload({ maxFileSizeMb: 10, maxFiles: 6 });
+const MB = 1024 * 1024;
+const WORK_IMAGE_LIMIT_MB = 10;
+const WORK_VIDEO_LIMIT_MB = 100;
+const WORK_MEDIA_MAX_COUNT = 10;
+const upload = createMemoryUpload({
+  allowedMimeTypes: [...IMAGE_MIME_TYPES, ...VIDEO_MIME_TYPES],
+  maxFileSizeMb: WORK_VIDEO_LIMIT_MB,
+  maxFiles: 22
+});
+
+const validateWorkMedia = ({ images = [], videos = [], label = "Work media" }) => {
+  if (images.length > WORK_MEDIA_MAX_COUNT) {
+    throw new ApiError(400, `${label}: maximum ${WORK_MEDIA_MAX_COUNT} images allowed`);
+  }
+  if (videos.length > WORK_MEDIA_MAX_COUNT) {
+    throw new ApiError(400, `${label}: maximum ${WORK_MEDIA_MAX_COUNT} videos allowed`);
+  }
+
+  images.forEach((file) => {
+    if (file.size > WORK_IMAGE_LIMIT_MB * MB) {
+      throw new ApiError(400, `${file.originalname || "Image"} exceeds ${WORK_IMAGE_LIMIT_MB}MB image limit`);
+    }
+  });
+  videos.forEach((file) => {
+    if (file.size > WORK_VIDEO_LIMIT_MB * MB) {
+      throw new ApiError(400, `${file.originalname || "Video"} exceeds ${WORK_VIDEO_LIMIT_MB}MB video limit`);
+    }
+  });
+};
 
 const parseDate = (value) => (value ? new Date(value) : null);
 const toLegacyWorkRecord = (record) => {
   const plain = typeof record.toObject === "function" ? record.toObject() : record;
   const beforeImage = plain.beforeImages?.[0]?.url || plain.beforeImage || "";
   const afterImage = plain.afterImages?.[0]?.url || plain.afterImage || "";
+  const beforeVideo = plain.beforeVideos?.[0]?.url || plain.beforeVideo || "";
+  const afterVideo = plain.afterVideos?.[0]?.url || plain.afterVideo || "";
+  const mediaCount =
+    (plain.beforeImages?.length || 0) +
+    (plain.afterImages?.length || 0) +
+    (plain.beforeVideos?.length || 0) +
+    (plain.afterVideos?.length || 0);
   const chainageFrom = getChainageFrom(plain);
   const chainageTo = getChainageTo(plain);
   const createdByName = plain.createdByName || plain.createdBy?.name || "";
@@ -48,6 +83,11 @@ const toLegacyWorkRecord = (record) => {
     chainageNo: plain.chainageNo || plain.chainage || chainageFrom,
     beforeImage,
     afterImage,
+    beforeVideo,
+    afterVideo,
+    beforeVideos: plain.beforeVideos || [],
+    afterVideos: plain.afterVideos || [],
+    mediaCount,
     createdByName,
     createdByRole,
     reportedBy: plain.reportedBy || createdByName,
@@ -118,8 +158,10 @@ router.post(
   authMiddleware,
   authorizePermission("work", "create"),
   upload.fields([
-    { name: "beforeImages", maxCount: 5 },
-    { name: "beforeImage", maxCount: 1 }
+    { name: "beforeImages", maxCount: 10 },
+    { name: "beforeImage", maxCount: 1 },
+    { name: "beforeVideos", maxCount: 10 },
+    { name: "beforeVideo", maxCount: 1 }
   ]),
   asyncHandler(async (req, res) => {
     const normalizedBody = {
@@ -132,6 +174,8 @@ router.post(
     }
 
     const beforeFiles = [...(req.files?.beforeImages || []), ...(req.files?.beforeImage || [])];
+    const beforeVideoFiles = [...(req.files?.beforeVideos || []), ...(req.files?.beforeVideo || [])];
+    validateWorkMedia({ images: beforeFiles, videos: beforeVideoFiles, label: "Before media" });
     if (!beforeFiles.length) {
       throw new ApiError(400, "Before image is required");
     }
@@ -139,6 +183,11 @@ router.post(
       beforeFiles,
       "safety-hse/work/before",
       "image"
+    );
+    const beforeVideos = await uploadManyAssets(
+      beforeVideoFiles,
+      "safety-hse/work/before-videos",
+      "video"
     );
 
     const payload = parsed.data;
@@ -150,33 +199,21 @@ router.post(
       description: payload.description || "",
       beforeImages,
       beforeImage: beforeImages[0]?.url || "",
+      beforeVideos,
+      beforeVideo: beforeVideos[0]?.url || "",
       createdBy: req.user.id,
       createdByName: req.user.name || "",
       createdByRole: req.user.role || "",
-      checkedBy: payload.checkedBy,
-      recommendedBy: payload.recommendedBy,
+      checkedBy: payload.checkedBy || "",
+      recommendedBy: payload.recommendedBy || "",
       assignedTo: payload.assignedTo || null,
       startDate: parseDate(payload.startDate),
       dueDate: parseDate(payload.dueDate),
-      workflow: [
-        { level: 1, status: "pending" },
-        { level: 2, status: "pending" },
-        { level: 3, status: "pending" }
-      ],
+      workflow: [],
       timeline: [
         {
           label: "Created",
           description: `Created by ${req.user.name || "User"}`,
-          user: req.user.id
-        },
-        {
-          label: "Checked",
-          description: `Checked by ${payload.checkedBy}`,
-          user: req.user.id
-        },
-        {
-          label: "Recommended",
-          description: `Recommended by ${payload.recommendedBy}`,
           user: req.user.id
         }
       ]
@@ -335,6 +372,20 @@ router.patch(
       throw new ApiError(400, "Upload completion image to mark work as completed");
     }
 
+    if (req.body.checkedBy !== undefined) {
+      work.checkedBy = req.body.checkedBy;
+    }
+    if (req.body.recommendedBy !== undefined) {
+      work.recommendedBy = req.body.recommendedBy;
+    }
+
+    if (req.body.status === "Approved" && (!work.checkedBy || !work.recommendedBy)) {
+      throw new ApiError(
+        400,
+        "Please select Checked By and Recommended By before approving this Work Approval."
+      );
+    }
+
     work.status = req.body.status;
     if (req.body.status === "Approved") {
       work.approvedBy = req.user.name || work.approvedBy;
@@ -357,6 +408,13 @@ router.patch(
       description: `${req.body.status} by ${req.user.name || "Admin"}${req.body.comment ? `: ${req.body.comment}` : ""}`,
       user: req.user.id
     });
+    if (req.body.status === "Approved") {
+      work.timeline.push({
+        label: "Admin Review",
+        description: `Checked by ${work.checkedBy}; recommended by ${work.recommendedBy}; approved by ${req.user.name || "Admin"}`,
+        user: req.user.id
+      });
+    }
 
     await work.save();
     await audit(req, "status_update", "work", req.body, work._id);
@@ -420,8 +478,10 @@ router.post(
   authMiddleware,
   authorizePermission("work", "update"),
   upload.fields([
-    { name: "afterImages", maxCount: 5 },
-    { name: "afterImage", maxCount: 1 }
+    { name: "afterImages", maxCount: 10 },
+    { name: "afterImage", maxCount: 1 },
+    { name: "afterVideos", maxCount: 10 },
+    { name: "afterVideo", maxCount: 1 }
   ]),
   asyncHandler(async (req, res) => {
     const work = await WorkApproval.findById(req.params.id);
@@ -433,17 +493,22 @@ router.post(
       throw new ApiError(400, "Only approved work can upload completion evidence");
     }
     const afterFiles = [...(req.files?.afterImages || []), ...(req.files?.afterImage || [])];
-    if (!afterFiles.length) {
-      throw new ApiError(400, "At least one image is required");
+    const afterVideoFiles = [...(req.files?.afterVideos || []), ...(req.files?.afterVideo || [])];
+    validateWorkMedia({ images: afterFiles, videos: afterVideoFiles, label: "After media" });
+    if (!afterFiles.length && !afterVideoFiles.length) {
+      throw new ApiError(400, "At least one completion image or video is required");
     }
 
     const uploads = await uploadManyAssets(afterFiles, "safety-hse/work/after", "image");
+    const videoUploads = await uploadManyAssets(afterVideoFiles, "safety-hse/work/after-videos", "video");
     work.afterImages = [...(work.afterImages || []), ...uploads];
     work.afterImage = work.afterImages[0]?.url || uploads[0]?.url || "";
+    work.afterVideos = [...(work.afterVideos || []), ...videoUploads];
+    work.afterVideo = work.afterVideos[0]?.url || videoUploads[0]?.url || "";
     work.status = "Completed";
     work.timeline.push({
-      label: "After Images Uploaded",
-      description: `${uploads.length} file(s) added`,
+      label: "After Evidence Uploaded",
+      description: `${uploads.length} image(s), ${videoUploads.length} video(s) added`,
       user: req.user.id
     });
     work.timeline.push({
@@ -452,7 +517,7 @@ router.post(
       user: req.user.id
     });
     await work.save();
-    await audit(req, "after_images_upload", "work", { count: uploads.length }, work._id);
+    await audit(req, "after_media_upload", "work", { images: uploads.length, videos: videoUploads.length }, work._id);
 
     res.json({ success: true, work: toLegacyWorkRecord(work) });
   })

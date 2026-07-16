@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight, Download, Minus, Plus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Minus, Plus, RotateCw, X } from "lucide-react";
 import { getMediaUrl } from "../../utils/media";
 
 const isVideo = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url);
@@ -28,6 +28,7 @@ const MediaStudioModal = ({
   onIndexChange
 }) => {
   const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
   const galleryItems = normalizeItems(media, items);
   const shouldOpen = open ?? Boolean(media);
   const safeIndex = Math.min(Math.max(activeIndex, 0), Math.max(0, galleryItems.length - 1));
@@ -53,6 +54,7 @@ const MediaStudioModal = ({
 
   useEffect(() => {
     setZoom(1);
+    setRotation(0);
   }, [url]);
 
   const goToPrevious = () => {
@@ -117,6 +119,7 @@ const MediaStudioModal = ({
                   <>
                     <button className="rounded-xl bg-white/10 p-2 text-white" onClick={() => setZoom((v) => Math.max(0.5, v - 0.25))} type="button"><Minus size={16} /></button>
                     <button className="rounded-xl bg-white/10 p-2 text-white" onClick={() => setZoom((v) => Math.min(3, v + 0.25))} type="button"><Plus size={16} /></button>
+                    <button className="rounded-xl bg-white/10 p-2 text-white" onClick={() => setRotation((value) => (value + 90) % 360)} type="button" aria-label="Rotate image"><RotateCw size={16} /></button>
                   </>
                 ) : null}
                 <button className="rounded-xl bg-white/10 p-2 text-white transition hover:bg-emerald-500/20" onClick={downloadMedia} type="button" aria-label="Download media"><Download size={16} /></button>
@@ -137,7 +140,7 @@ const MediaStudioModal = ({
               {isVideo(url) ? (
                 <video src={url} controls autoPlay className="max-h-[78vh] w-full object-contain" />
               ) : (
-                <img src={url} alt={displayTitle} className="max-h-[78vh] max-w-full object-contain transition-transform" style={{ transform: `scale(${zoom})` }} />
+                <img src={url} alt={displayTitle} className="max-h-[78vh] max-w-full object-contain transition-transform" style={{ transform: `scale(${zoom}) rotate(${rotation}deg)` }} />
               )}
               {hasMultipleItems ? (
                 <button
@@ -150,6 +153,27 @@ const MediaStudioModal = ({
                 </button>
               ) : null}
             </div>
+            {hasMultipleItems ? (
+              <div className="flex gap-2 overflow-x-auto border-t border-white/10 bg-slate-950/80 px-4 py-3">
+                {galleryItems.map((item, index) => (
+                  <button
+                    key={`${item.url}-${index}`}
+                    type="button"
+                    onClick={() => onIndexChange?.(index)}
+                    className={`h-16 w-24 shrink-0 overflow-hidden rounded-xl border transition ${
+                      index === safeIndex ? "border-cyan-300 bg-cyan-500/20" : "border-white/10 bg-white/5 opacity-70 hover:opacity-100"
+                    }`}
+                    aria-label={`Open media ${index + 1}`}
+                  >
+                    {isVideo(item.url) ? (
+                      <video src={item.url} muted className="h-full w-full object-cover" />
+                    ) : (
+                      <img src={item.url} alt={item.title || `Media ${index + 1}`} loading="lazy" className="h-full w-full object-cover" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </motion.div>
         </motion.div>
       ) : null}

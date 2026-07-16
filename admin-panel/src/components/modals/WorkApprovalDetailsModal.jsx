@@ -11,9 +11,10 @@ const valueOrDash = (value) => (value === undefined || value === null || value =
 const normalizeMedia = (items = [], fallback) => {
   const source = items?.length ? items : fallback ? [fallback] : [];
   return source
-    .map((item) => ({ url: getMediaUrl(item), title: item?.title || item?.name || "Work image" }))
+    .map((item) => ({ url: getMediaUrl(item), title: item?.title || item?.name || "Work media" }))
     .filter((item) => Boolean(item.url));
 };
+const isVideoUrl = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url);
 
 const statusTone = (status = "Pending") => ({
   Pending: "border-amber-400/40 bg-amber-500/15 text-amber-200",
@@ -52,10 +53,14 @@ const ImagePanel = ({ label, tone, item, onOpen }) => (
     </div>
     {item ? (
       <button type="button" onClick={onOpen} className="group flex h-56 w-full items-center justify-center overflow-hidden bg-slate-950/70 p-3 sm:h-64">
-        <img src={item.url} alt={label} loading="lazy" className="h-full w-full rounded-xl object-contain transition duration-300 group-hover:scale-[1.02]" />
+        {isVideoUrl(item.url) ? (
+          <video src={item.url} muted playsInline className="h-full w-full rounded-xl object-contain transition duration-300 group-hover:scale-[1.02]" />
+        ) : (
+          <img src={item.url} alt={label} loading="lazy" className="h-full w-full rounded-xl object-contain transition duration-300 group-hover:scale-[1.02]" />
+        )}
       </button>
     ) : (
-      <div className="flex h-56 items-center justify-center text-sm text-slate-500 sm:h-64">No Image Available</div>
+      <div className="flex h-56 items-center justify-center text-sm text-slate-500 sm:h-64">No Media Available</div>
     )}
   </div>
 );
@@ -64,7 +69,11 @@ const WorkApprovalDetailsModal = ({ open, work, onClose, onOpenMedia }) => {
   const [exporting, setExporting] = useState(false);
   const before = useMemo(() => normalizeMedia(work?.beforeImages, work?.beforeImage), [work]);
   const after = useMemo(() => normalizeMedia(work?.afterImages, work?.afterImage), [work]);
-  const allMedia = useMemo(() => [...before, ...after], [after, before]);
+  const beforeVideos = useMemo(() => normalizeMedia(work?.beforeVideos, work?.beforeVideo), [work]);
+  const afterVideos = useMemo(() => normalizeMedia(work?.afterVideos, work?.afterVideo), [work]);
+  const beforeMedia = useMemo(() => [...before, ...beforeVideos], [before, beforeVideos]);
+  const afterMedia = useMemo(() => [...after, ...afterVideos], [after, afterVideos]);
+  const allMedia = useMemo(() => [...beforeMedia, ...afterMedia], [afterMedia, beforeMedia]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -197,8 +206,8 @@ const WorkApprovalDetailsModal = ({ open, work, onClose, onOpenMedia }) => {
                 </div>
 
                 <div className="space-y-4">
-                  <ImagePanel label="Before Work Image" tone="text-teal-300" item={before[0]} onOpen={() => openMedia(0)} />
-                  <ImagePanel label="After Work Image" tone="text-emerald-300" item={after[0]} onOpen={() => openMedia(before.length)} />
+                  <ImagePanel label="Before Work Media" tone="text-teal-300" item={beforeMedia[0]} onOpen={() => openMedia(0)} />
+                  <ImagePanel label="After Work Media" tone="text-emerald-300" item={afterMedia[0]} onOpen={() => openMedia(beforeMedia.length)} />
                 </div>
               </div>
             </div>

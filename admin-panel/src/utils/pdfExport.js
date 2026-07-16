@@ -20,7 +20,10 @@ const reportColumns = {
     { header: "Completion Date", keys: ["Completion Date", "completionDate", "completedAt"], type: "date" },
     { header: "Status", keys: ["Status", "status"] },
     { header: "Before Image", keys: ["Before Image", "beforeImage", "beforeImages"], type: "imageStatus" },
-    { header: "After Image", keys: ["After Image", "afterImage", "afterImages"], type: "imageStatus" }
+    { header: "After Image", keys: ["After Image", "afterImage", "afterImages"], type: "imageStatus" },
+    { header: "Before Video", keys: ["Before Video", "beforeVideo", "beforeVideos"], type: "imageStatus" },
+    { header: "After Video", keys: ["After Video", "afterVideo", "afterVideos"], type: "imageStatus" },
+    { header: "Media Count", keys: ["Media Count", "mediaCount"] }
   ],
   hazard: [
     { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
@@ -73,7 +76,10 @@ const reportColumns = {
     { header: "Approval Date", keys: ["Approval Date", "approvedAt", "approvalDate"], type: "date" },
     { header: "Status", keys: ["Status", "status"] },
     { header: "Before Image", keys: ["Before Image", "beforeImage", "beforeImages"], type: "imageStatus" },
-    { header: "After Image", keys: ["After Image", "afterImage", "afterImages"], type: "imageStatus" }
+    { header: "After Image", keys: ["After Image", "afterImage", "afterImages"], type: "imageStatus" },
+    { header: "Before Video", keys: ["Before Video", "beforeVideo", "beforeVideos"], type: "imageStatus" },
+    { header: "After Video", keys: ["After Video", "afterVideo", "afterVideos"], type: "imageStatus" },
+    { header: "Media Count", keys: ["Media Count", "mediaCount"] }
   ]
 };
 

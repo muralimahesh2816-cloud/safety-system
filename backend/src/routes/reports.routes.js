@@ -88,7 +88,16 @@ const toLegacyWorkRecord = (record) => ({
   approvalDate: record.approvedAt || "",
   completionDate: record.status === "Completed" ? record.updatedAt : "",
   beforeImage: record.beforeImages?.[0]?.url || record.beforeImage || "",
-  afterImage: record.afterImages?.[0]?.url || record.afterImage || ""
+  afterImage: record.afterImages?.[0]?.url || record.afterImage || "",
+  beforeVideo: record.beforeVideos?.[0]?.url || record.beforeVideo || "",
+  afterVideo: record.afterVideos?.[0]?.url || record.afterVideo || "",
+  beforeVideos: record.beforeVideos || [],
+  afterVideos: record.afterVideos || [],
+  mediaCount:
+    (record.beforeImages?.length || 0) +
+    (record.afterImages?.length || 0) +
+    (record.beforeVideos?.length || 0) +
+    (record.afterVideos?.length || 0)
 });
 
 const formatCorrectiveActions = (actions = []) =>
@@ -132,7 +141,7 @@ router.get(
     const records = await WorkApproval.find()
       .populate("createdBy", "name role")
       .select(
-        "title plaza approvalNumber workType description location chainage chainageNo chainageFrom chainageTo workersCount priority status createdBy createdByName createdByRole checkedBy recommendedBy approvedBy approvedByRole approvedAt beforeImages afterImages beforeImage afterImage createdAt updatedAt"
+        "title plaza approvalNumber workType description location chainage chainageNo chainageFrom chainageTo workersCount priority status createdBy createdByName createdByRole checkedBy recommendedBy approvedBy approvedByRole approvedAt beforeImages afterImages beforeVideos afterVideos beforeImage afterImage beforeVideo afterVideo createdAt updatedAt"
       )
       .sort({ createdAt: -1 });
     res.json(records.map(toLegacyWorkRecord));

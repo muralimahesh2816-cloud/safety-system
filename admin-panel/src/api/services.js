@@ -17,6 +17,7 @@ const localLegacyClient = axios.create({
 });
 
 const SETTINGS_CACHE_KEY = "hse_settings_cache";
+const isVideoUpload = (file) => file?.type?.startsWith("video/");
 
 const safeJsonParse = (value, fallback = null) => {
   if (!value) return fallback;
@@ -329,6 +330,20 @@ const mapWorkRecord = (item = {}) => {
       ? [{ url: toAbsoluteLegacyUpload(item.afterImage), legacyFilename: item.afterImage }]
       : [];
 
+  const beforeVideos =
+    item.beforeVideos && item.beforeVideos.length > 0
+      ? item.beforeVideos
+      : item.beforeVideo
+      ? [{ url: toAbsoluteLegacyUpload(item.beforeVideo), legacyFilename: item.beforeVideo }]
+      : [];
+
+  const afterVideos =
+    item.afterVideos && item.afterVideos.length > 0
+      ? item.afterVideos
+      : item.afterVideo
+      ? [{ url: toAbsoluteLegacyUpload(item.afterVideo), legacyFilename: item.afterVideo }]
+      : [];
+
   const chainageFrom = getChainageFrom(item);
   const chainageTo = getStrictChainageTo(item);
   const createdByName =
@@ -355,8 +370,13 @@ const mapWorkRecord = (item = {}) => {
     status: item.status || "Pending",
     beforeImages,
     afterImages,
+    beforeVideos,
+    afterVideos,
     beforeImage: item.beforeImage || beforeImages?.[0]?.url || "",
     afterImage: item.afterImage || afterImages?.[0]?.url || "",
+    beforeVideo: item.beforeVideo || beforeVideos?.[0]?.url || "",
+    afterVideo: item.afterVideo || afterVideos?.[0]?.url || "",
+    mediaCount: item.mediaCount || beforeImages.length + afterImages.length + beforeVideos.length + afterVideos.length,
     workflow: item.workflow || [],
     comments: item.comments || [],
     approvalHistory: item.approvalHistory || [],
@@ -493,7 +513,10 @@ const normalizeReportRows = (rows = [], type = "work") =>
       "Approval Date": item.approvedAt || item.approvalDate || "-",
       "Completion Date": item.completionDate || "-",
       "Before Image": item.beforeImage || item.beforeImages || "",
-      "After Image": item.afterImage || item.afterImages || ""
+      "After Image": item.afterImage || item.afterImages || "",
+      "Before Video": item.beforeVideo || item.beforeVideos || "",
+      "After Video": item.afterVideo || item.afterVideos || "",
+      "Media Count": item.mediaCount || 0
     };
   });
 
@@ -582,7 +605,10 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
       "Approval Date": item.approvedAt || item.approvalDate || "-",
       Status: item.status || "Approved",
       "Before Image": item.beforeImage || item.beforeImages || "",
-      "After Image": item.afterImage || item.afterImages || ""
+      "After Image": item.afterImage || item.afterImages || "",
+      "Before Video": item.beforeVideo || item.beforeVideos || "",
+      "After Video": item.afterVideo || item.afterVideos || "",
+      "Media Count": item.mediaCount || 0
     }));
   }
 
@@ -790,7 +816,7 @@ export const workService = {
     const chainageTo = String(payload.chainageTo || "").trim();
 
     Object.entries(payload).forEach(([key, value]) => {
-      if (key === "beforeImages") return;
+      if (["beforeImages", "beforeVideos"].includes(key)) return;
       if (value !== undefined && value !== null) {
         formData.append(key, value);
       }
@@ -802,6 +828,7 @@ export const workService = {
     formData.set("description", String(payload.description || "").trim());
     formData.set("workersCount", String(Number(payload.workersCount || 0)));
     (payload.beforeImages || []).forEach((file) => formData.append("beforeImages", file));
+    (payload.beforeVideos || []).forEach((file) => formData.append("beforeVideos", file));
     const res = await client.post("/work-approvals", formData);
     return { success: true, work: mapWorkRecord(res.data.work) };
   },
@@ -819,7 +846,9 @@ export const workService = {
     (await client.post(`/work-approvals/${id}/signatures`, payload)).data,
   uploadAfterImages: async (id, files) => {
     const formData = new FormData();
-    files.forEach((file) => formData.append("afterImages", file));
+    files.forEach((file) => {
+      formData.append(isVideoUpload(file) ? "afterVideos" : "afterImages", file);
+    });
     return (await client.post(`/work-approvals/${id}/images/after`, formData)).data;
   },
   remove: async (id) => {
