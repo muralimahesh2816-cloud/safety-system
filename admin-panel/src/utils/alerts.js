@@ -108,16 +108,19 @@ export const closeLoadingPopup = async () => {
   if (Swal?.isVisible()) Swal.close();
 };
 
-export const showValidationPopup = async (text = "Please fill all required fields.") => {
+export const showValidationPopup = async (
+  text = "Please fill all required fields.",
+  title = "Please fill required fields"
+) => {
   const Swal = await ensureSweetAlert();
   if (!Swal) {
-    window.alert(text);
+    window.alert(`${title}\n${text}`);
     return;
   }
 
   await Swal.fire({
     icon: "warning",
-    title: "Please fill required fields",
+    title,
     text,
     confirmButtonText: "OK",
     backdrop: "rgba(2, 6, 23, 0.72)",

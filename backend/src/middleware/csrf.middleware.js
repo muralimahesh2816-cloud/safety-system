@@ -1,12 +1,45 @@
 const crypto = require("crypto");
-const { isProduction } = require("../config/env");
+const { env, isProduction } = require("../config/env");
 const ApiError = require("../utils/api-error");
 const logger = require("../utils/logger");
 
 const CSRF_COOKIE_NAME = "hse_csrf_token";
 const SAFE_METHODS = ["GET", "HEAD", "OPTIONS"];
+const CSRF_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 
-const generateCsrfToken = () => crypto.randomBytes(24).toString("hex");
+const getCsrfSecret = () =>
+  env.jwtAccessSecret || env.jwtRefreshSecret || "csrf-development-secret";
+
+const timingSafeStringEqual = (left = "", right = "") => {
+  const leftBuffer = Buffer.from(String(left));
+  const rightBuffer = Buffer.from(String(right));
+  return (
+    leftBuffer.length === rightBuffer.length &&
+    crypto.timingSafeEqual(leftBuffer, rightBuffer)
+  );
+};
+
+const signCsrfPayload = (payload) =>
+  crypto.createHmac("sha256", getCsrfSecret()).update(payload).digest("base64url");
+
+const generateCsrfToken = () => {
+  const payload = `${Date.now()}.${crypto.randomBytes(24).toString("hex")}`;
+  return `${payload}.${signCsrfPayload(payload)}`;
+};
+
+const isSignedCsrfTokenValid = (token = "") => {
+  const parts = String(token).split(".");
+  if (parts.length !== 3) return false;
+
+  const [timestamp, random, signature] = parts;
+  const issuedAt = Number(timestamp);
+  if (!Number.isFinite(issuedAt) || Date.now() - issuedAt > CSRF_TOKEN_TTL_MS) {
+    return false;
+  }
+
+  const payload = `${timestamp}.${random}`;
+  return timingSafeStringEqual(signature, signCsrfPayload(payload));
+};
 
 const partitionedCookieOptions = isProduction
   ? {
@@ -45,7 +78,7 @@ const csrfProtection = (req, _res, next) => {
     return;
   }
 
-  if (!headerToken || !cookieToken) {
+  if (!headerToken) {
     logger.warn("CSRF token missing", {
       route: req.originalUrl,
       method: req.method,
@@ -56,11 +89,9 @@ const csrfProtection = (req, _res, next) => {
     return;
   }
 
-  const headerBuffer = Buffer.from(String(headerToken));
-  const cookieBuffer = Buffer.from(String(cookieToken));
   const isValid =
-    headerBuffer.length === cookieBuffer.length &&
-    crypto.timingSafeEqual(headerBuffer, cookieBuffer);
+    isSignedCsrfTokenValid(headerToken) ||
+    (cookieToken && timingSafeStringEqual(headerToken, cookieToken));
 
   if (!isValid) {
     logger.warn("CSRF token mismatch", {

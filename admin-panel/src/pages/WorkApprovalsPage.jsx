@@ -335,7 +335,7 @@ const WorkApprovalsPage = ({ user }) => {
     }
 
     if (uploadErrorMessage) {
-      await showValidationPopup(uploadErrorMessage);
+      await showValidationPopup(uploadErrorMessage, "Work approval not submitted");
     }
   };
 
@@ -411,7 +411,7 @@ const WorkApprovalsPage = ({ user }) => {
     }
 
     if (statusErrorMessage) {
-      await showValidationPopup(statusErrorMessage);
+      await showValidationPopup(statusErrorMessage, "Workflow update failed");
     }
   };
 
@@ -465,7 +465,7 @@ const WorkApprovalsPage = ({ user }) => {
     }
 
     if (uploadErrorMessage) {
-      await showValidationPopup(uploadErrorMessage);
+      await showValidationPopup(uploadErrorMessage, "Completion upload failed");
     }
   };
 

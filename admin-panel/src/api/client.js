@@ -34,9 +34,9 @@ const getStoredAccessToken = () =>
   "";
 
 const getStoredCsrfToken = () =>
+  getCookie(CSRF_KEY) ||
   localStorage.getItem(CSRF_KEY) ||
   LEGACY_CSRF_KEYS.map((key) => localStorage.getItem(key)).find(Boolean) ||
-  getCookie(CSRF_KEY) ||
   "";
 
 const setSession = ({ token, user, csrfToken }) => {
