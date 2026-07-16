@@ -36,8 +36,9 @@ const valueOrDash = (value) => (value === undefined || value === null || value =
 
 const normalizeRole = (role = "") => String(role || "").trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_");
 
-const getWorkflowStage = (work = {}) => {
-  const status = work.workflowStage || work.status || "";
+const getWorkflowStage = (work) => {
+  const safeWork = work || {};
+  const status = safeWork.workflowStage || safeWork.status || "";
   if (WORKFLOW_STAGES.includes(status)) return status;
   if (status === "Rejected") return "Returned for Correction";
   if (status === "Pending" || status === "Under Review" || !status) return "Pending Check";
@@ -199,6 +200,7 @@ const ActionPanel = ({
   completionDescription,
   setCompletionDescription
 }) => {
+  const safeWork = work || {};
   const currentAction = {
     "Pending Check": {
       action: "check",
@@ -234,10 +236,10 @@ const ActionPanel = ({
           <p className="font-semibold">Workflow completed</p>
         </div>
         <p className="mt-2 text-sm text-slate-300">
-          Work was completed by {work.completedBy || work.approvedBy || "-"} on {formatDateTime(work.completedAt || work.completionDate || work.updatedAt)}.
+          Work was completed by {safeWork.completedBy || safeWork.approvedBy || "-"} on {formatDateTime(safeWork.completedAt || safeWork.completionDate || safeWork.updatedAt)}.
         </p>
-        {work.completionDescription ? (
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-200">{work.completionDescription}</p>
+        {safeWork.completionDescription ? (
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-200">{safeWork.completionDescription}</p>
         ) : null}
       </div>
     );
@@ -251,10 +253,10 @@ const ActionPanel = ({
           <p className="font-semibold">Returned for correction</p>
         </div>
         <p className="mt-2 text-sm text-slate-300">
-          Returned by {work.returnedBy || "-"} from {work.returnStage || "workflow review"} on {formatDateTime(work.returnedAt)}.
+          Returned by {safeWork.returnedBy || "-"} from {safeWork.returnStage || "workflow review"} on {formatDateTime(safeWork.returnedAt)}.
         </p>
         <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-100">
-          {work.returnDescription || "Correction reason was not recorded."}
+          {safeWork.returnDescription || "Correction reason was not recorded."}
         </p>
       </div>
     );
@@ -398,30 +400,31 @@ const WorkApprovalDetailsModal = ({
   onStageAction,
   onComplete
 }) => {
+  const safeWork = work || null;
   const [exporting, setExporting] = useState(false);
   const [stageDescription, setStageDescription] = useState("");
   const [returnDescription, setReturnDescription] = useState("");
   const [completionDescription, setCompletionDescription] = useState("");
   const [completionFiles, setCompletionFiles] = useState([]);
   const [completionPreview, setCompletionPreview] = useState("");
-  const before = useMemo(() => normalizeMedia(work?.beforeImages, work?.beforeImage), [work]);
-  const after = useMemo(() => normalizeMedia(work?.afterImages, work?.afterImage), [work]);
-  const beforeVideos = useMemo(() => normalizeMedia(work?.beforeVideos, work?.beforeVideo), [work]);
-  const afterVideos = useMemo(() => normalizeMedia(work?.afterVideos, work?.afterVideo), [work]);
+  const before = useMemo(() => normalizeMedia(safeWork?.beforeImages, safeWork?.beforeImage), [safeWork]);
+  const after = useMemo(() => normalizeMedia(safeWork?.afterImages, safeWork?.afterImage), [safeWork]);
+  const beforeVideos = useMemo(() => normalizeMedia(safeWork?.beforeVideos, safeWork?.beforeVideo), [safeWork]);
+  const afterVideos = useMemo(() => normalizeMedia(safeWork?.afterVideos, safeWork?.afterVideo), [safeWork]);
   const beforeMedia = useMemo(() => [...before, ...beforeVideos], [before, beforeVideos]);
   const afterMedia = useMemo(() => [...after, ...afterVideos], [after, afterVideos]);
   const allMedia = useMemo(() => [...beforeMedia, ...afterMedia], [afterMedia, beforeMedia]);
 
-  const stage = getWorkflowStage(work);
+  const stage = getWorkflowStage(safeWork);
   const createdBy =
-    work?.createdByName ||
-    work?.reportedBy ||
-    work?.createdBy?.name ||
-    work?.submittedBy?.name ||
-    work?.employeeName;
+    safeWork?.createdByName ||
+    safeWork?.reportedBy ||
+    safeWork?.createdBy?.name ||
+    safeWork?.submittedBy?.name ||
+    safeWork?.employeeName;
   const completionDate = stage === "Completed"
-    ? work?.completedAt || work?.completionDate || work?.updatedAt
-    : work?.completionDate;
+    ? safeWork?.completedAt || safeWork?.completionDate || safeWork?.updatedAt
+    : safeWork?.completionDate;
   const steps = useMemo(
     () => [
       {
@@ -429,48 +432,48 @@ const WorkApprovalDetailsModal = ({
         completed: true,
         current: false,
         name: createdBy,
-        role: work?.createdByRole,
-        date: work?.createdAt || work?.reportDate || work?.startDate,
-        description: work?.description || work?.workDescription
+        role: safeWork?.createdByRole,
+        date: safeWork?.createdAt || safeWork?.reportDate || safeWork?.startDate,
+        description: safeWork?.description || safeWork?.workDescription
       },
       {
         label: "Checked",
-        completed: Boolean(work?.checkedAt || work?.checkedBy),
+        completed: Boolean(safeWork?.checkedAt || safeWork?.checkedBy),
         current: stage === "Pending Check",
-        name: work?.checkedBy,
-        role: work?.checkedByRole,
-        date: work?.checkedAt,
-        description: work?.checkedDescription
+        name: safeWork?.checkedBy,
+        role: safeWork?.checkedByRole,
+        date: safeWork?.checkedAt,
+        description: safeWork?.checkedDescription
       },
       {
         label: "Recommended",
-        completed: Boolean(work?.recommendedAt || work?.recommendedBy),
+        completed: Boolean(safeWork?.recommendedAt || safeWork?.recommendedBy),
         current: stage === "Pending Recommendation",
-        name: work?.recommendedBy,
-        role: work?.recommendedByRole,
-        date: work?.recommendedAt,
-        description: work?.recommendedDescription
+        name: safeWork?.recommendedBy,
+        role: safeWork?.recommendedByRole,
+        date: safeWork?.recommendedAt,
+        description: safeWork?.recommendedDescription
       },
       {
         label: "Approved",
-        completed: Boolean(work?.approvedAt || work?.approvedBy),
+        completed: Boolean(safeWork?.approvedAt || safeWork?.approvedBy),
         current: stage === "Pending Approval",
-        name: work?.approvedByName || work?.approvedBy,
-        role: work?.approvedByRole,
-        date: work?.approvedAt || work?.approvalDate,
-        description: work?.approvalDescription
+        name: safeWork?.approvedByName || safeWork?.approvedBy,
+        role: safeWork?.approvedByRole,
+        date: safeWork?.approvedAt || safeWork?.approvalDate,
+        description: safeWork?.approvalDescription
       },
       {
         label: "Completed",
         completed: stage === "Completed",
         current: stage === "Approved",
-        name: work?.completedBy,
-        role: work?.completedByRole,
+        name: safeWork?.completedBy,
+        role: safeWork?.completedByRole,
         date: completionDate,
-        description: work?.completionDescription
+        description: safeWork?.completionDescription
       }
     ],
-    [completionDate, createdBy, stage, work]
+    [completionDate, createdBy, safeWork, stage]
   );
 
   useEffect(() => {
@@ -491,7 +494,7 @@ const WorkApprovalDetailsModal = ({
       if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
       return "";
     });
-  }, [work?._id, stage]);
+  }, [safeWork?._id, stage]);
 
   useEffect(
     () => () => {
@@ -513,10 +516,10 @@ const WorkApprovalDetailsModal = ({
   };
 
   const downloadPdf = async () => {
-    if (exporting || !work) return;
+    if (exporting || !safeWork) return;
     setExporting(true);
     try {
-      await exportWorkApprovalDetailsPdf(work);
+      await exportWorkApprovalDetailsPdf(safeWork);
     } catch (_error) {
       window.alert("Unable to generate the Work Approval PDF. Please try again.");
     } finally {
@@ -526,7 +529,7 @@ const WorkApprovalDetailsModal = ({
 
   return (
     <AnimatePresence>
-      {open && work ? (
+      {open && safeWork ? (
         <motion.div
           className="fixed inset-0 z-[90000] flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-xl sm:p-5"
           initial={{ opacity: 0 }}
@@ -554,7 +557,7 @@ const WorkApprovalDetailsModal = ({
                   {stage}
                 </span>
                 <h2 className="font-display text-xl font-bold text-white sm:text-2xl">Work Approval Details</h2>
-                <p className="mt-1 truncate text-sm text-slate-400">{work.workType || work.title || "Work Approval"}</p>
+                <p className="mt-1 truncate text-sm text-slate-400">{safeWork.workType || safeWork.title || "Work Approval"}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <button
@@ -591,36 +594,36 @@ const WorkApprovalDetailsModal = ({
                       <Wrench size={19} className="text-cyan-300" />
                       <h3 className="font-display text-base font-semibold text-white">Work Information</h3>
                     </div>
-                    <InfoRow label="Approval No" value={work.approvalNumber} />
-                    <InfoRow label="Work Type" value={work.workType || work.title} icon={Wrench} />
-                    <InfoRow label="Location" value={work.location || work.plaza} icon={MapPin} />
-                    <InfoRow label="Chainage From" value={getChainageFrom(work)} />
-                    <InfoRow label="Chainage To" value={getChainageTo(work)} />
-                    <InfoRow label="Chainage Range" value={formatChainageRange(work)} />
-                    <InfoRow label="Workers Count" value={work.workersCount} icon={UsersRound} />
+                    <InfoRow label="Approval No" value={safeWork.approvalNumber} />
+                    <InfoRow label="Work Type" value={safeWork.workType || safeWork.title} icon={Wrench} />
+                    <InfoRow label="Location" value={safeWork.location || safeWork.plaza} icon={MapPin} />
+                    <InfoRow label="Chainage From" value={getChainageFrom(safeWork)} />
+                    <InfoRow label="Chainage To" value={getChainageTo(safeWork)} />
+                    <InfoRow label="Chainage Range" value={formatChainageRange(safeWork)} />
+                    <InfoRow label="Workers Count" value={safeWork.workersCount} icon={UsersRound} />
                     <InfoRow label="Created By" value={createdBy} icon={UserRound} />
-                    <InfoRow label="Created Role" value={work.createdByRole} />
-                    <InfoRow label="Created Date" value={formatDateTime(work.reportDate || work.startDate || work.createdAt)} icon={CalendarDays} />
+                    <InfoRow label="Created Role" value={safeWork.createdByRole} />
+                    <InfoRow label="Created Date" value={formatDateTime(safeWork.reportDate || safeWork.startDate || safeWork.createdAt)} icon={CalendarDays} />
                     <InfoRow label="Current Stage" value={stage} icon={Clock3} />
-                    <InfoRow label="Checked By" value={work.checkedBy} />
-                    <InfoRow label="Checked Date" value={work.checkedAt ? formatDateTime(work.checkedAt) : "-"} />
-                    <InfoRow label="Recommended By" value={work.recommendedBy} />
-                    <InfoRow label="Recommended Date" value={work.recommendedAt ? formatDateTime(work.recommendedAt) : "-"} />
-                    <InfoRow label="Approved By" value={work.approvedByName || work.approvedBy} />
-                    <InfoRow label="Approved Date" value={work.approvedAt || work.approvalDate ? formatDateTime(work.approvedAt || work.approvalDate) : "-"} />
+                    <InfoRow label="Checked By" value={safeWork.checkedBy} />
+                    <InfoRow label="Checked Date" value={safeWork.checkedAt ? formatDateTime(safeWork.checkedAt) : "-"} />
+                    <InfoRow label="Recommended By" value={safeWork.recommendedBy} />
+                    <InfoRow label="Recommended Date" value={safeWork.recommendedAt ? formatDateTime(safeWork.recommendedAt) : "-"} />
+                    <InfoRow label="Approved By" value={safeWork.approvedByName || safeWork.approvedBy} />
+                    <InfoRow label="Approved Date" value={safeWork.approvedAt || safeWork.approvalDate ? formatDateTime(safeWork.approvedAt || safeWork.approvalDate) : "-"} />
                     <InfoRow label="Completion Date" value={completionDate ? formatDateTime(completionDate) : "-"} />
                   </div>
 
-                  <DescriptionCard title="Work Description" value={work.description || work.workDescription || work.details} />
-                  {work.checkedDescription ? <DescriptionCard title="Checked Description" value={work.checkedDescription} tone="emerald" /> : null}
-                  {work.recommendedDescription ? <DescriptionCard title="Recommended Description" value={work.recommendedDescription} tone="emerald" /> : null}
-                  {work.approvalDescription ? <DescriptionCard title="Approval Description" value={work.approvalDescription} tone="emerald" /> : null}
-                  {work.returnDescription ? <DescriptionCard title="Return Description" value={work.returnDescription} tone="rose" /> : null}
+                  <DescriptionCard title="Work Description" value={safeWork.description || safeWork.workDescription || safeWork.details} />
+                  {safeWork.checkedDescription ? <DescriptionCard title="Checked Description" value={safeWork.checkedDescription} tone="emerald" /> : null}
+                  {safeWork.recommendedDescription ? <DescriptionCard title="Recommended Description" value={safeWork.recommendedDescription} tone="emerald" /> : null}
+                  {safeWork.approvalDescription ? <DescriptionCard title="Approval Description" value={safeWork.approvalDescription} tone="emerald" /> : null}
+                  {safeWork.returnDescription ? <DescriptionCard title="Return Description" value={safeWork.returnDescription} tone="rose" /> : null}
 
                   <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Workflow Timeline</p>
                     <div className="mt-3 space-y-3">
-                      {(work.timeline || work.approvalHistory || []).slice(-8).reverse().map((item, index) => (
+                      {(safeWork.timeline || safeWork.approvalHistory || []).slice(-8).reverse().map((item, index) => (
                         <div key={`${item.at || item.createdAt || index}-${index}`} className="flex gap-3">
                           <div className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,.8)]" />
                           <div>
@@ -632,8 +635,8 @@ const WorkApprovalDetailsModal = ({
                           </div>
                         </div>
                       ))}
-                      {!(work.timeline || work.approvalHistory || []).length ? (
-                        <p className="text-sm text-slate-500">Submitted {formatDateTime(work.createdAt)}</p>
+                      {!(safeWork.timeline || safeWork.approvalHistory || []).length ? (
+                        <p className="text-sm text-slate-500">Submitted {formatDateTime(safeWork.createdAt)}</p>
                       ) : null}
                     </div>
                   </div>
@@ -641,7 +644,7 @@ const WorkApprovalDetailsModal = ({
 
                 <div className="space-y-4">
                   <ActionPanel
-                    work={work}
+                    work={safeWork}
                     user={user}
                     stage={stage}
                     busy={busy}

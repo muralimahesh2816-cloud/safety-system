@@ -3,6 +3,7 @@ import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recha
 import GlassCard from "../components/common/GlassCard";
 import SectionHeader from "../components/common/SectionHeader";
 import MediaStudioModal from "../components/common/MediaStudioModal";
+import SafeChartContainer from "../components/common/SafeChartContainer";
 import HazardDetailsModal from "../components/modals/HazardDetailsModal";
 import { hazardService } from "../api/services";
 import {
@@ -536,8 +537,8 @@ const HazardsPage = ({ user }) => {
           </form>
           <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-3">
             <p className="mb-2 text-sm text-slate-200">Hazard Status Overview</p>
-            <div className="h-[250px] min-h-[250px] min-w-0">
-              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+            <SafeChartContainer height={250}>
+              <ResponsiveContainer width="100%" height="100%">
                 <PieChart margin={{ top: 0, right: 6, left: 6, bottom: 8 }}>
                   <Pie data={chartData} dataKey="value" outerRadius={58} labelLine={false}>
                     {chartData.map((entry, index) => (
@@ -553,7 +554,7 @@ const HazardsPage = ({ user }) => {
                   />
                 </PieChart>
               </ResponsiveContainer>
-            </div>
+            </SafeChartContainer>
           </div>
           {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
         </GlassCard>

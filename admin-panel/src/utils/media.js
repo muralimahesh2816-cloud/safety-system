@@ -59,15 +59,20 @@ const normalizeUploadPath = (value = "") => {
 const toUploadsUrl = (value) => {
   const safePath = normalizeUploadPath(value);
   if (!safePath) return "";
-  return `${getBackendBaseUrl()}/uploads/${encodeURI(safePath)}`;
+  const encodedPath = safePath
+    .split("/")
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  return `${getBackendBaseUrl()}/uploads/${encodedPath}`;
 };
 
 const isLocalHostName = (hostname = "") => ["localhost", "127.0.0.1", "0.0.0.0"].includes(hostname);
 
 const isCloudinaryUrl = (parsedUrl) =>
-  parsedUrl.hostname.toLowerCase() === "res.cloudinary.com" ||
-  parsedUrl.pathname.toLowerCase().includes("/image/upload/") ||
-  parsedUrl.pathname.toLowerCase().includes("/video/upload/");
+  parsedUrl.hostname.toLowerCase() === "res.cloudinary.com" &&
+  (parsedUrl.pathname.toLowerCase().includes("/image/upload/") ||
+    parsedUrl.pathname.toLowerCase().includes("/video/upload/"));
 
 const normalizeBackendUploadUrl = (value = "") => {
   if (!value || typeof value !== "string") return value;
@@ -92,10 +97,15 @@ const normalizeBackendUploadUrl = (value = "") => {
       parsed.origin !== backend.origin;
 
     if (forceBackendUploadPath) {
-      return `${backend.origin}/uploads/${encodeURI(uploadPath)}`;
+      return toUploadsUrl(uploadPath);
     }
 
-    return `${parsed.origin}/uploads/${encodeURI(uploadPath)}`;
+    const encodedPath = uploadPath
+      .split("/")
+      .filter(Boolean)
+      .map((part) => encodeURIComponent(part))
+      .join("/");
+    return `${parsed.origin}/uploads/${encodedPath}`;
   } catch {
     return value.replace(/\/api\/v1\/uploads\//i, "/uploads/");
   }

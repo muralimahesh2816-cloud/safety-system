@@ -13,20 +13,50 @@ import {
   showValidationPopup
 } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
-import { getMediaUrl } from "../utils/media";
+import { getMediaUrl, IMAGE_PLACEHOLDER_URL } from "../utils/media";
 
 const baseCategories = ["All", "General", "PPE", "Electrical", "Fire Safety", "Road Safety"];
 
-const remoteSafetyGallery = [
-  "https://pbs.twimg.com/media/Gh4ruZnbYAAmZYK.jpg",
-  "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?auto=format&fit=crop&w=2400&q=90",
-  "https://images.unsplash.com/photo-1581093806997-124204d9fa9d?auto=format&fit=crop&w=2400&q=90",
-  "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?auto=format&fit=crop&w=2400&q=90",
-  "https://images.unsplash.com/photo-1581093588401-16ec8f8f2e7d?auto=format&fit=crop&w=2400&q=90",
-  "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=2400&q=90",
-  "https://images.unsplash.com/photo-1590490359683-658d3d23f972?auto=format&fit=crop&w=2400&q=90",
-  "https://images.unsplash.com/photo-1542831371-29b0f74f9713?auto=format&fit=crop&w=2400&q=90",
-  "https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=2400&q=90"
+const createSafetyGallerySvg = ({ title, subtitle, accent }) => {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#020617"/>
+          <stop offset="58%" stop-color="#0f172a"/>
+          <stop offset="100%" stop-color="${accent}"/>
+        </linearGradient>
+      </defs>
+      <rect width="1400" height="860" rx="54" fill="url(#bg)"/>
+      <circle cx="1130" cy="165" r="132" fill="#ffffff" opacity=".08"/>
+      <circle cx="245" cy="690" r="180" fill="#5eead4" opacity=".10"/>
+      <path d="M208 592h356l-48 120H256z" fill="none" stroke="#facc15" stroke-width="18" stroke-linejoin="round"/>
+      <path d="M260 592l38-210h176l38 210M302 438h168M322 500h130M306 560h164" fill="none" stroke="#facc15" stroke-width="16" stroke-linecap="round"/>
+      <path d="M940 244l156 70v130c0 126-78 238-156 278-78-40-156-152-156-278V314z" fill="none" stroke="#5eead4" stroke-width="18" stroke-linejoin="round"/>
+      <path d="M872 474l50 50 104-126" fill="none" stroke="#5eead4" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="104" y="145" fill="#f8fafc" font-family="Arial, sans-serif" font-size="62" font-weight="800">${title}</text>
+      <text x="108" y="213" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="30">${subtitle}</text>
+      <text x="108" y="278" fill="#67e8f9" font-family="Arial, sans-serif" font-size="22" letter-spacing="8">SAFETY AWARENESS</text>
+    </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+};
+
+const fallbackSafetyGallery = [
+  createSafetyGallerySvg({
+    title: "PPE Saves Lives",
+    subtitle: "Helmet, vest, gloves, and eye protection before every task.",
+    accent: "#083344"
+  }),
+  createSafetyGallerySvg({
+    title: "Report Every Hazard",
+    subtitle: "Observe, report, correct, and close unsafe conditions.",
+    accent: "#431407"
+  }),
+  createSafetyGallerySvg({
+    title: "Work Zone Discipline",
+    subtitle: "Barricades, signage, and traffic controls protect every worker.",
+    accent: "#172554"
+  })
 ];
 
 const loadLocalSafetyGallery = () => {
@@ -45,7 +75,7 @@ const loadLocalSafetyGallery = () => {
 
 const safetyGallery = (() => {
   const localImages = loadLocalSafetyGallery();
-  return localImages.length ? localImages : remoteSafetyGallery;
+  return localImages.length ? localImages : fallbackSafetyGallery;
 })();
 
 const initialForm = {
@@ -248,7 +278,8 @@ const TrainingPage = ({ user }) => {
   const activeVideoUrl = getMediaUrl(activeTraining?.video?.url || activeTraining?.video);
   const activeBannerUrl =
     getMediaUrl(activeTraining?.thumbnail?.url || activeTraining?.banner || activeTraining?.thumbnail) ||
-    safetyGallery[0];
+    safetyGallery[0] ||
+    IMAGE_PLACEHOLDER_URL;
   const effectivePreviewVideo = videoPreview || activeVideoUrl;
 
   const openTrainingGallery = (index = 0) => {
@@ -373,7 +404,8 @@ const TrainingPage = ({ user }) => {
               const progress = userProgressMap.get(record._id) || 0;
               const thumb =
                 getMediaUrl(record.thumbnail?.url || record.thumbnail || record.banner) ||
-                "https://images.unsplash.com/photo-1521791136064-7986c2920216?q=80&w=1200";
+                safetyGallery[0] ||
+                IMAGE_PLACEHOLDER_URL;
               return (
                 <motion.article
                   key={record._id}

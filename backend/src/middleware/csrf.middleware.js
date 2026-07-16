@@ -8,13 +8,23 @@ const SAFE_METHODS = ["GET", "HEAD", "OPTIONS"];
 
 const generateCsrfToken = () => crypto.randomBytes(24).toString("hex");
 
+const partitionedCookieOptions = isProduction
+  ? {
+      // Frontend/backend are currently on separate Render hostnames. Partitioned
+      // keeps the readable double-submit token compatible with modern Firefox/Chrome
+      // third-party cookie partitioning without weakening CSRF validation.
+      partitioned: true
+    }
+  : {};
+
 const issueCsrfToken = (res) => {
   const token = generateCsrfToken();
   res.cookie(CSRF_COOKIE_NAME, token, {
     httpOnly: false,
     secure: isProduction,
     sameSite: isProduction ? "none" : "lax",
-    path: "/"
+    path: "/",
+    ...partitionedCookieOptions
   });
   return token;
 };

@@ -11,6 +11,14 @@ const sanitizeMiddleware = require("./sanitize.middleware");
 const ApiError = require("../utils/api-error");
 const logger = require("../utils/logger");
 
+const getOrigin = (value) => {
+  try {
+    return value ? new URL(value).origin : "";
+  } catch (_error) {
+    return "";
+  }
+};
+
 const applySecurityMiddleware = (app) => {
   const configuredOrigins = env.frontendUrl
     .split(",")
@@ -20,6 +28,11 @@ const applySecurityMiddleware = (app) => {
     ? []
     : ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"];
   const allowedOrigins = Array.from(new Set([...configuredOrigins, ...developmentOrigins]));
+  const backendOrigin = getOrigin(env.backendPublicUrl);
+  const mediaOrigins = Array.from(
+    new Set([backendOrigin, "https://res.cloudinary.com"].filter(Boolean))
+  );
+  const connectOrigins = Array.from(new Set([...allowedOrigins, backendOrigin].filter(Boolean)));
 
   app.use(
     cors({
@@ -40,7 +53,20 @@ const applySecurityMiddleware = (app) => {
   app.use(
     helmet({
       crossOriginEmbedderPolicy: false,
-      crossOriginResourcePolicy: { policy: "cross-origin" }
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          baseUri: ["'self'"],
+          objectSrc: ["'none'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", "data:", "blob:", ...mediaOrigins],
+          mediaSrc: ["'self'", "blob:", ...mediaOrigins],
+          connectSrc: ["'self'", ...connectOrigins],
+          frameAncestors: ["'self'", ...allowedOrigins]
+        }
+      }
     })
   );
   app.use(compression());

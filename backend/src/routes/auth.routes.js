@@ -35,7 +35,8 @@ const refreshCookieOptions = {
   httpOnly: true,
   secure: isProduction,
   sameSite: isProduction ? "none" : "lax",
-  path: "/"
+  path: "/",
+  ...(isProduction ? { partitioned: true } : {})
 };
 
 const buildAuthPayload = (user) => ({
@@ -277,7 +278,8 @@ router.post(
     res.clearCookie("hse_csrf_token", {
       secure: isProduction,
       sameSite: isProduction ? "none" : "lax",
-      path: "/"
+      path: "/",
+      ...(isProduction ? { partitioned: true } : {})
     });
     res.json({ success: true, message: "Logged out" });
   })

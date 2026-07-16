@@ -14,6 +14,7 @@ import {
   YAxis
 } from "recharts";
 import GlassCard from "../components/common/GlassCard";
+import SafeChartContainer from "../components/common/SafeChartContainer";
 import SectionHeader from "../components/common/SectionHeader";
 import { reportService, trainingService } from "../api/services";
 import { closeLoadingPopup, showLoadingPopup, showSuccessPopup } from "../utils/alerts";
@@ -447,8 +448,8 @@ const ReportsPage = () => {
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <GlassCard className="p-5">
               <h3 className="mb-3 text-lg font-semibold text-white">Work Status Distribution</h3>
-              <div className="h-72 min-h-[18rem] min-w-0">
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+              <SafeChartContainer height={288}>
+                <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={workStatusData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                     <XAxis dataKey="name" stroke="#cbd5e1" />
@@ -457,13 +458,13 @@ const ReportsPage = () => {
                     <Bar dataKey="value" fill="#14B8A6" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
-              </div>
+              </SafeChartContainer>
             </GlassCard>
 
             <GlassCard className="p-5">
               <h3 className="mb-3 text-lg font-semibold text-white">Hazard Severity Trend</h3>
-              <div className="h-72 min-h-[18rem] min-w-0">
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+              <SafeChartContainer height={288}>
+                <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={analytics.hazardTrends || []}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                     <XAxis
@@ -482,7 +483,7 @@ const ReportsPage = () => {
                     <Line type="monotone" dataKey="riskScore" stroke="#F59E0B" strokeWidth={3} />
                   </LineChart>
                 </ResponsiveContainer>
-              </div>
+              </SafeChartContainer>
             </GlassCard>
           </div>
         </div>

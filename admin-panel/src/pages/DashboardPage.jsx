@@ -35,6 +35,7 @@ import {
 } from "recharts";
 import GlassCard from "../components/common/GlassCard";
 import KPIBox from "../components/dashboard/KPIBox";
+import SafeChartContainer from "../components/common/SafeChartContainer";
 import SectionHeader from "../components/common/SectionHeader";
 import SkeletonBlock from "../components/common/SkeletonBlock";
 import { dashboardService } from "../api/services";
@@ -256,8 +257,8 @@ const DashboardPage = ({ onModuleSelect }) => {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <GlassCard className="p-5 md:p-6">
           <h3 className="mb-4 text-lg font-semibold text-white">Work Status Pie Chart</h3>
-          <div className="h-72 min-h-[18rem] min-w-0">
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+          <SafeChartContainer height={288}>
+            <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={charts.workStatus || []}
@@ -275,13 +276,13 @@ const DashboardPage = ({ onModuleSelect }) => {
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
-          </div>
+          </SafeChartContainer>
         </GlassCard>
 
         <GlassCard className="p-5 md:p-6">
           <h3 className="mb-4 text-lg font-semibold text-white">Hazard Status Bar Chart</h3>
-          <div className="h-72 min-h-[18rem] min-w-0">
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+          <SafeChartContainer height={288}>
+            <ResponsiveContainer width="100%" height="100%">
               <BarChart data={charts.hazardStatus || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                 <XAxis dataKey="name" stroke="#cbd5e1" />
@@ -290,13 +291,13 @@ const DashboardPage = ({ onModuleSelect }) => {
                 <Bar dataKey="value" fill={hazardColor} radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </SafeChartContainer>
         </GlassCard>
 
         <GlassCard className="p-5 md:p-6">
           <h3 className="mb-4 text-lg font-semibold text-white">Monthly Trend Graph</h3>
-          <div className="h-72 min-h-[18rem] min-w-0">
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+          <SafeChartContainer height={288}>
+            <ResponsiveContainer width="100%" height="100%">
               <LineChart data={charts.monthlyTrend || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                 <XAxis dataKey="month" stroke="#cbd5e1" />
@@ -313,13 +314,13 @@ const DashboardPage = ({ onModuleSelect }) => {
                 />
               </LineChart>
             </ResponsiveContainer>
-          </div>
+          </SafeChartContainer>
         </GlassCard>
 
         <GlassCard className="p-5 md:p-6">
           <h3 className="mb-4 text-lg font-semibold text-white">User Activity Graph</h3>
-          <div className="h-72 min-h-[18rem] min-w-0">
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+          <SafeChartContainer height={288}>
+            <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={charts.userActivity || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                 <XAxis dataKey="month" stroke="#cbd5e1" />
@@ -340,15 +341,15 @@ const DashboardPage = ({ onModuleSelect }) => {
                 </defs>
               </AreaChart>
             </ResponsiveContainer>
-          </div>
+          </SafeChartContainer>
         </GlassCard>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <GlassCard className="p-6 xl:col-span-1">
           <h3 className="mb-4 text-lg font-semibold text-white">Safety Performance Score</h3>
-          <div className="h-64 min-h-[16rem] min-w-0">
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+          <SafeChartContainer height={256}>
+            <ResponsiveContainer width="100%" height="100%">
               <RadialBarChart
                 cx="50%"
                 cy="50%"
@@ -370,7 +371,7 @@ const DashboardPage = ({ onModuleSelect }) => {
                 </text>
               </RadialBarChart>
             </ResponsiveContainer>
-          </div>
+          </SafeChartContainer>
         </GlassCard>
 
         <GlassCard className="p-6 xl:col-span-2">
