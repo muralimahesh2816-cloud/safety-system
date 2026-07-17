@@ -21,7 +21,15 @@ const {
 } = require("../validators/work.validators");
 const { uploadManyAssets } = require("../utils/uploads");
 const { createMemoryUpload, IMAGE_MIME_TYPES, VIDEO_MIME_TYPES } = require("../utils/multer");
-const { createNotification } = require("../services/notifications.service");
+const {
+  createNotification,
+  notifyWorkCreated,
+  notifyWorkChecked,
+  notifyWorkRecommended,
+  notifyWorkApproved,
+  notifyWorkReturned,
+  notifyWorkCompleted
+} = require("../services/notifications.service");
 const {
   getChainageFrom,
   getChainageTo,
@@ -45,6 +53,17 @@ const upload = createMemoryUpload({
   maxFileSizeMb: WORK_VIDEO_LIMIT_MB,
   maxFiles: 22
 });
+
+const runWorkflowNotification = async (label, operation) => {
+  try {
+    await operation();
+  } catch (error) {
+    logger.warn("Workflow notification delivery failed", {
+      label,
+      message: error.message
+    });
+  }
+};
 
 const WORK_STAGES = {
   PENDING_CHECK: "Pending Check",
@@ -494,6 +513,9 @@ const completeWorkWithMedia = async (req, res) => {
     },
     work._id
   );
+  await runWorkflowNotification("work_completed", () =>
+    notifyWorkCompleted({ work, actorId: req.user.id })
+  );
   res.json({ success: true, work: toLegacyWorkRecord(work) });
 };
 
@@ -739,6 +761,9 @@ router.post(
       });
     }
 
+    await runWorkflowNotification("work_created", () =>
+      notifyWorkCreated({ work, actorId: req.user.id })
+    );
     await audit(req, "create", "work", { title: work.title }, work._id);
     res.status(201).json({ success: true, work: toLegacyWorkRecord(work) });
   })
@@ -910,6 +935,9 @@ router.post(
 
     await work.save();
     await audit(req, "work_resubmit", "work", { fromStage: currentStage }, work._id);
+    await runWorkflowNotification("work_resubmitted", () =>
+      notifyWorkCreated({ work, actorId: req.user.id })
+    );
     res.json({ success: true, work: toLegacyWorkRecord(work) });
   })
 );
@@ -939,6 +967,9 @@ router.post(
 
     await work.save();
     await audit(req, "work_check", "work", { reviewFindings }, work._id);
+    await runWorkflowNotification("work_checked", () =>
+      notifyWorkChecked({ work, actorId: req.user.id })
+    );
     if (overrideConflicts.length) {
       await audit(
         req,
@@ -981,6 +1012,9 @@ router.post(
 
     await work.save();
     await audit(req, "work_recommend", "work", { recommendationRemarks }, work._id);
+    await runWorkflowNotification("work_recommended", () =>
+      notifyWorkRecommended({ work, actorId: req.user.id })
+    );
     if (overrideConflicts.length) {
       await audit(
         req,
@@ -1032,6 +1066,9 @@ router.post(
 
     await work.save();
     await audit(req, "work_approve", "work", { approvalRemarks }, work._id);
+    await runWorkflowNotification("work_approved", () =>
+      notifyWorkApproved({ work, actorId: req.user.id })
+    );
     if (overrideConflicts.length) {
       await audit(
         req,
@@ -1096,6 +1133,9 @@ router.post(
 
     await work.save();
     await audit(req, "work_return", "work", { stage: currentStage, correctionReason }, work._id);
+    await runWorkflowNotification("work_returned", () =>
+      notifyWorkReturned({ work, actorId: req.user.id, reason: correctionReason })
+    );
     if (overrideConflicts.length) {
       await audit(
         req,

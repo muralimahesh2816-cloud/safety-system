@@ -10,8 +10,8 @@ router.get(
   "/summary",
   authMiddleware,
   authorizePermission("dashboard", "view"),
-  asyncHandler(async (_req, res) => {
-    const summary = await getDashboardSummary();
+  asyncHandler(async (req, res) => {
+    const summary = await getDashboardSummary(req.user);
     res.json({
       success: true,
       ...summary

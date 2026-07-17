@@ -13,9 +13,10 @@ router.get(
   authMiddleware,
   authorizePermission("notifications", "view"),
   asyncHandler(async (req, res) => {
-    const filters = { user: req.user.id };
+    const filters = { user: req.user.id, archived: false };
     if (req.query.read === "true") filters.read = true;
     if (req.query.read === "false") filters.read = false;
+    if (req.query.type) filters.type = req.query.type;
 
     const shouldPaginate = hasPagination(req.query);
     const pagination = getPagination(req.query, { defaultLimit: 25, maxLimit: 100 });
@@ -28,7 +29,7 @@ router.get(
 
     const [notifications, unreadCount, total] = await Promise.all([
       query,
-      Notification.countDocuments({ user: req.user.id, read: false }),
+      Notification.countDocuments({ user: req.user.id, read: false, archived: false }),
       Notification.countDocuments(filters)
     ]);
     res.json({
@@ -53,7 +54,8 @@ router.patch(
         user: req.user.id
       },
       {
-        read: true
+        read: true,
+        readAt: new Date()
       },
       { new: true }
     );
@@ -74,10 +76,12 @@ router.patch(
     await Notification.updateMany(
       {
         user: req.user.id,
-        read: false
+        read: false,
+        archived: false
       },
       {
-        read: true
+        read: true,
+        readAt: new Date()
       }
     );
     await audit(req, "notification_read_all", "notifications", {});

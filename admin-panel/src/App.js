@@ -302,6 +302,7 @@ const AppContent = () => {
                   onToggleSidebar={handleSidebarToggle}
                   sidebarCollapsed={sidebarCollapsed}
                   title={moduleTitles[activeModule]}
+                  onSelectModule={handleModuleSelect}
                 />
               </motion.div>
             ) : null}

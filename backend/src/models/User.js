@@ -53,7 +53,14 @@ const userSchema = new mongoose.Schema(
     lastOtpSentAt: Date,
     loginLockedUntil: Date,
     otpVerified: { type: Boolean, default: false },
-    isTwoFactorEnabled: { type: Boolean, default: false }
+    isTwoFactorEnabled: { type: Boolean, default: false },
+    notificationPreferences: {
+      email: { type: Boolean, default: true },
+      inApp: { type: Boolean, default: true },
+      sms: { type: Boolean, default: false },
+      whatsapp: { type: Boolean, default: false },
+      push: { type: Boolean, default: false }
+    }
   },
   {
     timestamps: true

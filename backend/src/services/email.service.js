@@ -101,6 +101,28 @@ const getEmailQueueStatus = () => ({
   retryDelayMs: RETRY_DELAY_MS
 });
 
+const sendMailWithRetry = async (mailOptions = {}) => {
+  if (!hasSmtpConfig()) {
+    if (isProduction) {
+      const error = new Error("Email delivery is not configured");
+      error.statusCode = 500;
+      throw error;
+    }
+    logger.info("Development email skipped", {
+      to: mailOptions.to,
+      subject: mailOptions.subject
+    });
+    return { skipped: true };
+  }
+
+  try {
+    return await deliverMail(mailOptions);
+  } catch (error) {
+    enqueueEmailRetry(mailOptions, error);
+    throw error;
+  }
+};
+
 const sendOtpEmail = async ({ to, name, otp }) => {
   if (!hasSmtpConfig()) {
     if (isProduction) {
@@ -130,15 +152,11 @@ const sendOtpEmail = async ({ to, name, otp }) => {
     `
   };
 
-  try {
-    return await deliverMail(mailOptions);
-  } catch (error) {
-    enqueueEmailRetry(mailOptions, error);
-    throw error;
-  }
+  return sendMailWithRetry(mailOptions);
 };
 
 module.exports = {
   sendOtpEmail,
+  sendMailWithRetry,
   getEmailQueueStatus
 };

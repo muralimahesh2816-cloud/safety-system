@@ -56,7 +56,7 @@ const toInitials = (name = "User") =>
     .map((part) => part[0]?.toUpperCase() || "")
     .join("") || "U";
 
-const Topbar = ({ user, onLogout, title }) => {
+const Topbar = ({ user, onLogout, title, onSelectModule }) => {
   const [logoHovered, setLogoHovered] = useState(false);
   const [userHovered, setUserHovered] = useState(false);
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
@@ -161,7 +161,7 @@ const Topbar = ({ user, onLogout, title }) => {
       <div className="flex items-center gap-2 md:gap-3">
         <LiveClockCard />
         <ThemeToggle />
-        <NotificationCenter />
+        <NotificationCenter onSelectModule={onSelectModule} />
         <div
           className="relative hidden md:block"
           onMouseEnter={() => setUserHovered(true)}

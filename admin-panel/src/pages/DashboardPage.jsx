@@ -103,6 +103,8 @@ const DashboardPage = ({ onModuleSelect }) => {
 
   const kpis = summary.kpis || {};
   const charts = summary.charts || {};
+  const alerts = summary.alerts || [];
+  const assignedTasks = summary.assignedTasks || { counts: {}, total: 0, items: [] };
   const localActivities = (() => {
     if (typeof window === "undefined") return [];
     try {
@@ -153,6 +155,29 @@ const DashboardPage = ({ onModuleSelect }) => {
         title="Real-Time KPI Dashboard"
         subtitle="Live operational and safety metrics across enterprise modules"
       />
+
+      {alerts.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          {alerts.map((alert) => (
+            <button
+              key={`${alert.type}-${alert.title}`}
+              type="button"
+              onClick={() => onModuleSelect?.(alert.module)}
+              className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 ${
+                alert.priority === "urgent"
+                  ? "border-rose-400/30 bg-rose-500/10 text-rose-100"
+                  : alert.priority === "high"
+                  ? "border-orange-400/30 bg-orange-500/10 text-orange-100"
+                  : "border-sky-400/30 bg-sky-500/10 text-sky-100"
+              }`}
+            >
+              <p className="text-xs uppercase tracking-[0.18em] text-current/70">Dashboard Alert</p>
+              <p className="mt-1 text-sm font-semibold">{alert.title}</p>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           {Array.from({ length: 10 }).map((_, index) => (
@@ -347,6 +372,56 @@ const DashboardPage = ({ onModuleSelect }) => {
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <GlassCard className="p-6 xl:col-span-1">
+          <SectionHeader
+            title="Assigned To Me"
+            subtitle="Pending check, recommendation, approval, returned, and completion tasks"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              ["Pending Check", assignedTasks.counts?.pendingCheck || 0, "work"],
+              ["Recommendation", assignedTasks.counts?.pendingRecommendation || 0, "work"],
+              ["Approval", assignedTasks.counts?.pendingApproval || 0, "work"],
+              ["Returned", assignedTasks.counts?.returnedWork || 0, "work"],
+              ["Incomplete", assignedTasks.counts?.incompleteWork || 0, "work"]
+            ].map(([label, value, module]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => onModuleSelect?.(module)}
+                className="rounded-2xl border border-white/10 bg-white/5 p-3 text-left transition hover:bg-white/10"
+              >
+                <p className="text-2xl font-semibold text-white">{value}</p>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-400">{label}</p>
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 max-h-64 space-y-2 overflow-y-auto pr-1">
+            {(assignedTasks.items || []).length === 0 ? (
+              <p className="text-xs text-slate-400">No assigned tasks currently pending.</p>
+            ) : (
+              assignedTasks.items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onModuleSelect?.("work")}
+                  className="w-full rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:bg-white/10"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{item.title}</p>
+                      <p className="mt-1 text-xs text-slate-400">{item.location}</p>
+                    </div>
+                    <span className="rounded-full border border-orange-300/25 bg-orange-400/10 px-2 py-1 text-[10px] text-orange-100">
+                      {item.status}
+                    </span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-6 xl:col-span-1">
           <h3 className="mb-4 text-lg font-semibold text-white">Safety Performance Score</h3>
           <SafeChartContainer height={256}>
             <ResponsiveContainer width="100%" height="100%">
@@ -374,7 +449,7 @@ const DashboardPage = ({ onModuleSelect }) => {
           </SafeChartContainer>
         </GlassCard>
 
-        <GlassCard className="p-6 xl:col-span-2">
+        <GlassCard className="p-6 xl:col-span-1">
           <SectionHeader
             title="Recent Activities Panel"
             subtitle="Latest 10 activities: logins, approvals, closures, and exports"
