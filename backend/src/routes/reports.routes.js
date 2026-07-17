@@ -7,7 +7,7 @@ const Hazard = require("../models/Hazard");
 const User = require("../models/User");
 const Training = require("../models/Training");
 const { filterByPeriod, buildCsv } = require("../utils/reporting");
-const { getChainageFrom } = require("../utils/chainage");
+const { getChainageFrom, getChainageTo } = require("../utils/chainage");
 
 const router = express.Router();
 
@@ -60,6 +60,11 @@ const toRows = ({ work, hazards, users, training }) => {
   return rows;
 };
 
+const normalizeWorkflowStage = (record = {}) => {
+  const stage = record.workflowStage || record.status || "Pending Check";
+  return stage === "Pending Approval" ? "Pending Final Approval" : stage;
+};
+
 const toLegacyWorkRecord = (record) => ({
   _id: record._id,
   approvalNumber: record.approvalNumber || `WA-${String(record._id).slice(-8).toUpperCase()}`,
@@ -74,10 +79,17 @@ const toLegacyWorkRecord = (record) => ({
   chainageTo: getStrictChainageTo(record),
   chainage: record.chainage || getChainageFrom(record),
   chainageNo: record.chainageNo || record.chainage || getChainageFrom(record),
+  approvedChainageFrom: record.approvedChainage?.from || getChainageFrom(record),
+  approvedChainageTo: record.approvedChainage?.to || getChainageTo(record),
+  completedChainageFrom: record.completedChainageFrom || record.completion?.completedChainageFrom || "",
+  completedChainageTo: record.completedChainageTo || record.completion?.completedChainageTo || "",
+  remainingChainageFrom: record.remainingChainageFrom || record.completion?.remainingChainageFrom || "",
+  remainingChainageTo: record.remainingChainageTo || record.completion?.remainingChainageTo || "",
+  partialCompletionReason: record.partialCompletionReason || record.completion?.partialCompletionReason || "",
   workersCount: record.workersCount || 0,
   priority: record.priority || "Medium",
-  status: record.status || "Pending",
-  workflowStage: record.workflowStage || record.status || "Pending Check",
+  status: record.status === "Pending Approval" ? "Pending Final Approval" : record.status || normalizeWorkflowStage(record),
+  workflowStage: normalizeWorkflowStage(record),
   reportedBy: record.createdByName || record.createdBy?.name || "",
   createdByName: record.createdByName || record.createdBy?.name || "",
   createdByRole: record.createdByRole || record.createdBy?.role || "",
@@ -103,7 +115,9 @@ const toLegacyWorkRecord = (record) => ({
   completedByRole: record.completedByRole || "",
   completionDescription: record.completionDescription || "",
   completedAt: record.completedAt || "",
-  completionDate: record.completedAt || (record.status === "Completed" ? record.updatedAt : ""),
+  completionDate: record.completedAt || (["Completed", "Partially Completed"].includes(record.status) ? record.updatedAt : ""),
+  returnedHistory: record.returnedHistory || [],
+  chainageAuditHistory: record.chainageAuditHistory || [],
   timeline: record.timeline || [],
   beforeImage: record.beforeImages?.[0]?.url || record.beforeImage || "",
   afterImage: record.afterImages?.[0]?.url || record.afterImage || "",
@@ -161,7 +175,7 @@ router.get(
     const records = await WorkApproval.find()
       .populate("createdBy", "name role")
       .select(
-        "title plaza approvalNumber workType description location chainage chainageNo chainageFrom chainageTo workersCount priority status workflowStage createdBy createdByName createdByRole checkedBy checkedByRole checkedDescription checkedAt recommendedBy recommendedByRole recommendedDescription recommendedAt approvedBy approvedByRole approvalDescription approvedAt returnedBy returnedByRole returnDescription returnStage returnedAt completedBy completedByRole completionDescription completedAt beforeImages afterImages beforeVideos afterVideos beforeImage afterImage beforeVideo afterVideo timeline createdAt updatedAt"
+        "title plaza approvalNumber workType description location chainage chainageNo chainageFrom chainageTo approvedChainage completedChainageFrom completedChainageTo remainingChainageFrom remainingChainageTo partialCompletionReason completion workersCount priority status workflowStage createdBy createdByName createdByRole checkedBy checkedByRole checkedDescription checkedAt checked recommendedBy recommendedByRole recommendedDescription recommendedAt recommended approvedBy approvedByRole approvalDescription approvedAt approved returnedBy returnedByRole returnDescription returnStage returnedAt returnedHistory completedBy completedByRole completionDescription completedAt beforeImages afterImages beforeVideos afterVideos beforeImage afterImage beforeVideo afterVideo timeline chainageAuditHistory createdAt updatedAt"
       )
       .sort({ createdAt: -1 });
     res.json(records.map(toLegacyWorkRecord));

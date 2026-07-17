@@ -33,14 +33,63 @@ const WORK_FILTERS_VISIBLE_KEY = "workFiltersVisible";
 const WORKFLOW_STAGES = [
   "Pending Check",
   "Pending Recommendation",
-  "Pending Approval",
+  "Pending Final Approval",
   "Approved",
+  "Partially Completed",
   "Completed",
   "Returned for Correction"
 ];
+const CHECKING_ROLES = ["safety_officer", "safety_engineer", "site_engineer", "project_engineer", "maintenance_engineer"];
+const RECOMMENDING_ROLES = ["project_manager", "construction_manager", "operations_manager", "maintenance_manager", "safety_manager"];
+const APPROVAL_ROLES = ["maintenance_manager", "project_manager", "admin"];
+const QUEUE_FILTERS = [
+  { value: "all", label: "All Work" },
+  { value: "my_created", label: "My Created Works" },
+  { value: "pending_check", label: "Pending My Check" },
+  { value: "pending_recommendation", label: "Pending My Recommendation" },
+  { value: "pending_approval", label: "Pending My Approval" },
+  { value: "approved", label: "Approved Work" },
+  { value: "partially_completed", label: "Partially Completed" },
+  { value: "completed", label: "Completed" },
+  { value: "returned", label: "Returned for Correction" }
+];
+const normalizeRole = (role = "") => String(role || "").trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_");
+const getUserId = (value = {}) => String(value?.id || value?._id || value?.userId || "");
+const getWorkCreatorId = (work = {}) => String(work.createdBy?._id || work.createdBy || work.createdById || "");
+const isCreatorOfWork = (work = {}, user = {}) => {
+  const userId = getUserId(user);
+  return Boolean(userId && userId === getWorkCreatorId(work));
+};
+const hasStageRole = (user = {}, action) => {
+  const role = normalizeRole(user?.role);
+  if (role === "super_admin") return true;
+  const roleMap = {
+    check: CHECKING_ROLES,
+    recommend: RECOMMENDING_ROLES,
+    approve: APPROVAL_ROLES
+  };
+  return (roleMap[action] || []).includes(role);
+};
+const canActOnStage = (work = {}, user = {}) => {
+  const stage = getWorkflowStage(work);
+  if (stage === "Pending Check") return hasStageRole(user, "check");
+  if (stage === "Pending Recommendation") return hasStageRole(user, "recommend");
+  if (stage === "Pending Final Approval") return hasStageRole(user, "approve");
+  return false;
+};
+const getDefaultQueueFilter = (user = {}) => {
+  const role = normalizeRole(user?.role);
+  if (role === "super_admin") return "pending_check";
+  if (CHECKING_ROLES.includes(role)) return "pending_check";
+  if (["project_manager", "maintenance_manager"].includes(role)) return "pending_recommendation";
+  if (RECOMMENDING_ROLES.includes(role)) return "pending_recommendation";
+  if (APPROVAL_ROLES.includes(role)) return "pending_approval";
+  return "my_created";
+};
 const getWorkflowStage = (work = {}) => {
   const status = work.workflowStage || work.status || "";
   if (WORKFLOW_STAGES.includes(status)) return status;
+  if (status === "Pending Approval") return "Pending Final Approval";
   if (status === "Pending" || status === "Under Review" || !status) return "Pending Check";
   if (status === "Rejected") return "Returned for Correction";
   return status;
@@ -48,8 +97,9 @@ const getWorkflowStage = (work = {}) => {
 const getRequiredAction = (work = {}) => ({
   "Pending Check": "Awaiting Check",
   "Pending Recommendation": "Awaiting Recommendation",
-  "Pending Approval": "Awaiting Final Approval",
-  Approved: "Awaiting Completion",
+  "Pending Final Approval": "Awaiting Final Approval",
+  Approved: "Approved - Work in Progress",
+  "Partially Completed": "Partially Completed",
   Completed: "Completed",
   "Returned for Correction": "Returned for Correction"
 }[getWorkflowStage(work)] || "Awaiting Review");
@@ -160,8 +210,9 @@ const getWorkStatusSinceText = (work = {}) => {
 const getStageBadgeClass = (stage = "Pending Check") => ({
   "Pending Check": "border-cyan-400/30 bg-cyan-500/10 text-cyan-100",
   "Pending Recommendation": "border-violet-400/30 bg-violet-500/10 text-violet-100",
-  "Pending Approval": "border-amber-400/30 bg-amber-500/10 text-amber-100",
+  "Pending Final Approval": "border-amber-400/30 bg-amber-500/10 text-amber-100",
   Approved: "border-sky-400/30 bg-sky-500/10 text-sky-100",
+  "Partially Completed": "border-lime-400/30 bg-lime-500/10 text-lime-100",
   Completed: "border-emerald-400/30 bg-emerald-500/10 text-emerald-100",
   "Returned for Correction": "border-rose-400/30 bg-rose-500/10 text-rose-100"
 }[stage] || statusColors.Pending.badge);
@@ -224,6 +275,7 @@ const WorkApprovalsPage = ({ user }) => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("All");
+  const [queueFilter, setQueueFilter] = useState(() => getDefaultQueueFilter(user));
   const [listFilters, setListFilters] = useState({
     dateFrom: "",
     dateTo: "",
@@ -249,7 +301,15 @@ const WorkApprovalsPage = ({ user }) => {
   const editLockRef = useRef(false);
 
   const canDelete = ["super_admin", "admin"].includes(user?.role);
-  const canApprove = ["super_admin", "admin"].includes(user?.role);
+  const canEditWorkRecord = useCallback(
+    (work = {}) => {
+      const stage = getWorkflowStage(work);
+      if (["Completed", "Partially Completed"].includes(stage)) return false;
+      if (["super_admin", "admin"].includes(normalizeRole(user?.role))) return true;
+      return stage === "Returned for Correction" && isCreatorOfWork(work, user);
+    },
+    [user]
+  );
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -267,6 +327,10 @@ const WorkApprovalsPage = ({ user }) => {
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  useEffect(() => {
+    setQueueFilter(getDefaultQueueFilter(user));
+  }, [user]);
 
   useEffect(() => {
     localStorage.setItem(WORK_FORM_COLLAPSED_KEY, String(formCollapsed));
@@ -339,7 +403,7 @@ const WorkApprovalsPage = ({ user }) => {
     }
   };
 
-  const runStageAction = async (work, action, description) => {
+  const runStageAction = async (work, action, description, options = {}) => {
     const id = getWorkRecordId(work);
     if (!id) {
       showValidationPopup("Unable to update this work record because its id is missing.");
@@ -357,26 +421,42 @@ const WorkApprovalsPage = ({ user }) => {
     const actionConfig = {
       check: {
         label: "Check Work",
-        confirmText: "Confirm that you have reviewed the work details and media evidence.",
-        service: () => workService.check(id, cleanDescription),
+        confirmText: "Confirm that you have reviewed the work details, chainage, workers, description, and submitted evidence.",
+        service: () => workService.check(id, {
+          reviewFindings: cleanDescription,
+          description: cleanDescription,
+          overrideReason: options.overrideReason || ""
+        }),
         success: "Work Checked Successfully"
       },
       recommend: {
         label: "Recommend Work",
-        confirmText: "Confirm that you recommend this work for final approval.",
-        service: () => workService.recommend(id, cleanDescription),
+        confirmText: "Confirm that the checked work details are satisfactory and recommended for final approval.",
+        service: () => workService.recommend(id, {
+          recommendationRemarks: cleanDescription,
+          description: cleanDescription,
+          overrideReason: options.overrideReason || ""
+        }),
         success: "Work Recommended Successfully"
       },
       approve: {
         label: "Final Approval",
-        confirmText: "Confirm final approval of this work.",
-        service: () => workService.approve(id, cleanDescription),
+        confirmText: "Confirm final approval of this work with the specified safety conditions and controls.",
+        service: () => workService.approve(id, {
+          approvalRemarks: cleanDescription,
+          description: cleanDescription,
+          overrideReason: options.overrideReason || ""
+        }),
         success: "Work Approved Successfully"
       },
       return: {
         label: "Return for Correction",
-        confirmText: "Return this work approval to the creator for correction?",
-        service: () => workService.returnForCorrection(id, cleanDescription),
+        confirmText: "Confirm that this work must be returned for correction before the workflow can continue.",
+        service: () => workService.returnForCorrection(id, {
+          correctionReason: cleanDescription,
+          description: cleanDescription,
+          overrideReason: options.overrideReason || ""
+        }),
         success: "Work Returned for Correction"
       }
     }[action];
@@ -415,7 +495,7 @@ const WorkApprovalsPage = ({ user }) => {
     }
   };
 
-  const completeWork = async (work, files, description) => {
+  const completeWork = async (work, files, description, completionPayload = {}) => {
     const id = getWorkRecordId(work);
     if (!id) {
       showValidationPopup("Unable to complete this work record because its id is missing.");
@@ -449,7 +529,7 @@ const WorkApprovalsPage = ({ user }) => {
     await showLoadingPopup("Uploading Please Wait...", "Uploading completion evidence...");
     let uploadErrorMessage = "";
     try {
-      const response = await workService.uploadAfterImages(id, files, cleanDescription);
+      const response = await workService.uploadAfterImages(id, files, cleanDescription, completionPayload);
       const updatedWork = response.work;
       setRecords((prev) => prev.map((item) => (getWorkRecordId(item) === id ? updatedWork : item)));
       setSelectedWork((prev) => (prev && getWorkRecordId(prev) === id ? updatedWork : prev));
@@ -627,8 +707,20 @@ const WorkApprovalsPage = ({ user }) => {
         !locationNeedle || String(item.location || "").toLowerCase().includes(locationNeedle);
       const workTypeMatch = !listFilters.workType || (item.workType || item.title || "") === listFilters.workType;
       const chainageMatch = matchesChainageSearch(item, listFilters.chainage);
+      const queueMatch = {
+        all: true,
+        my_created: isCreatorOfWork(item, user),
+        pending_check: itemStage === "Pending Check" && canActOnStage(item, user),
+        pending_recommendation: itemStage === "Pending Recommendation" && canActOnStage(item, user),
+        pending_approval: itemStage === "Pending Final Approval" && canActOnStage(item, user),
+        approved: itemStage === "Approved",
+        partially_completed: itemStage === "Partially Completed",
+        completed: itemStage === "Completed",
+        returned: itemStage === "Returned for Correction"
+      }[queueFilter] ?? true;
       return (
         statusMatch &&
+        queueMatch &&
         dateMatch &&
         createdByMatch &&
         approvedByMatch &&
@@ -639,7 +731,7 @@ const WorkApprovalsPage = ({ user }) => {
         chainageMatch
       );
     });
-  }, [records, statusFilter, listFilters]);
+  }, [records, statusFilter, queueFilter, listFilters, user]);
 
   const chartData = useMemo(
     () => [
@@ -648,6 +740,7 @@ const WorkApprovalsPage = ({ user }) => {
         name: "Pending",
         value: records.filter((item) => getWorkflowStage(item).startsWith("Pending")).length
       },
+      { name: "Partially Completed", value: records.filter((item) => getWorkflowStage(item) === "Partially Completed").length },
       { name: "Completed", value: records.filter((item) => getWorkflowStage(item) === "Completed").length },
       { name: "Returned", value: records.filter((item) => getWorkflowStage(item) === "Returned for Correction").length }
     ],
@@ -668,8 +761,9 @@ const WorkApprovalsPage = ({ user }) => {
     const stageTone = {
       "Pending Check": "text-cyan-300",
       "Pending Recommendation": "text-violet-300",
-      "Pending Approval": "text-amber-300",
+      "Pending Final Approval": "text-amber-300",
       Approved: "text-emerald-300",
+      "Partially Completed": "text-lime-300",
       Completed: "text-teal-300",
       "Returned for Correction": "text-rose-300"
     };
@@ -680,12 +774,12 @@ const WorkApprovalsPage = ({ user }) => {
     <div className="safety-bg-overlay safety-bg-work space-y-5">
       <SectionHeader
         title="Work Approval Workflow"
-        subtitle="Legacy fields restored with single-admin approval lifecycle and image evidence"
+        subtitle="Role-based sequential checking, recommendation, final approval, and completion evidence"
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-white/10 bg-slate-950/35 p-3 backdrop-blur-xl">
         <div className="flex flex-wrap gap-2">
-          {["Pending Check", "Pending Recommendation", "Pending Approval", "Approved"].map((stage) => (
+          {["Pending Check", "Pending Recommendation", "Pending Final Approval", "Approved", "Partially Completed"].map((stage) => (
             <span key={stage} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-[11px] font-semibold text-slate-200">
               {stage}: <span className="text-cyan-200">{stageCounts[stage] || 0}</span>
             </span>
@@ -896,6 +990,7 @@ const WorkApprovalsPage = ({ user }) => {
               type="button"
               onClick={() => {
                 setStatusFilter("All");
+                setQueueFilter("all");
                 setListFilters({
                   dateFrom: "",
                   dateTo: "",
@@ -922,6 +1017,22 @@ const WorkApprovalsPage = ({ user }) => {
                 transition={{ duration: 0.22, ease: "easeOut" }}
                 className="sticky top-0 z-10 mb-4 grid grid-cols-1 gap-2 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/80 p-3 backdrop-blur-xl md:grid-cols-2 xl:grid-cols-5"
               >
+            <label>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Task Queue
+              </span>
+              <select
+                value={queueFilter}
+                onChange={(event) => setQueueFilter(event.target.value)}
+                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
+              >
+                {QUEUE_FILTERS.map((item) => (
+                  <option key={item.value} value={item.value} className="bg-slate-900 text-white">
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label>
               <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                 Status
@@ -1148,6 +1259,14 @@ const WorkApprovalsPage = ({ user }) => {
                           <p className="mt-1 text-xs text-slate-300">
                             {work.location || "-"} | {formatChainageRange(work, true)}
                           </p>
+                          <p className="mt-1 text-xs text-slate-400">
+                            Approved Chainage: {work.approvedChainageFrom || getChainageFrom(work) || "-"} to {work.approvedChainageTo || getChainageTo(work) || "-"}
+                          </p>
+                          {work.completedChainageFrom || work.completedChainageTo ? (
+                            <p className="mt-1 text-xs text-lime-200">
+                              Completed Chainage: {work.completedChainageFrom || "-"} to {work.completedChainageTo || "-"}
+                            </p>
+                          ) : null}
                           <p className="mt-1 text-xs text-slate-300">Created By: {getWorkReporterName(work) || "-"}</p>
                           {work.checkedBy || work.recommendedBy ? (
                             <p className="mt-1 text-xs text-slate-400">
@@ -1184,7 +1303,7 @@ const WorkApprovalsPage = ({ user }) => {
                           <Eye size={13} />
                           View Details
                         </motion.button>
-                        {canApprove ? (
+                        {canEditWorkRecord(work) ? (
                           <motion.button
                             type="button"
                             onClick={() => openEditWork(work)}
@@ -1292,7 +1411,7 @@ const WorkApprovalsPage = ({ user }) => {
 
                     {workCompleted ? (
                       <p className="mt-3 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100">
-                        Completed work is locked. Status cannot be changed.
+                        {workflowStage} work is locked. Status cannot be changed.
                       </p>
                     ) : null}
 
@@ -1508,8 +1627,14 @@ const WorkApprovalsPage = ({ user }) => {
           onOpenMedia={(items, index) =>
             setModal({ open: true, items, index, compare: null })
           }
-          onStageAction={(action, description) => runStageAction(selectedWork, action, description)}
-          onComplete={(files, description) => completeWork(selectedWork, files, description)}
+          onStageAction={(action, description, options) => runStageAction(selectedWork, action, description, options)}
+          onComplete={(files, description, completionPayload) => completeWork(selectedWork, files, description, completionPayload)}
+          onEdit={() => {
+            if (selectedWork && canEditWorkRecord(selectedWork)) {
+              openEditWork(selectedWork);
+              setSelectedWork(null);
+            }
+          }}
         />
       </ErrorBoundary>
 

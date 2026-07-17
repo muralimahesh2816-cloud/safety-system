@@ -4,7 +4,7 @@ import GlassCard from "../components/common/GlassCard";
 import ImageStudioModal from "../components/common/ImageStudioModal";
 import SectionHeader from "../components/common/SectionHeader";
 import { userService } from "../api/services";
-import { ROLE_LABELS, ROLES } from "../constants/roles";
+import { ROLE_GROUPS, ROLE_LABELS, ROLES } from "../constants/roles";
 import { closeLoadingPopup, showLoadingPopup, showSuccessPopup, showValidationPopup } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { resolveAssetUrl } from "../utils/media";
@@ -242,10 +242,14 @@ const UsersPage = ({ currentUser }) => {
               <option value="" className="bg-slate-900 text-white">
                 Select Role
               </option>
-              {Object.entries(ROLE_LABELS).map(([value, label]) => (
-                <option key={value} value={value} className="bg-slate-900 text-white">
-                  {label}
-                </option>
+              {ROLE_GROUPS.map((group) => (
+                <optgroup key={group.label} label={group.label} className="bg-slate-900 text-white">
+                  {group.roles.map((value) => (
+                    <option key={value} value={value} className="bg-slate-900 text-white">
+                      {ROLE_LABELS[value] || value}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
             {!editId ? (
@@ -405,9 +409,10 @@ const UsersPage = ({ currentUser }) => {
                 <th className="py-2 pr-3">Module</th>
                 <th className="py-2 pr-3">Super Admin</th>
                 <th className="py-2 pr-3">Admin</th>
-                <th className="py-2 pr-3">Safety Manager</th>
-                <th className="py-2 pr-3">Supervisor</th>
-                <th className="py-2 pr-3">User</th>
+                <th className="py-2 pr-3">Final Approvers</th>
+                <th className="py-2 pr-3">Checking Roles</th>
+                <th className="py-2 pr-3">Recommending Roles</th>
+                <th className="py-2 pr-3">Employee/User</th>
                 <th className="py-2 pr-3">Viewer</th>
               </tr>
             </thead>
@@ -417,8 +422,9 @@ const UsersPage = ({ currentUser }) => {
                   <td className="py-2 pr-3 capitalize">{moduleName}</td>
                   <td className="py-2 pr-3 text-emerald-300">Full</td>
                   <td className="py-2 pr-3">Manage</td>
-                  <td className="py-2 pr-3">Operate</td>
-                  <td className="py-2 pr-3">Partial</td>
+                  <td className="py-2 pr-3">Approve</td>
+                  <td className="py-2 pr-3">Check / Return</td>
+                  <td className="py-2 pr-3">Recommend / Return</td>
                   <td className="py-2 pr-3">Basic</td>
                   <td className="py-2 pr-3">View</td>
                 </tr>

@@ -25,8 +25,6 @@ const createWorkSchema = withChainageValidation(z.object({
   chainageFrom: z.string().trim().optional().default(""),
   chainageTo: z.string().trim().optional().default(""),
   workersCount: z.coerce.number().min(1, "Workers Count must be greater than zero").optional().default(1),
-  checkedBy: z.string().trim().optional().default(""),
-  recommendedBy: z.string().trim().optional().default(""),
   priority: z.enum(["Low", "Medium", "High", "Critical"]).optional().default("Medium"),
   assignedTo: z.string().optional(),
   startDate: z.string().optional(),
@@ -45,8 +43,6 @@ const updateWorkSchema = withChainageValidation(z.object({
   chainageFrom: z.string().trim().optional().default(""),
   chainageTo: z.string().trim().optional().default(""),
   workersCount: z.coerce.number().min(1, "Workers Count must be greater than zero").optional(),
-  checkedBy: z.string().trim().min(1, "Checked By is required").optional(),
-  recommendedBy: z.string().trim().min(1, "Recommended By is required").optional(),
   priority: z.enum(["Low", "Medium", "High", "Critical"]).optional().default("Medium"),
   startDate: z.string().optional(),
   dueDate: z.string().optional()
@@ -65,7 +61,9 @@ const statusUpdateSchema = z.object({
     "Pending Check",
     "Pending Recommendation",
     "Pending Approval",
+    "Pending Final Approval",
     "Approved",
+    "Partially Completed",
     "Rejected",
     "Returned for Correction",
     "Completed"
@@ -77,15 +75,24 @@ const statusUpdateSchema = z.object({
 });
 
 const stageActionSchema = z.object({
-  description: z.string().trim().min(1, "Description is required")
+  description: z.string().trim().optional().default(""),
+  reviewFindings: z.string().trim().optional().default(""),
+  recommendationRemarks: z.string().trim().optional().default(""),
+  approvalRemarks: z.string().trim().optional().default(""),
+  overrideReason: z.string().trim().optional().default("")
 });
 
 const returnWorkSchema = z.object({
-  description: z.string().trim().min(1, "Return description is required")
+  description: z.string().trim().optional().default(""),
+  correctionReason: z.string().trim().optional().default(""),
+  overrideReason: z.string().trim().optional().default("")
 });
 
 const completeWorkSchema = z.object({
-  description: z.string().trim().min(1, "Completion description is required")
+  description: z.string().trim().min(1, "Completion description is required"),
+  completedChainageFrom: z.string().trim().optional().default(""),
+  completedChainageTo: z.string().trim().optional().default(""),
+  partialCompletionReason: z.string().trim().optional().default("")
 });
 
 const commentSchema = z.object({

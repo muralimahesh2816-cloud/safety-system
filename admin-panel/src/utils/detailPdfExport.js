@@ -2,7 +2,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import companyLogoUrl from "../assets/vertis-logo.svg";
 import { getMediaUrl } from "./media";
-import { formatChainageRange, getChainageFrom } from "./chainage";
+import { formatChainageRange, getChainageFrom, getChainageTo } from "./chainage";
 
 const normalizeChainageForCompare = (value = "") => String(value || "").trim().replace(/\s+/g, "").toLowerCase();
 
@@ -285,7 +285,7 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
   const beforeVideos = normalizeMedia(work.beforeVideos, work.beforeVideo);
   const afterVideos = normalizeMedia(work.afterVideos, work.afterVideo);
   const status = work.workflowStage || work.status || "Pending Check";
-  const completionDate = status === "Completed"
+  const completionDate = ["Completed", "Partially Completed"].includes(status)
     ? work.completedAt || work.completionDate || work.updatedAt
     : work.completionDate;
   return finalizePdf({
@@ -298,6 +298,13 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
       ["Chainage From", getChainageFrom(work)],
       ["Chainage To", getStrictChainageTo(work)],
       ["Chainage Range", formatChainageRange(work)],
+      ["Approved Chainage From", work.approvedChainageFrom || work.approvedChainage?.from || getChainageFrom(work)],
+      ["Approved Chainage To", work.approvedChainageTo || work.approvedChainage?.to || getChainageTo(work)],
+      ["Completed Chainage From", work.completedChainageFrom],
+      ["Completed Chainage To", work.completedChainageTo],
+      ["Remaining Chainage From", work.remainingChainageFrom],
+      ["Remaining Chainage To", work.remainingChainageTo],
+      ["Partial Completion Reason", work.partialCompletionReason],
       ["Workers Count", work.workersCount],
       ["Created By", work.createdByName || work.reportedBy || work.createdBy || work.submittedBy],
       ["Created Role", work.createdByRole],
@@ -305,19 +312,19 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
       ["Checked By", work.checkedBy],
       ["Checked Role", work.checkedByRole],
       ["Checked Date", formatDate(work.checkedAt)],
-      ["Checked Description", work.checkedDescription],
+      ["Review Findings", work.checkedDescription],
       ["Recommended By", work.recommendedBy],
       ["Recommended Role", work.recommendedByRole],
       ["Recommended Date", formatDate(work.recommendedAt)],
-      ["Recommended Description", work.recommendedDescription],
+      ["Recommendation Remarks", work.recommendedDescription],
       ["Created Date", formatDate(work.reportDate || work.startDate || work.createdAt)],
       ["Approved By", work.approvedByName || work.approvedBy],
       ["Approved Role", work.approvedByRole],
       ["Approval Date", formatDate(work.approvedAt || work.approvalDate)],
-      ["Approval Description", work.approvalDescription],
+      ["Approval Remarks", work.approvalDescription],
       ["Returned By", work.returnedBy],
       ["Returned Date", formatDate(work.returnedAt)],
-      ["Return Description", work.returnDescription],
+      ["Correction Reason", work.returnDescription],
       ["Completed By", work.completedBy],
       ["Completion Date", formatDate(completionDate)],
       ["Completion Description", work.completionDescription],

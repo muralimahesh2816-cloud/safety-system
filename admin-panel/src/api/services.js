@@ -78,10 +78,10 @@ const buildDashboardSummaryFallback = ({
   trainingRecords = []
 }) => {
   const totalWorkApprovals = workRecords.length;
-  const pendingWork = workRecords.filter((item) => item.status === "Pending" || !item.status).length;
+  const pendingWork = workRecords.filter((item) => String(item.status || item.workflowStage || "").startsWith("Pending") || !item.status).length;
   const approvedWork = workRecords.filter((item) => item.status === "Approved").length;
-  const completedWork = workRecords.filter((item) => item.status === "Completed").length;
-  const rejectedWork = workRecords.filter((item) => item.status === "Rejected").length;
+  const completedWork = workRecords.filter((item) => ["Completed", "Partially Completed"].includes(item.status)).length;
+  const rejectedWork = workRecords.filter((item) => ["Rejected", "Returned for Correction"].includes(item.status)).length;
 
   const totalHazards = hazardRecords.length;
   const openHazards = hazardRecords.filter((item) => item.status === "Open" || !item.status).length;
@@ -214,6 +214,10 @@ const buildDashboardSummaryFallback = ({
         { name: "Pending", value: pendingWork },
         { name: "Approved", value: approvedWork },
         { name: "Completed", value: completedWork },
+        {
+          name: "Partially Completed",
+          value: workRecords.filter((item) => item.status === "Partially Completed").length
+        },
         { name: "Rejected", value: rejectedWork }
       ],
       hazardStatus: [
@@ -346,6 +350,13 @@ const mapWorkRecord = (item = {}) => {
 
   const chainageFrom = getChainageFrom(item);
   const chainageTo = getStrictChainageTo(item);
+  const approvedChainageFrom = item.approvedChainageFrom || item.approvedChainage?.from || chainageFrom;
+  const approvedChainageTo = item.approvedChainageTo || item.approvedChainage?.to || chainageTo || chainageFrom;
+  const completedChainageFrom = item.completedChainageFrom || item.completion?.completedChainageFrom || "";
+  const completedChainageTo = item.completedChainageTo || item.completion?.completedChainageTo || "";
+  const remainingChainageFrom = item.remainingChainageFrom || item.completion?.remainingChainageFrom || "";
+  const remainingChainageTo = item.remainingChainageTo || item.completion?.remainingChainageTo || "";
+  const partialCompletionReason = item.partialCompletionReason || item.completion?.partialCompletionReason || "";
   const createdByName =
     item.createdByName ||
     item.reportedBy ||
@@ -367,7 +378,15 @@ const mapWorkRecord = (item = {}) => {
     chainageTo,
     chainage: item.chainage || chainageFrom,
     chainageNo: item.chainageNo || item.chainage || chainageFrom,
-    status: item.status || "Pending",
+    approvedChainage: item.approvedChainage || { from: approvedChainageFrom, to: approvedChainageTo },
+    approvedChainageFrom,
+    approvedChainageTo,
+    completedChainageFrom,
+    completedChainageTo,
+    remainingChainageFrom,
+    remainingChainageTo,
+    partialCompletionReason,
+    status: item.status === "Pending Approval" ? "Pending Final Approval" : item.status || "Pending",
     beforeImages,
     afterImages,
     beforeVideos,
@@ -399,7 +418,7 @@ const mapWorkRecord = (item = {}) => {
     approvalDescription: item.approvalDescription || "",
     approvedAt: item.approvedAt || item.approvalDate || "",
     approvalDate: item.approvalDate || item.approvedAt || "",
-    workflowStage: item.workflowStage || item.status || "Pending Check",
+    workflowStage: item.workflowStage === "Pending Approval" ? "Pending Final Approval" : item.workflowStage || item.status || "Pending Check",
     returnedBy: item.returnedBy || "",
     returnedByRole: item.returnedByRole || "",
     returnDescription: item.returnDescription || "",
@@ -409,7 +428,9 @@ const mapWorkRecord = (item = {}) => {
     completedByRole: item.completedByRole || "",
     completionDescription: item.completionDescription || "",
     completedAt: item.completedAt || "",
-    completionDate: item.completionDate || (item.status === "Completed" ? item.updatedAt : "")
+    completionDate: item.completionDate || (["Completed", "Partially Completed"].includes(item.status) ? item.updatedAt : ""),
+    returnedHistory: item.returnedHistory || [],
+    chainageAuditHistory: item.chainageAuditHistory || []
   };
 };
 
@@ -521,19 +542,31 @@ const normalizeReportRows = (rows = [], type = "work") =>
       Location: item.location || "-",
       "Chainage From": getChainageFrom(item) || "-",
       "Chainage To": getStrictChainageTo(item) || "-",
+      "Approved Chainage": `${item.approvedChainageFrom || item.approvedChainage?.from || getChainageFrom(item) || "-"} to ${item.approvedChainageTo || item.approvedChainage?.to || getStrictChainageTo(item) || "-"}`,
+      "Completed Chainage": item.completedChainageFrom || item.completedChainageTo
+        ? `${item.completedChainageFrom || "-"} to ${item.completedChainageTo || "-"}`
+        : "-",
+      "Remaining Chainage": item.remainingChainageFrom || item.remainingChainageTo
+        ? `${item.remainingChainageFrom || "-"} to ${item.remainingChainageTo || "-"}`
+        : "-",
+      "Partial Completion Reason": item.partialCompletionReason || "-",
       "Workers Count": item.workersCount || "-",
       "Created By": item.createdByName || item.reportedBy || item.createdBy?.name || "-",
+      "Created Role": item.createdByRole || item.createdBy?.role || "-",
       "Checked By": item.checkedBy || "-",
+      "Checked Role": item.checkedByRole || "-",
       "Checked Date": item.checkedAt || "-",
-      "Checked Description": item.checkedDescription || "-",
+      "Review Findings": item.checkedDescription || item.checked?.reviewFindings || "-",
       "Recommended By": item.recommendedBy || "-",
+      "Recommended Role": item.recommendedByRole || "-",
       "Recommended Date": item.recommendedAt || "-",
-      "Recommended Description": item.recommendedDescription || "-",
+      "Recommendation Remarks": item.recommendedDescription || item.recommended?.recommendationRemarks || "-",
       "Workflow Stage": item.workflowStage || item.status || "Pending Check",
       Status: item.status || item.workflowStage || "Pending Check",
       "Approved By": item.approvedByName || item.approvedBy || "-",
+      "Approved Role": item.approvedByRole || "-",
       "Approval Date": item.approvedAt || item.approvalDate || "-",
-      "Approval Description": item.approvalDescription || "-",
+      "Approval Remarks": item.approvalDescription || item.approved?.approvalRemarks || "-",
       "Returned By": item.returnedBy || "-",
       "Returned Date": item.returnedAt || "-",
       "Return Description": item.returnDescription || "-",
@@ -625,17 +658,28 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
       Location: item.location || "-",
       "Chainage From": getChainageFrom(item) || "-",
       "Chainage To": getStrictChainageTo(item) || "-",
+      "Approved Chainage": `${item.approvedChainageFrom || item.approvedChainage?.from || getChainageFrom(item) || "-"} to ${item.approvedChainageTo || item.approvedChainage?.to || getStrictChainageTo(item) || "-"}`,
+      "Completed Chainage": item.completedChainageFrom || item.completedChainageTo
+        ? `${item.completedChainageFrom || "-"} to ${item.completedChainageTo || "-"}`
+        : "-",
+      "Remaining Chainage": item.remainingChainageFrom || item.remainingChainageTo
+        ? `${item.remainingChainageFrom || "-"} to ${item.remainingChainageTo || "-"}`
+        : "-",
+      "Partial Completion Reason": item.partialCompletionReason || "-",
       "Workers Count": item.workersCount || "-",
       "Created By": item.createdByName || item.reportedBy || item.createdBy?.name || "-",
       "Checked By": item.checkedBy || "-",
+      "Checked Role": item.checkedByRole || "-",
       "Checked Date": item.checkedAt || "-",
-      "Checked Description": item.checkedDescription || "-",
+      "Review Findings": item.checkedDescription || "-",
       "Recommended By": item.recommendedBy || "-",
+      "Recommended Role": item.recommendedByRole || "-",
       "Recommended Date": item.recommendedAt || "-",
-      "Recommended Description": item.recommendedDescription || "-",
+      "Recommendation Remarks": item.recommendedDescription || "-",
       "Approved By": item.approvedByName || item.approvedBy || "Admin",
+      "Approved Role": item.approvedByRole || "-",
       "Approval Date": item.approvedAt || item.approvalDate || "-",
-      "Approval Description": item.approvalDescription || "-",
+      "Approval Remarks": item.approvalDescription || "-",
       "Workflow Stage": item.workflowStage || item.status || "Approved",
       Status: item.status || item.workflowStage || "Approved",
       "Completed By": item.completedBy || "-",
@@ -877,30 +921,41 @@ export const workService = {
     (await client.patch(`/work-approvals/${id}/workflow`, payload)).data,
   updateStatus: async (id, payload) =>
     (await client.patch(`/work-approvals/${id}/status`, payload)).data,
-  check: async (id, description) => {
-    const res = await client.post(`/work-approvals/${id}/check`, { description });
+  check: async (id, payload) => {
+    const body = typeof payload === "string" ? { reviewFindings: payload, description: payload } : payload;
+    const res = await client.post(`/work-approvals/${id}/check`, body);
     return { success: true, work: mapWorkRecord(res.data.work) };
   },
-  recommend: async (id, description) => {
-    const res = await client.post(`/work-approvals/${id}/recommend`, { description });
+  recommend: async (id, payload) => {
+    const body = typeof payload === "string" ? { recommendationRemarks: payload, description: payload } : payload;
+    const res = await client.post(`/work-approvals/${id}/recommend`, body);
     return { success: true, work: mapWorkRecord(res.data.work) };
   },
-  approve: async (id, description) => {
-    const res = await client.post(`/work-approvals/${id}/approve`, { description });
+  approve: async (id, payload) => {
+    const body = typeof payload === "string" ? { approvalRemarks: payload, description: payload } : payload;
+    const res = await client.post(`/work-approvals/${id}/approve`, body);
     return { success: true, work: mapWorkRecord(res.data.work) };
   },
-  returnForCorrection: async (id, description) => {
-    const res = await client.post(`/work-approvals/${id}/return`, { description });
+  returnForCorrection: async (id, payload) => {
+    const body = typeof payload === "string" ? { correctionReason: payload, description: payload } : payload;
+    const res = await client.post(`/work-approvals/${id}/return`, body);
+    return { success: true, work: mapWorkRecord(res.data.work) };
+  },
+  resubmit: async (id) => {
+    const res = await client.post(`/work-approvals/${id}/resubmit`);
     return { success: true, work: mapWorkRecord(res.data.work) };
   },
   addComment: async (id, payload) =>
     (await client.post(`/work-approvals/${id}/comments`, payload)).data,
   addSignature: async (id, payload) =>
     (await client.post(`/work-approvals/${id}/signatures`, payload)).data,
-  uploadAfterImages: async (id, files, description = "") => {
+  uploadAfterImages: async (id, files, description = "", completionPayload = {}) => {
     const formData = new FormData();
     formData.append("description", description);
     formData.append("completionDescription", description);
+    formData.append("completedChainageFrom", completionPayload.completedChainageFrom || "");
+    formData.append("completedChainageTo", completionPayload.completedChainageTo || "");
+    formData.append("partialCompletionReason", completionPayload.partialCompletionReason || "");
     files.forEach((file) => {
       formData.append(isVideoUpload(file) ? "afterVideos" : "afterImages", file);
     });

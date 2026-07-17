@@ -25,7 +25,8 @@ const { createNotification } = require("../services/notifications.service");
 const {
   getChainageFrom,
   getChainageTo,
-  normalizeChainagePayload
+  normalizeChainagePayload,
+  parseComparableChainage
 } = require("../utils/chainage");
 
 const router = express.Router();
@@ -42,8 +43,9 @@ const upload = createMemoryUpload({
 const WORK_STAGES = {
   PENDING_CHECK: "Pending Check",
   PENDING_RECOMMENDATION: "Pending Recommendation",
-  PENDING_APPROVAL: "Pending Approval",
+  PENDING_FINAL_APPROVAL: "Pending Final Approval",
   APPROVED: "Approved",
+  PARTIALLY_COMPLETED: "Partially Completed",
   RETURNED: "Returned for Correction",
   COMPLETED: "Completed"
 };
@@ -57,23 +59,53 @@ const WORK_STAGE_LABELS = {
 };
 
 const STAGE_ROLE_FALLBACKS = {
-  check: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.SAFETY_MANAGER, ROLES.SUPERVISOR],
-  recommend: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.SAFETY_MANAGER],
-  approve: [ROLES.SUPER_ADMIN, ROLES.ADMIN],
-  return: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.SAFETY_MANAGER, ROLES.SUPERVISOR],
-  complete: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.SAFETY_MANAGER, ROLES.SUPERVISOR]
+  check: [
+    ROLES.SAFETY_OFFICER,
+    ROLES.SAFETY_ENGINEER,
+    ROLES.SITE_ENGINEER,
+    ROLES.PROJECT_ENGINEER,
+    ROLES.MAINTENANCE_ENGINEER
+  ],
+  recommend: [
+    ROLES.PROJECT_MANAGER,
+    ROLES.CONSTRUCTION_MANAGER,
+    ROLES.OPERATIONS_MANAGER,
+    ROLES.MAINTENANCE_MANAGER,
+    ROLES.SAFETY_MANAGER
+  ],
+  approve: [
+    ROLES.MAINTENANCE_MANAGER,
+    ROLES.PROJECT_MANAGER,
+    ROLES.ADMIN
+  ]
+};
+
+const ACTION_PERMISSION_CODES = {
+  check: "CHECK_PERMISSION_REQUIRED",
+  recommend: "RECOMMEND_PERMISSION_REQUIRED",
+  approve: "APPROVAL_PERMISSION_REQUIRED"
+};
+
+const ACTION_REQUIRED_CODES = {
+  check: "REVIEW_FINDINGS_REQUIRED",
+  recommend: "RECOMMENDATION_REMARKS_REQUIRED",
+  approve: "APPROVAL_REMARKS_REQUIRED",
+  return: "RETURN_REASON_REQUIRED"
 };
 
 const normalizeObjectId = (value) => (value ? String(value) : "");
 const sameUser = (left, right) => normalizeObjectId(left) && normalizeObjectId(left) === normalizeObjectId(right);
 
 const deriveWorkflowStage = (work = {}) => {
+  if (work.workflowStage === "Pending Approval") return WORK_STAGES.PENDING_FINAL_APPROVAL;
   if (work.workflowStage) return work.workflowStage;
+  if (work.status === "Pending Approval") return WORK_STAGES.PENDING_FINAL_APPROVAL;
+  if (work.status === WORK_STAGES.PARTIALLY_COMPLETED) return WORK_STAGES.PARTIALLY_COMPLETED;
   if (work.status === "Completed") return WORK_STAGES.COMPLETED;
   if (work.status === "Approved") return WORK_STAGES.APPROVED;
   if (work.status === "Rejected" || work.status === "Returned for Correction") return WORK_STAGES.RETURNED;
   if (work.approvedAt || work.approvedBy) return WORK_STAGES.APPROVED;
-  if (work.recommendedAt || work.recommendedBy) return WORK_STAGES.PENDING_APPROVAL;
+  if (work.recommendedAt || work.recommendedBy) return WORK_STAGES.PENDING_FINAL_APPROVAL;
   if (work.checkedAt || work.checkedBy) return WORK_STAGES.PENDING_RECOMMENDATION;
   return WORK_STAGES.PENDING_CHECK;
 };
@@ -82,18 +114,12 @@ const assertStagePermission = (req, action) => {
   const role = req.user?.role;
   if (role === ROLES.SUPER_ADMIN) return;
 
-  if (req.user?.permissions?.work?.[action] === true) return;
-
   const fallbackRoles = STAGE_ROLE_FALLBACKS[action] || [];
-  if (fallbackRoles.includes(role)) return;
+  const hasRole = fallbackRoles.includes(role);
+  const hasPermission = req.user?.permissions?.work?.[action] === true;
+  if (hasRole && hasPermission) return;
 
-  const code = {
-    check: "WORK_CHECK_FORBIDDEN",
-    recommend: "WORK_RECOMMEND_FORBIDDEN",
-    approve: "WORK_APPROVE_FORBIDDEN",
-    complete: "WORK_COMPLETE_FORBIDDEN",
-    return: "WORK_RETURN_FORBIDDEN"
-  }[action] || "PERMISSION_DENIED";
+  const code = ACTION_PERMISSION_CODES[action] || "PERMISSION_DENIED";
   logger.warn("Work stage permission denied", {
     route: req.originalUrl,
     method: req.method,
@@ -104,11 +130,12 @@ const assertStagePermission = (req, action) => {
   throw new ApiError(403, `You do not have permission to ${String(WORK_STAGE_LABELS[action] || action).toLowerCase()}`, null, code);
 };
 
-const createStageActor = (req, description = "") => ({
+const createStageActor = (req, description = "", extra = {}) => ({
   userId: req.user.id,
   name: req.user.name || "",
   role: req.user.role || "",
   description,
+  ...extra,
   date: new Date()
 });
 
@@ -118,6 +145,90 @@ const validateStagePayload = (schema, body) => {
     throw new ApiError(400, "Validation failed", parsed.error.flatten());
   }
   return parsed.data;
+};
+
+const getRequiredActionDescription = (action, payload = {}) => {
+  const value = {
+    check: payload.reviewFindings || payload.description,
+    recommend: payload.recommendationRemarks || payload.description,
+    approve: payload.approvalRemarks || payload.description,
+    return: payload.correctionReason || payload.description
+  }[action];
+  const description = String(value || "").trim();
+  if (!description) {
+    throw new ApiError(400, "Mandatory workflow remarks are required", null, ACTION_REQUIRED_CODES[action]);
+  }
+  return description;
+};
+
+const assertReturnPermissionForStage = (req, currentStage) => {
+  const action = {
+    [WORK_STAGES.PENDING_CHECK]: "check",
+    [WORK_STAGES.PENDING_RECOMMENDATION]: "recommend",
+    [WORK_STAGES.PENDING_FINAL_APPROVAL]: "approve"
+  }[currentStage];
+  if (!action) {
+    throw new ApiError(
+      409,
+      `This work approval cannot be returned while it is ${currentStage}`,
+      { currentStage },
+      "INVALID_WORKFLOW_STAGE"
+    );
+  }
+  assertStagePermission(req, action);
+  return action;
+};
+
+const assertCompletionPermission = (req, work) => {
+  if (req.user?.role === ROLES.SUPER_ADMIN) return;
+  if (sameUser(work.createdBy, req.user?.id) || sameUser(work.assignedTo, req.user?.id)) return;
+  if (req.user?.permissions?.work?.complete === true) return;
+  throw new ApiError(403, "Only the creator, assigned user, or authorized role can complete approved work", null, "WORK_COMPLETE_FORBIDDEN");
+};
+
+const buildStageConflicts = (work, action, userId) => {
+  const checks = {
+    check: [
+      { field: "createdBy", label: "creator", code: "CREATOR_CANNOT_CHECK" }
+    ],
+    recommend: [
+      { field: "createdBy", label: "creator", code: "SAME_USER_STAGE_CONFLICT" },
+      { field: "checkedById", label: "checker", code: "SAME_USER_STAGE_CONFLICT" }
+    ],
+    approve: [
+      { field: "createdBy", label: "creator", code: "SAME_USER_STAGE_CONFLICT" },
+      { field: "checkedById", label: "checker", code: "SAME_USER_STAGE_CONFLICT" },
+      { field: "recommendedById", label: "recommender", code: "SAME_USER_STAGE_CONFLICT" }
+    ]
+  }[action] || [];
+
+  return checks.filter((item) => sameUser(work[item.field], userId));
+};
+
+const assertStageSeparation = (req, work, action, overrideReason = "") => {
+  const conflicts = buildStageConflicts(work, action, req.user?.id);
+  if (!conflicts.length) return [];
+
+  const first = conflicts[0];
+  if (req.user?.role !== ROLES.SUPER_ADMIN) {
+    throw new ApiError(
+      403,
+      `The ${first.label} cannot perform this workflow stage for the same work approval`,
+      { conflicts: conflicts.map((item) => item.label) },
+      first.code
+    );
+  }
+
+  if (!String(overrideReason || "").trim()) {
+    throw new ApiError(
+      400,
+      "Super Admin override reason is required when bypassing workflow separation",
+      { conflicts: conflicts.map((item) => item.label) },
+      "SAME_USER_STAGE_CONFLICT"
+    );
+  }
+
+  return conflicts;
 };
 
 const validateWorkMedia = ({ images = [], videos = [], label = "Work media" }) => {
@@ -170,14 +281,133 @@ const updateStageActorFields = (work, prefix, actor) => {
   work[`${prefix}At`] = actor.date;
 };
 
+const normalizeComparable = (value = "") => String(value || "").trim().replace(/\s+/g, "").toUpperCase();
+
+const getApprovedChainage = (work = {}) => ({
+  from: String(work.approvedChainage?.from || getChainageFrom(work) || "").trim(),
+  to: String(work.approvedChainage?.to || getChainageTo(work) || "").trim()
+});
+
+const validateCompletionChainage = (work, payload) => {
+  const approved = getApprovedChainage(work);
+  const completedFrom = String(payload.completedChainageFrom || approved.from || "").trim();
+  const completedTo = String(payload.completedChainageTo || approved.to || "").trim();
+
+  if (!approved.from || !approved.to || !completedFrom || !completedTo) {
+    throw new ApiError(400, "Completed chainage and approved chainage are required", null, "INVALID_COMPLETED_CHAINAGE");
+  }
+
+  const approvedFromNumber = parseComparableChainage(approved.from);
+  const approvedToNumber = parseComparableChainage(approved.to);
+  const completedFromNumber = parseComparableChainage(completedFrom);
+  const completedToNumber = parseComparableChainage(completedTo);
+
+  const numbersComparable = [
+    approvedFromNumber,
+    approvedToNumber,
+    completedFromNumber,
+    completedToNumber
+  ].every((value) => value !== null);
+
+  if (
+    numbersComparable &&
+    (completedFromNumber < approvedFromNumber ||
+      completedToNumber > approvedToNumber ||
+      completedToNumber < completedFromNumber)
+  ) {
+    throw new ApiError(400, "Completed chainage must be within approved chainage", null, "INVALID_COMPLETED_CHAINAGE");
+  }
+
+  if (!numbersComparable) {
+    const exactMatch =
+      normalizeComparable(completedFrom) === normalizeComparable(approved.from) &&
+      normalizeComparable(completedTo) === normalizeComparable(approved.to);
+    if (!exactMatch) {
+      throw new ApiError(400, "Completed chainage could not be validated against approved chainage", null, "INVALID_COMPLETED_CHAINAGE");
+    }
+  }
+
+  const isFullCompletion =
+    normalizeComparable(completedFrom) === normalizeComparable(approved.from) &&
+    normalizeComparable(completedTo) === normalizeComparable(approved.to);
+  const closesRemainingChainage =
+    !isFullCompletion &&
+    deriveWorkflowStage(work) === WORK_STAGES.PARTIALLY_COMPLETED &&
+    normalizeComparable(completedFrom) === normalizeComparable(work.remainingChainageFrom || work.completion?.remainingChainageFrom) &&
+    normalizeComparable(completedTo) === normalizeComparable(work.remainingChainageTo || work.completion?.remainingChainageTo);
+  const partialCompletionReason = String(payload.partialCompletionReason || "").trim();
+  if (!isFullCompletion && !closesRemainingChainage && !partialCompletionReason) {
+    throw new ApiError(
+      400,
+      "Partial completion reason is required when completed chainage does not match approved chainage",
+      null,
+      "PARTIAL_COMPLETION_REASON_REQUIRED"
+    );
+  }
+
+  return {
+    approved,
+    completedFrom,
+    completedTo,
+    isFullCompletion: isFullCompletion || closesRemainingChainage,
+    closesRemainingChainage,
+    partialCompletionReason,
+    remainingFrom: isFullCompletion || closesRemainingChainage
+      ? ""
+      : normalizeComparable(completedFrom) !== normalizeComparable(approved.from)
+      ? approved.from
+      : completedTo,
+    remainingTo: isFullCompletion || closesRemainingChainage
+      ? ""
+      : normalizeComparable(completedFrom) !== normalizeComparable(approved.from)
+      ? completedFrom
+      : approved.to
+  };
+};
+
+const clearReviewFieldsForResubmission = (work) => {
+  work.checked = undefined;
+  work.checkedBy = "";
+  work.checkedById = null;
+  work.checkedByRole = "";
+  work.checkedDescription = "";
+  work.checkedAt = null;
+  work.recommended = undefined;
+  work.recommendedBy = "";
+  work.recommendedById = null;
+  work.recommendedByRole = "";
+  work.recommendedDescription = "";
+  work.recommendedAt = null;
+  work.approved = undefined;
+  work.approvedBy = "";
+  work.approvedById = null;
+  work.approvedByRole = "";
+  work.approvalDescription = "";
+  work.approvedAt = null;
+  work.status = WORK_STAGES.PENDING_CHECK;
+  work.workflowStage = WORK_STAGES.PENDING_CHECK;
+};
+
 const completeWorkWithMedia = async (req, res) => {
-  assertStagePermission(req, "complete");
   const payload = validateStagePayload(completeWorkSchema, {
-    description: req.body.description || req.body.completionDescription || ""
+    description: req.body.description || req.body.completionDescription || "",
+    completedChainageFrom: req.body.completedChainageFrom || "",
+    completedChainageTo: req.body.completedChainageTo || "",
+    partialCompletionReason: req.body.partialCompletionReason || ""
   });
   const work = await WorkApproval.findById(req.params.id);
   if (!work) throw new ApiError(404, "Work approval not found");
-  assertWorkflowStage(work, WORK_STAGES.APPROVED);
+  const currentStage = deriveWorkflowStage(work);
+  if (![WORK_STAGES.APPROVED, WORK_STAGES.PARTIALLY_COMPLETED].includes(currentStage)) {
+    throw new ApiError(
+      409,
+      `This item has already moved to ${currentStage}. Refresh the list before continuing.`,
+      { currentStage, expectedStage: WORK_STAGES.APPROVED },
+      "INVALID_WORKFLOW_STAGE"
+    );
+  }
+  assertCompletionPermission(req, work);
+  const completionChainage = validateCompletionChainage(work, payload);
 
   const afterFiles = [...(req.files?.afterImages || []), ...(req.files?.afterImage || [])];
   const afterVideoFiles = [...(req.files?.afterVideos || []), ...(req.files?.afterVideo || [])];
@@ -189,6 +419,12 @@ const completeWorkWithMedia = async (req, res) => {
   const uploads = await uploadManyAssets(afterFiles, "safety-hse/work/after", "image");
   const videoUploads = await uploadManyAssets(afterVideoFiles, "safety-hse/work/after-videos", "video");
   const actor = createStageActor(req, payload.description);
+  const storedCompletedFrom = completionChainage.closesRemainingChainage
+    ? completionChainage.approved.from
+    : completionChainage.completedFrom;
+  const storedCompletedTo = completionChainage.closesRemainingChainage
+    ? completionChainage.approved.to
+    : completionChainage.completedTo;
 
   work.afterImages = [...(work.afterImages || []), ...uploads];
   work.afterImage = work.afterImages[0]?.url || uploads[0]?.url || "";
@@ -198,23 +434,60 @@ const completeWorkWithMedia = async (req, res) => {
   work.completedById = actor.userId;
   work.completedByRole = actor.role;
   work.completionDescription = actor.description;
+  work.completedChainageFrom = storedCompletedFrom;
+  work.completedChainageTo = storedCompletedTo;
+  work.remainingChainageFrom = completionChainage.remainingFrom;
+  work.remainingChainageTo = completionChainage.remainingTo;
+  work.partialCompletionReason = completionChainage.partialCompletionReason;
   work.completedAt = actor.date;
-  work.completion = actor;
-  work.status = WORK_STAGES.COMPLETED;
-  work.workflowStage = WORK_STAGES.COMPLETED;
+  work.completion = {
+    ...actor,
+    completedChainageFrom: storedCompletedFrom,
+    completedChainageTo: storedCompletedTo,
+    remainingChainageFrom: completionChainage.remainingFrom,
+    remainingChainageTo: completionChainage.remainingTo,
+    partialCompletionReason: completionChainage.partialCompletionReason
+  };
+  work.status = completionChainage.isFullCompletion ? WORK_STAGES.COMPLETED : WORK_STAGES.PARTIALLY_COMPLETED;
+  work.workflowStage = work.status;
+  work.chainageAuditHistory.push({
+    approvedChainageFrom: completionChainage.approved.from,
+    approvedChainageTo: completionChainage.approved.to,
+    completedChainageFrom: completionChainage.completedFrom,
+    completedChainageTo: completionChainage.completedTo,
+    remainingChainageFrom: completionChainage.remainingFrom,
+    remainingChainageTo: completionChainage.remainingTo,
+    updatedBy: req.user.id,
+    updatedByName: actor.name,
+    updatedByRole: actor.role,
+    updateDescription: payload.description,
+    partialCompletionReason: completionChainage.partialCompletionReason
+  });
   work.approvalHistory.push({
-    action: "completed",
+    action: completionChainage.isFullCompletion ? "completed" : "partially_completed",
     by: req.user.id,
     comment: payload.description
   });
   addWorkflowTimeline(work, {
-    label: "Completed",
-    description: `${actor.name || "User"} completed work with ${uploads.length} image(s), ${videoUploads.length} video(s): ${payload.description}`,
+    label: completionChainage.isFullCompletion ? "Completed" : "Partially Completed",
+    description: `${actor.name || "User"} completed chainage ${completionChainage.completedFrom} to ${completionChainage.completedTo} with ${uploads.length} image(s), ${videoUploads.length} video(s): ${payload.description}`,
     userId: req.user.id
   });
 
   await work.save();
-  await audit(req, "work_complete", "work", { images: uploads.length, videos: videoUploads.length }, work._id);
+  await audit(
+    req,
+    completionChainage.isFullCompletion ? "work_complete" : "work_partial_complete",
+    "work",
+    {
+      images: uploads.length,
+      videos: videoUploads.length,
+      completedChainageFrom: completionChainage.completedFrom,
+      completedChainageTo: completionChainage.completedTo,
+      partialCompletionReason: completionChainage.partialCompletionReason
+    },
+    work._id
+  );
   res.json({ success: true, work: toLegacyWorkRecord(work) });
 };
 
@@ -232,6 +505,13 @@ const toLegacyWorkRecord = (record) => {
     (plain.afterVideos?.length || 0);
   const chainageFrom = getChainageFrom(plain);
   const chainageTo = getChainageTo(plain);
+  const approvedChainageFrom = plain.approvedChainage?.from || chainageFrom;
+  const approvedChainageTo = plain.approvedChainage?.to || chainageTo;
+  const completedChainageFrom = plain.completedChainageFrom || plain.completion?.completedChainageFrom || "";
+  const completedChainageTo = plain.completedChainageTo || plain.completion?.completedChainageTo || "";
+  const remainingChainageFrom = plain.remainingChainageFrom || plain.completion?.remainingChainageFrom || "";
+  const remainingChainageTo = plain.remainingChainageTo || plain.completion?.remainingChainageTo || "";
+  const partialCompletionReason = plain.partialCompletionReason || plain.completion?.partialCompletionReason || "";
   const createdByName = plain.createdByName || plain.createdBy?.name || "";
   const createdByRole = plain.createdByRole || plain.createdBy?.role || "";
   const approvedBy = plain.approvedBy || plain.approvedById?.name || "";
@@ -241,11 +521,22 @@ const toLegacyWorkRecord = (record) => {
     approvalNumber: plain.approvalNumber || (plain._id ? `WA-${String(plain._id).slice(-8).toUpperCase()}` : ""),
     description: plain.description || plain.workDescription || "",
     workflowStage,
-    status: plain.status || workflowStage,
+    status: plain.status === "Pending Approval" ? workflowStage : plain.status || workflowStage,
     chainageFrom,
     chainageTo,
     chainage: plain.chainage || chainageFrom,
     chainageNo: plain.chainageNo || plain.chainage || chainageFrom,
+    approvedChainage: {
+      from: approvedChainageFrom,
+      to: approvedChainageTo
+    },
+    approvedChainageFrom,
+    approvedChainageTo,
+    completedChainageFrom,
+    completedChainageTo,
+    remainingChainageFrom,
+    remainingChainageTo,
+    partialCompletionReason,
     beforeImage,
     afterImage,
     beforeVideo,
@@ -279,7 +570,9 @@ const toLegacyWorkRecord = (record) => {
     completedByRole: plain.completedByRole || plain.completion?.role || "",
     completionDescription: plain.completionDescription || plain.completion?.description || "",
     completedAt: plain.completedAt || plain.completion?.date || "",
-    completionDate: plain.completionDate || plain.completedAt || (plain.status === "Completed" ? plain.updatedAt : "")
+    completionDate: plain.completionDate || plain.completedAt || (["Completed", "Partially Completed"].includes(plain.status) ? plain.updatedAt : ""),
+    returnedHistory: plain.returnedHistory || [],
+    chainageAuditHistory: plain.chainageAuditHistory || []
   };
 };
 
@@ -382,6 +675,10 @@ router.post(
       status: WORK_STAGES.PENDING_CHECK,
       workflowStage: WORK_STAGES.PENDING_CHECK,
       description: payload.description || "",
+      approvedChainage: {
+        from: normalizedChainage.chainageFrom,
+        to: normalizedChainage.chainageTo
+      },
       beforeImages,
       beforeImage: beforeImages[0]?.url || "",
       beforeVideos,
@@ -389,8 +686,6 @@ router.post(
       createdBy: req.user.id,
       createdByName: req.user.name || "",
       createdByRole: req.user.role || "",
-      checkedBy: payload.checkedBy || "",
-      recommendedBy: payload.recommendedBy || "",
       assignedTo: payload.assignedTo || null,
       startDate: parseDate(payload.startDate),
       dueDate: parseDate(payload.dueDate),
@@ -451,6 +746,12 @@ router.patch(
     if (currentStage === WORK_STAGES.COMPLETED) {
       throw new ApiError(400, "Completed work is locked and cannot be edited");
     }
+    if (currentStage === WORK_STAGES.PARTIALLY_COMPLETED) {
+      throw new ApiError(400, "Partially completed work cannot be edited from this route");
+    }
+
+    const previousChainageFrom = getChainageFrom(work);
+    const previousChainageTo = getChainageTo(work);
 
     const editableFields = [
       "title",
@@ -480,34 +781,48 @@ router.patch(
       work.dueDate = parseDate(req.body.dueDate);
     }
 
-    const normalizedChainage = normalizeChainagePayload(req.body);
+    const normalizedChainage = normalizeChainagePayload({
+      ...req.body,
+      chainageFrom: req.body.chainageFrom || work.chainageFrom,
+      chainageTo: req.body.chainageTo || work.chainageTo,
+      chainage: req.body.chainage || work.chainage,
+      chainageNo: req.body.chainageNo || work.chainageNo
+    });
     work.chainageFrom = normalizedChainage.chainageFrom;
     work.chainageTo = normalizedChainage.chainageTo;
     work.chainage = normalizedChainage.chainage;
     work.chainageNo = normalizedChainage.chainageNo;
     work.title = work.title || `${work.workType} - ${work.location}`;
+    if (![WORK_STAGES.APPROVED, WORK_STAGES.COMPLETED, WORK_STAGES.PARTIALLY_COMPLETED].includes(currentStage)) {
+      work.approvedChainage = {
+        from: normalizedChainage.chainageFrom,
+        to: normalizedChainage.chainageTo
+      };
+    }
+
+    if (
+      normalizeComparable(previousChainageFrom) !== normalizeComparable(normalizedChainage.chainageFrom) ||
+      normalizeComparable(previousChainageTo) !== normalizeComparable(normalizedChainage.chainageTo)
+    ) {
+      work.chainageAuditHistory.push({
+        approvedChainageFrom: previousChainageFrom,
+        approvedChainageTo: previousChainageTo,
+        completedChainageFrom: "",
+        completedChainageTo: "",
+        remainingChainageFrom: "",
+        remainingChainageTo: "",
+        updatedBy: req.user.id,
+        updatedByName: req.user.name || "",
+        updatedByRole: req.user.role || "",
+        updateDescription: currentStage === WORK_STAGES.RETURNED
+          ? "Chainage corrected during returned-work resubmission"
+          : "Work approval chainage updated before completion",
+        partialCompletionReason: ""
+      });
+    }
 
     if (currentStage === WORK_STAGES.RETURNED) {
-      work.checked = undefined;
-      work.checkedBy = "";
-      work.checkedById = null;
-      work.checkedByRole = "";
-      work.checkedDescription = "";
-      work.checkedAt = null;
-      work.recommended = undefined;
-      work.recommendedBy = "";
-      work.recommendedById = null;
-      work.recommendedByRole = "";
-      work.recommendedDescription = "";
-      work.recommendedAt = null;
-      work.approved = undefined;
-      work.approvedBy = "";
-      work.approvedById = null;
-      work.approvedByRole = "";
-      work.approvalDescription = "";
-      work.approvedAt = null;
-      work.status = WORK_STAGES.PENDING_CHECK;
-      work.workflowStage = WORK_STAGES.PENDING_CHECK;
+      clearReviewFieldsForResubmission(work);
       work.timeline.push({
         label: "Returned Work Resubmitted",
         description: "Corrected work approval details resubmitted for checking",
@@ -537,31 +852,76 @@ router.patch(
 );
 
 router.post(
+  "/:id/resubmit",
+  authMiddleware,
+  asyncHandler(async (req, res) => {
+    const work = await WorkApproval.findById(req.params.id);
+    if (!work) throw new ApiError(404, "Work approval not found");
+    const currentStage = deriveWorkflowStage(work);
+    assertWorkflowStage(work, WORK_STAGES.RETURNED);
+
+    const canUpdate = req.user.role === ROLES.SUPER_ADMIN || req.user.permissions?.work?.update === true;
+    const isCreator = sameUser(work.createdBy, req.user.id);
+    if (!canUpdate && !isCreator) {
+      throw new ApiError(403, "Only the creator can resubmit returned work", null, "WORK_UPDATE_FORBIDDEN");
+    }
+
+    clearReviewFieldsForResubmission(work);
+    work.timeline.push({
+      label: "Returned Work Resubmitted",
+      description: "Work approval resubmitted for checking",
+      user: req.user.id
+    });
+    work.approvalHistory.push({
+      action: "resubmitted",
+      by: req.user.id,
+      comment: `Resubmitted from ${currentStage}`
+    });
+
+    await work.save();
+    await audit(req, "work_resubmit", "work", { fromStage: currentStage }, work._id);
+    res.json({ success: true, work: toLegacyWorkRecord(work) });
+  })
+);
+
+router.post(
   "/:id/check",
   authMiddleware,
   asyncHandler(async (req, res) => {
     assertStagePermission(req, "check");
     const payload = validateStagePayload(stageActionSchema, req.body);
+    const reviewFindings = getRequiredActionDescription("check", payload);
     const work = await WorkApproval.findById(req.params.id);
     if (!work) throw new ApiError(404, "Work approval not found");
     assertWorkflowStage(work, WORK_STAGES.PENDING_CHECK);
-    if (req.user.role !== ROLES.SUPER_ADMIN && sameUser(work.createdBy, req.user.id)) {
-      throw new ApiError(403, "Checker cannot be the same user as creator", null, "WORK_CHECK_FORBIDDEN");
-    }
+    const overrideConflicts = assertStageSeparation(req, work, "check", payload.overrideReason);
 
-    const actor = createStageActor(req, payload.description);
+    const actor = createStageActor(req, reviewFindings, { reviewFindings });
     updateStageActorFields(work, "checked", actor);
     work.status = WORK_STAGES.PENDING_RECOMMENDATION;
     work.workflowStage = WORK_STAGES.PENDING_RECOMMENDATION;
-    work.approvalHistory.push({ action: "checked", by: req.user.id, comment: payload.description });
+    work.approvalHistory.push({ action: "checked", by: req.user.id, comment: reviewFindings });
     addWorkflowTimeline(work, {
       label: "Checked",
-      description: `${actor.name || "Checker"} checked work: ${payload.description}`,
+      description: `${actor.name || "Checker"} checked work: ${reviewFindings}`,
       userId: req.user.id
     });
 
     await work.save();
-    await audit(req, "work_check", "work", { description: payload.description }, work._id);
+    await audit(req, "work_check", "work", { reviewFindings }, work._id);
+    if (overrideConflicts.length) {
+      await audit(
+        req,
+        "work_super_admin_override",
+        "work",
+        {
+          stage: "check",
+          reason: payload.overrideReason,
+          conflicts: overrideConflicts.map((item) => item.label)
+        },
+        work._id
+      );
+    }
     res.json({ success: true, work: toLegacyWorkRecord(work) });
   })
 );
@@ -572,29 +932,38 @@ router.post(
   asyncHandler(async (req, res) => {
     assertStagePermission(req, "recommend");
     const payload = validateStagePayload(stageActionSchema, req.body);
+    const recommendationRemarks = getRequiredActionDescription("recommend", payload);
     const work = await WorkApproval.findById(req.params.id);
     if (!work) throw new ApiError(404, "Work approval not found");
     assertWorkflowStage(work, WORK_STAGES.PENDING_RECOMMENDATION);
-    if (req.user.role !== ROLES.SUPER_ADMIN && sameUser(work.createdBy, req.user.id)) {
-      throw new ApiError(403, "Recommender cannot be the same user as creator", null, "WORK_RECOMMEND_FORBIDDEN");
-    }
-    if (req.user.role !== ROLES.SUPER_ADMIN && sameUser(work.checkedById, req.user.id)) {
-      throw new ApiError(403, "Recommender cannot be the same person as checker", null, "WORK_RECOMMEND_FORBIDDEN");
-    }
+    const overrideConflicts = assertStageSeparation(req, work, "recommend", payload.overrideReason);
 
-    const actor = createStageActor(req, payload.description);
+    const actor = createStageActor(req, recommendationRemarks, { recommendationRemarks });
     updateStageActorFields(work, "recommended", actor);
-    work.status = WORK_STAGES.PENDING_APPROVAL;
-    work.workflowStage = WORK_STAGES.PENDING_APPROVAL;
-    work.approvalHistory.push({ action: "recommended", by: req.user.id, comment: payload.description });
+    work.status = WORK_STAGES.PENDING_FINAL_APPROVAL;
+    work.workflowStage = WORK_STAGES.PENDING_FINAL_APPROVAL;
+    work.approvalHistory.push({ action: "recommended", by: req.user.id, comment: recommendationRemarks });
     addWorkflowTimeline(work, {
       label: "Recommended",
-      description: `${actor.name || "Recommender"} recommended work: ${payload.description}`,
+      description: `${actor.name || "Recommender"} recommended work: ${recommendationRemarks}`,
       userId: req.user.id
     });
 
     await work.save();
-    await audit(req, "work_recommend", "work", { description: payload.description }, work._id);
+    await audit(req, "work_recommend", "work", { recommendationRemarks }, work._id);
+    if (overrideConflicts.length) {
+      await audit(
+        req,
+        "work_super_admin_override",
+        "work",
+        {
+          stage: "recommend",
+          reason: payload.overrideReason,
+          conflicts: overrideConflicts.map((item) => item.label)
+        },
+        work._id
+      );
+    }
     res.json({ success: true, work: toLegacyWorkRecord(work) });
   })
 );
@@ -605,28 +974,47 @@ router.post(
   asyncHandler(async (req, res) => {
     assertStagePermission(req, "approve");
     const payload = validateStagePayload(stageActionSchema, req.body);
+    const approvalRemarks = getRequiredActionDescription("approve", payload);
     const work = await WorkApproval.findById(req.params.id);
     if (!work) throw new ApiError(404, "Work approval not found");
-    assertWorkflowStage(work, WORK_STAGES.PENDING_APPROVAL);
+    assertWorkflowStage(work, WORK_STAGES.PENDING_FINAL_APPROVAL);
+    const overrideConflicts = assertStageSeparation(req, work, "approve", payload.overrideReason);
 
-    const actor = createStageActor(req, payload.description);
+    const actor = createStageActor(req, approvalRemarks, { approvalRemarks });
     work.approved = actor;
     work.approvedBy = actor.name;
     work.approvedById = actor.userId;
     work.approvedByRole = actor.role;
     work.approvalDescription = actor.description;
     work.approvedAt = actor.date;
+    work.approvedChainage = {
+      from: getChainageFrom(work),
+      to: getChainageTo(work)
+    };
     work.status = WORK_STAGES.APPROVED;
     work.workflowStage = WORK_STAGES.APPROVED;
-    work.approvalHistory.push({ action: "approved", by: req.user.id, comment: payload.description });
+    work.approvalHistory.push({ action: "approved", by: req.user.id, comment: approvalRemarks });
     addWorkflowTimeline(work, {
       label: "Approved",
-      description: `${actor.name || "Approver"} approved work: ${payload.description}`,
+      description: `${actor.name || "Approver"} approved work: ${approvalRemarks}`,
       userId: req.user.id
     });
 
     await work.save();
-    await audit(req, "work_approve", "work", { description: payload.description }, work._id);
+    await audit(req, "work_approve", "work", { approvalRemarks }, work._id);
+    if (overrideConflicts.length) {
+      await audit(
+        req,
+        "work_super_admin_override",
+        "work",
+        {
+          stage: "approve",
+          reason: payload.overrideReason,
+          conflicts: overrideConflicts.map((item) => item.label)
+        },
+        work._id
+      );
+    }
     res.json({ success: true, work: toLegacyWorkRecord(work) });
   })
 );
@@ -635,12 +1023,12 @@ router.post(
   "/:id/return",
   authMiddleware,
   asyncHandler(async (req, res) => {
-    assertStagePermission(req, "return");
     const payload = validateStagePayload(returnWorkSchema, req.body);
+    const correctionReason = getRequiredActionDescription("return", payload);
     const work = await WorkApproval.findById(req.params.id);
     if (!work) throw new ApiError(404, "Work approval not found");
     const currentStage = deriveWorkflowStage(work);
-    if (![WORK_STAGES.PENDING_CHECK, WORK_STAGES.PENDING_RECOMMENDATION, WORK_STAGES.PENDING_APPROVAL].includes(currentStage)) {
+    if (![WORK_STAGES.PENDING_CHECK, WORK_STAGES.PENDING_RECOMMENDATION, WORK_STAGES.PENDING_FINAL_APPROVAL].includes(currentStage)) {
       throw new ApiError(
         409,
         `This work approval cannot be returned while it is ${currentStage}`,
@@ -648,8 +1036,10 @@ router.post(
         "INVALID_WORKFLOW_STAGE"
       );
     }
+    const stageAction = assertReturnPermissionForStage(req, currentStage);
+    const overrideConflicts = assertStageSeparation(req, work, stageAction, payload.overrideReason);
 
-    const actor = createStageActor(req, payload.description);
+    const actor = createStageActor(req, correctionReason);
     work.returned = actor;
     work.returnedBy = actor.name;
     work.returnedById = actor.userId;
@@ -657,23 +1047,56 @@ router.post(
     work.returnDescription = actor.description;
     work.returnedAt = actor.date;
     work.returnStage = currentStage;
+    work.returnedHistory.push({
+      returnedByUserId: actor.userId,
+      returnedByName: actor.name,
+      returnedByRole: actor.role,
+      returnedFromStage: currentStage,
+      correctionReason,
+      returnedAt: actor.date
+    });
     work.status = WORK_STAGES.RETURNED;
     work.workflowStage = WORK_STAGES.RETURNED;
-    work.approvalHistory.push({ action: "returned", by: req.user.id, comment: payload.description });
+    work.approvalHistory.push({ action: "returned", by: req.user.id, comment: correctionReason });
     addWorkflowTimeline(work, {
       label: "Returned for Correction",
-      description: `${actor.name || "Reviewer"} returned work from ${currentStage}: ${payload.description}`,
+      description: `${actor.name || "Reviewer"} returned work from ${currentStage}: ${correctionReason}`,
       userId: req.user.id
     });
 
     await work.save();
-    await audit(req, "work_return", "work", { stage: currentStage, description: payload.description }, work._id);
+    await audit(req, "work_return", "work", { stage: currentStage, correctionReason }, work._id);
+    if (overrideConflicts.length) {
+      await audit(
+        req,
+        "work_super_admin_override",
+        "work",
+        {
+          stage: `return:${currentStage}`,
+          reason: payload.overrideReason,
+          conflicts: overrideConflicts.map((item) => item.label)
+        },
+        work._id
+      );
+    }
     res.json({ success: true, work: toLegacyWorkRecord(work) });
   })
 );
 
 router.post(
   "/:id/complete",
+  authMiddleware,
+  upload.fields([
+    { name: "afterImages", maxCount: 10 },
+    { name: "afterImage", maxCount: 1 },
+    { name: "afterVideos", maxCount: 10 },
+    { name: "afterVideo", maxCount: 1 }
+  ]),
+  asyncHandler(completeWorkWithMedia)
+);
+
+router.post(
+  "/:id/partial-complete",
   authMiddleware,
   upload.fields([
     { name: "afterImages", maxCount: 10 },

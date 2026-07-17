@@ -68,9 +68,10 @@ const getDashboardSummary = async () => {
   const totalUsers = users.length;
   const activeUsers = users.filter((user) => user.status === "active").length;
   const totalWorkApprovals = work.length;
-  const pendingWork = work.filter((item) => item.status === "Pending").length;
+  const pendingWork = work.filter((item) => String(item.status || "").startsWith("Pending")).length;
   const approvedWork = work.filter((item) => item.status === "Approved").length;
-  const completedWork = work.filter((item) => item.status === "Completed").length;
+  const completedWork = work.filter((item) => ["Completed", "Partially Completed"].includes(item.status)).length;
+  const partiallyCompletedWork = work.filter((item) => item.status === "Partially Completed").length;
   const totalHazards = hazards.length;
   const openHazards = hazards.filter((item) => item.status !== "Closed").length;
   const closedHazards = hazards.filter((item) => item.status === "Closed").length;
@@ -80,9 +81,10 @@ const getDashboardSummary = async () => {
     { name: "Pending", value: pendingWork },
     { name: "Approved", value: approvedWork },
     { name: "Completed", value: completedWork },
+    { name: "Partially Completed", value: partiallyCompletedWork },
     {
-      name: "Rejected",
-      value: work.filter((item) => item.status === "Rejected").length
+      name: "Returned",
+      value: work.filter((item) => item.status === "Returned for Correction" || item.status === "Rejected").length
     }
   ];
 
@@ -117,6 +119,7 @@ const getDashboardSummary = async () => {
       pendingWork,
       approvedWork,
       completedWork,
+      partiallyCompletedWork,
       totalHazards,
       openHazards,
       closedHazards,

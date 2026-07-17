@@ -15,7 +15,64 @@ const stageActorSchema = new mongoose.Schema(
     name: { type: String, default: "" },
     role: { type: String, default: "" },
     description: { type: String, default: "" },
+    reviewFindings: { type: String, default: "" },
+    recommendationRemarks: { type: String, default: "" },
+    approvalRemarks: { type: String, default: "" },
     date: Date
+  },
+  { _id: false }
+);
+
+const chainageRangeSchema = new mongoose.Schema(
+  {
+    from: { type: String, default: "" },
+    to: { type: String, default: "" }
+  },
+  { _id: false }
+);
+
+const completionSchema = new mongoose.Schema(
+  {
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    name: { type: String, default: "" },
+    role: { type: String, default: "" },
+    description: { type: String, default: "" },
+    completedChainageFrom: { type: String, default: "" },
+    completedChainageTo: { type: String, default: "" },
+    remainingChainageFrom: { type: String, default: "" },
+    remainingChainageTo: { type: String, default: "" },
+    partialCompletionReason: { type: String, default: "" },
+    date: Date
+  },
+  { _id: false }
+);
+
+const returnedHistorySchema = new mongoose.Schema(
+  {
+    returnedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    returnedByName: { type: String, default: "" },
+    returnedByRole: { type: String, default: "" },
+    returnedFromStage: { type: String, default: "" },
+    correctionReason: { type: String, default: "" },
+    returnedAt: { type: Date, default: Date.now }
+  },
+  { _id: false }
+);
+
+const chainageAuditSchema = new mongoose.Schema(
+  {
+    approvedChainageFrom: { type: String, default: "" },
+    approvedChainageTo: { type: String, default: "" },
+    completedChainageFrom: { type: String, default: "" },
+    completedChainageTo: { type: String, default: "" },
+    remainingChainageFrom: { type: String, default: "" },
+    remainingChainageTo: { type: String, default: "" },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    updatedByName: { type: String, default: "" },
+    updatedByRole: { type: String, default: "" },
+    updateDescription: { type: String, default: "" },
+    partialCompletionReason: { type: String, default: "" },
+    updatedAt: { type: Date, default: Date.now }
   },
   { _id: false }
 );
@@ -76,6 +133,7 @@ const workApprovalSchema = new mongoose.Schema(
     chainageNo: { type: String, default: "" },
     chainageFrom: { type: String, required: true, trim: true },
     chainageTo: { type: String, required: true, trim: true },
+    approvedChainage: { type: chainageRangeSchema, default: () => ({}) },
     workersCount: { type: Number, default: 0 },
     priority: {
       type: String,
@@ -90,7 +148,9 @@ const workApprovalSchema = new mongoose.Schema(
         "Pending Check",
         "Pending Recommendation",
         "Pending Approval",
+        "Pending Final Approval",
         "Approved",
+        "Partially Completed",
         "Rejected",
         "Returned for Correction",
         "Completed"
@@ -103,7 +163,9 @@ const workApprovalSchema = new mongoose.Schema(
         "Pending Check",
         "Pending Recommendation",
         "Pending Approval",
+        "Pending Final Approval",
         "Approved",
+        "Partially Completed",
         "Returned for Correction",
         "Completed"
       ],
@@ -143,12 +205,18 @@ const workApprovalSchema = new mongoose.Schema(
     returnStage: { type: String, default: "" },
     returnedAt: Date,
     returned: stageActorSchema,
+    returnedHistory: [returnedHistorySchema],
     completedBy: { type: String, default: "" },
     completedById: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     completedByRole: { type: String, default: "" },
     completionDescription: { type: String, default: "", trim: true },
+    completedChainageFrom: { type: String, default: "" },
+    completedChainageTo: { type: String, default: "" },
+    remainingChainageFrom: { type: String, default: "" },
+    remainingChainageTo: { type: String, default: "" },
+    partialCompletionReason: { type: String, default: "" },
     completedAt: Date,
-    completion: stageActorSchema,
+    completion: completionSchema,
     workflow: [workflowSchema],
     comments: [commentSchema],
     approvalHistory: [
@@ -160,6 +228,7 @@ const workApprovalSchema = new mongoose.Schema(
       }
     ],
     timeline: [timelineSchema],
+    chainageAuditHistory: [chainageAuditSchema],
     digitalSignatures: [signatureSchema],
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     createdByName: { type: String, default: "" },
@@ -177,17 +246,23 @@ workApprovalSchema.pre("validate", function normalizeChainageRange() {
   if (!this.chainageTo) this.chainageTo = legacyChainage;
   if (!this.chainage) this.chainage = this.chainageFrom;
   if (!this.chainageNo) this.chainageNo = this.chainageFrom;
+  if (!this.approvedChainage) this.approvedChainage = {};
+  if (!this.approvedChainage.from) this.approvedChainage.from = this.chainageFrom;
+  if (!this.approvedChainage.to) this.approvedChainage.to = this.chainageTo;
   if (!this.approvalNumber && this._id) {
     this.approvalNumber = `WA-${String(this._id).slice(-8).toUpperCase()}`;
   }
   if (!this.workflowStage) {
     if (this.status === "Completed") this.workflowStage = "Completed";
+    else if (this.status === "Partially Completed") this.workflowStage = "Partially Completed";
     else if (this.status === "Approved") this.workflowStage = "Approved";
     else if (this.status === "Rejected") this.workflowStage = "Returned for Correction";
-    else if (this.recommendedAt || this.recommendedBy) this.workflowStage = "Pending Approval";
+    else if (this.recommendedAt || this.recommendedBy) this.workflowStage = "Pending Final Approval";
     else if (this.checkedAt || this.checkedBy) this.workflowStage = "Pending Recommendation";
     else this.workflowStage = "Pending Check";
   }
+  if (this.workflowStage === "Pending Approval") this.workflowStage = "Pending Final Approval";
+  if (this.status === "Pending Approval") this.status = "Pending Final Approval";
   if (!this.status || this.status === "Pending" || this.status === "Under Review") {
     this.status = this.workflowStage;
   }

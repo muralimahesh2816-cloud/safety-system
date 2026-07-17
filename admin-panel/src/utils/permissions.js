@@ -19,6 +19,15 @@ const DEFAULT_ROLE_PERMISSIONS = {
     users: true,
     settings: true
   },
+  employee: {
+    dashboard: true,
+    work: true,
+    hazard: true,
+    training: true,
+    reports: false,
+    users: false,
+    settings: false
+  },
   safety_manager: {
     dashboard: true,
     work: true,
@@ -29,6 +38,87 @@ const DEFAULT_ROLE_PERMISSIONS = {
     settings: false
   },
   supervisor: {
+    dashboard: true,
+    work: true,
+    hazard: true,
+    training: true,
+    reports: true,
+    users: false,
+    settings: false
+  },
+  safety_officer: {
+    dashboard: true,
+    work: true,
+    hazard: true,
+    training: true,
+    reports: false,
+    users: false,
+    settings: false
+  },
+  safety_engineer: {
+    dashboard: true,
+    work: true,
+    hazard: true,
+    training: true,
+    reports: false,
+    users: false,
+    settings: false
+  },
+  site_engineer: {
+    dashboard: true,
+    work: true,
+    hazard: true,
+    training: true,
+    reports: false,
+    users: false,
+    settings: false
+  },
+  project_engineer: {
+    dashboard: true,
+    work: true,
+    hazard: true,
+    training: true,
+    reports: false,
+    users: false,
+    settings: false
+  },
+  maintenance_engineer: {
+    dashboard: true,
+    work: true,
+    hazard: true,
+    training: true,
+    reports: false,
+    users: false,
+    settings: false
+  },
+  project_manager: {
+    dashboard: true,
+    work: true,
+    hazard: true,
+    training: true,
+    reports: true,
+    users: false,
+    settings: false
+  },
+  construction_manager: {
+    dashboard: true,
+    work: true,
+    hazard: true,
+    training: true,
+    reports: true,
+    users: false,
+    settings: false
+  },
+  operations_manager: {
+    dashboard: true,
+    work: true,
+    hazard: true,
+    training: true,
+    reports: true,
+    users: false,
+    settings: false
+  },
+  maintenance_manager: {
     dashboard: true,
     work: true,
     hazard: true,
@@ -126,4 +216,3 @@ export const toPermissionPayload = (permissions = {}) =>
   }, {});
 
 export { ACCESS_MODULES };
-

@@ -26,20 +26,36 @@ import { formatChainageRange, getChainageFrom, getChainageTo } from "../../utils
 const WORKFLOW_STAGES = [
   "Pending Check",
   "Pending Recommendation",
-  "Pending Approval",
+  "Pending Final Approval",
   "Approved",
+  "Partially Completed",
   "Completed",
   "Returned for Correction"
 ];
+const CHECKING_ROLES = ["safety_officer", "safety_engineer", "site_engineer", "project_engineer", "maintenance_engineer"];
+const RECOMMENDING_ROLES = ["project_manager", "construction_manager", "operations_manager", "maintenance_manager", "safety_manager"];
+const APPROVAL_ROLES = ["maintenance_manager", "project_manager", "admin"];
 
 const valueOrDash = (value) => (value === undefined || value === null || value === "" ? "-" : value);
 
 const normalizeRole = (role = "") => String(role || "").trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_");
+const getUserId = (value = {}) => String(value?.id || value?._id || value?.userId || "");
+const getWorkCreatorId = (work = {}) => String(work.createdBy?._id || work.createdBy || work.createdById || "");
+const isCreatorOfWork = (work = {}, user = {}) => {
+  const userId = getUserId(user);
+  return Boolean(userId && userId === getWorkCreatorId(work));
+};
+const isAssignedToWork = (work = {}, user = {}) => {
+  const userId = getUserId(user);
+  const assignedTo = String(work.assignedTo?._id || work.assignedTo || "");
+  return Boolean(userId && assignedTo && userId === assignedTo);
+};
 
 const getWorkflowStage = (work) => {
   const safeWork = work || {};
   const status = safeWork.workflowStage || safeWork.status || "";
   if (WORKFLOW_STAGES.includes(status)) return status;
+  if (status === "Pending Approval") return "Pending Final Approval";
   if (status === "Rejected") return "Returned for Correction";
   if (status === "Pending" || status === "Under Review" || !status) return "Pending Check";
   return status;
@@ -51,11 +67,11 @@ const hasWorkAction = (user = {}, action) => {
   if (user?.permissionMatrix?.work?.[action] === true) return true;
   if (user?.permissions?.work?.[action] === true) return true;
   const roleFallbacks = {
-    check: ["admin", "safety_manager", "supervisor"],
-    recommend: ["admin", "safety_manager"],
-    approve: ["admin"],
-    complete: ["admin", "safety_manager", "supervisor"],
-    return: ["admin", "safety_manager", "supervisor"]
+    check: CHECKING_ROLES,
+    recommend: RECOMMENDING_ROLES,
+    approve: APPROVAL_ROLES,
+    complete: [],
+    return: []
   };
   return (roleFallbacks[action] || []).includes(role);
 };
@@ -72,8 +88,9 @@ const isVideoUrl = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url)
 const statusTone = (status = "Pending Check") => ({
   "Pending Check": "border-cyan-400/40 bg-cyan-500/15 text-cyan-100",
   "Pending Recommendation": "border-violet-400/40 bg-violet-500/15 text-violet-100",
-  "Pending Approval": "border-amber-400/40 bg-amber-500/15 text-amber-100",
+  "Pending Final Approval": "border-amber-400/40 bg-amber-500/15 text-amber-100",
   Approved: "border-sky-400/40 bg-sky-500/15 text-sky-100",
+  "Partially Completed": "border-lime-400/40 bg-lime-500/15 text-lime-100",
   "Returned for Correction": "border-rose-400/40 bg-rose-500/15 text-rose-100",
   Completed: "border-emerald-400/40 bg-emerald-500/15 text-emerald-100"
 }[status] || "border-slate-400/40 bg-slate-500/15 text-slate-200");
@@ -168,9 +185,14 @@ const WorkflowStep = ({ step }) => {
   return (
     <div className={`rounded-2xl border p-3 transition ${stateClass}`}>
       <div className="flex items-start gap-3">
-        <span className={`mt-1 h-3 w-3 shrink-0 rounded-full ${dotClass}`} />
+        <span className={`mt-1 h-3 w-3 shrink-0 rounded-full ${dotClass} ${step.current ? "animate-pulse" : ""}`} />
         <div className="min-w-0">
           <p className="text-sm font-bold text-white">{step.label}</p>
+          {step.current ? (
+            <span className="mt-1 inline-flex rounded-full border border-cyan-300/30 bg-cyan-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
+              Action Required
+            </span>
+          ) : null}
           <p className="mt-1 text-xs text-slate-300">{valueOrDash(step.name)}</p>
           <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500">{valueOrDash(step.role)}</p>
           <p className="mt-1 text-[11px] text-slate-400">{step.date ? formatDateTime(step.date) : step.current ? "Current stage" : "Pending"}</p>
@@ -193,35 +215,49 @@ const ActionPanel = ({
   onCompletionFiles,
   onStageAction,
   onComplete,
+  onEdit,
   stageDescription,
   setStageDescription,
   returnDescription,
   setReturnDescription,
+  overrideReason,
+  setOverrideReason,
   completionDescription,
-  setCompletionDescription
+  setCompletionDescription,
+  completedChainageFrom,
+  setCompletedChainageFrom,
+  completedChainageTo,
+  setCompletedChainageTo,
+  partialCompletionReason,
+  setPartialCompletionReason
 }) => {
   const safeWork = work || {};
+  const userRole = normalizeRole(user?.role);
+  const isCreator = isCreatorOfWork(safeWork, user);
+  const isSuperAdmin = userRole === "super_admin";
+  const approvedChainageFrom = safeWork.approvedChainageFrom || safeWork.approvedChainage?.from || getChainageFrom(safeWork);
+  const approvedChainageTo = safeWork.approvedChainageTo || safeWork.approvedChainage?.to || getChainageTo(safeWork);
   const currentAction = {
     "Pending Check": {
       action: "check",
-      title: "Check Work",
-      label: "Checked Description",
-      placeholder: "Enter review findings before checking this work.",
+      title: "Enter review findings before checking this work",
+      label: "Review Findings",
+      placeholder: "Enter findings after reviewing the work location, chainage, manpower, PPE evidence, work description, and submitted media.",
       button: "CHECK WORK",
       icon: FileCheck2
     },
     "Pending Recommendation": {
       action: "recommend",
-      title: "Recommend Work",
-      label: "Recommended Description",
-      placeholder: "Enter why this work is recommended for final approval.",
+      title: "Enter recommendation remarks before recommending this work",
+      label: "Recommendation Remarks",
+      placeholder: "Enter remarks after reviewing the original submission, review findings, checker details, chainage, media evidence, and correction history.",
       button: "RECOMMEND WORK",
       icon: ShieldCheck
     },
-    "Pending Approval": {
+    "Pending Final Approval": {
       action: "approve",
-      title: "Final Approval",
-      label: "Approval Description",
+      title: "Enter final approval remarks",
+      label: "Approval Remarks",
       placeholder: "Enter final approval conditions and safety controls.",
       button: "FINAL APPROVAL",
       icon: CheckCircle2
@@ -233,11 +269,24 @@ const ActionPanel = ({
       <div className="rounded-3xl border border-emerald-300/20 bg-emerald-500/[0.08] p-4">
         <div className="flex items-center gap-2 text-emerald-100">
           <CheckCircle2 size={18} />
-          <p className="font-semibold">Workflow completed</p>
+          <p className="font-semibold">{stage === "Partially Completed" ? "Work partially completed" : "Workflow completed"}</p>
         </div>
         <p className="mt-2 text-sm text-slate-300">
           Work was completed by {safeWork.completedBy || safeWork.approvedBy || "-"} on {formatDateTime(safeWork.completedAt || safeWork.completionDate || safeWork.updatedAt)}.
         </p>
+        {safeWork.completedChainageFrom || safeWork.completedChainageTo ? (
+          <p className="mt-3 text-sm text-slate-200">
+            Completed chainage: {safeWork.completedChainageFrom || "-"} to {safeWork.completedChainageTo || "-"}
+          </p>
+        ) : null}
+        {safeWork.remainingChainageFrom || safeWork.remainingChainageTo ? (
+          <p className="mt-1 text-sm text-lime-200">
+            Remaining chainage: {safeWork.remainingChainageFrom || "-"} to {safeWork.remainingChainageTo || "-"}
+          </p>
+        ) : null}
+        {safeWork.partialCompletionReason ? (
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-200">{safeWork.partialCompletionReason}</p>
+        ) : null}
         {safeWork.completionDescription ? (
           <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-200">{safeWork.completionDescription}</p>
         ) : null}
@@ -258,12 +307,30 @@ const ActionPanel = ({
         <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-100">
           {safeWork.returnDescription || "Correction reason was not recorded."}
         </p>
+        {isCreator && onEdit ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-cyan-500 px-4 py-3 text-sm font-black uppercase tracking-[0.14em] text-white"
+          >
+            <RotateCcw size={16} />
+            EDIT WORK AND RESUBMIT
+          </button>
+        ) : null}
       </div>
     );
   }
 
-  if (stage === "Approved") {
-    const canComplete = hasWorkAction(user, "complete");
+  if (stage === "Approved" || stage === "Partially Completed") {
+    const canComplete = isCreator || isAssignedToWork(safeWork, user) || hasWorkAction(user, "complete");
+    const closesRemaining =
+      stage === "Partially Completed" &&
+      String(completedChainageFrom || "").trim() === String(safeWork.remainingChainageFrom || "").trim() &&
+      String(completedChainageTo || "").trim() === String(safeWork.remainingChainageTo || "").trim();
+    const isPartialCompletion =
+      !closesRemaining &&
+      (String(completedChainageFrom || "").trim() !== String(approvedChainageFrom || "").trim() ||
+        String(completedChainageTo || "").trim() !== String(approvedChainageTo || "").trim());
     return (
       <div className="rounded-3xl border border-emerald-300/20 bg-emerald-500/[0.07] p-4">
         <div className="flex items-center gap-2 text-emerald-100">
@@ -271,8 +338,40 @@ const ActionPanel = ({
           <p className="font-semibold">Completion Evidence</p>
         </div>
         <p className="mt-2 text-sm text-slate-300">
-          Upload final after-work media and enter completion remarks before marking this work completed.
+          Upload final after-work media and enter the actually completed chainage before closing this work.
         </p>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-white/10 bg-slate-950/55 p-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Approved Chainage From</p>
+            <p className="mt-1 text-sm font-semibold text-white">{approvedChainageFrom || "-"}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-slate-950/55 p-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Approved Chainage To</p>
+            <p className="mt-1 text-sm font-semibold text-white">{approvedChainageTo || "-"}</p>
+          </div>
+          <label>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Completed Chainage From
+            </span>
+            <input
+              value={completedChainageFrom}
+              onChange={(event) => setCompletedChainageFrom(event.target.value)}
+              className="w-full rounded-2xl border border-white/12 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-300/60 focus:outline-none"
+              placeholder={approvedChainageFrom || "KM 320+000"}
+            />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Completed Chainage To
+            </span>
+            <input
+              value={completedChainageTo}
+              onChange={(event) => setCompletedChainageTo(event.target.value)}
+              className="w-full rounded-2xl border border-white/12 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-300/60 focus:outline-none"
+              placeholder={approvedChainageTo || "KM 321+000"}
+            />
+          </label>
+        </div>
         <label className="mt-4 block">
           <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
             Completion Description
@@ -286,6 +385,21 @@ const ActionPanel = ({
             className="w-full resize-none rounded-2xl border border-white/12 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-300/60 focus:outline-none"
           />
         </label>
+        {isPartialCompletion ? (
+          <label className="mt-4 block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-lime-200">
+              Reason for Partial Completion
+            </span>
+            <textarea
+              value={partialCompletionReason}
+              onChange={(event) => setPartialCompletionReason(event.target.value)}
+              rows={3}
+              maxLength={1000}
+              placeholder="Only Chainage 320+000 to 320+600 was completed due to rainfall and restricted equipment access. Remaining work will be completed in the next approved schedule."
+              className="w-full resize-none rounded-2xl border border-lime-300/20 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-lime-300/60 focus:outline-none"
+            />
+          </label>
+        ) : null}
         <input
           type="file"
           accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/webm"
@@ -307,7 +421,11 @@ const ActionPanel = ({
           <button
             type="button"
             disabled={busy}
-            onClick={() => onComplete?.(completionFiles, completionDescription)}
+            onClick={() => onComplete?.(completionFiles, completionDescription, {
+              completedChainageFrom,
+              completedChainageTo,
+              partialCompletionReason
+            })}
             className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-black uppercase tracking-[0.16em] text-white shadow-[0_20px_45px_rgba(16,185,129,.2)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <CheckCircle2 size={16} />
@@ -324,9 +442,23 @@ const ActionPanel = ({
     return null;
   }
 
+  if (isCreator && !isSuperAdmin) {
+    return (
+      <div className="rounded-3xl border border-cyan-300/20 bg-cyan-500/[0.07] p-4">
+        <div className="flex items-center gap-2 text-cyan-100">
+          <Clock3 size={18} />
+          <p className="font-semibold">Workflow status</p>
+        </div>
+        <p className="mt-2 text-sm text-slate-300">
+          This work is currently at {stage}. Completed workflow history is shown in the timeline.
+        </p>
+      </div>
+    );
+  }
+
   const Icon = currentAction.icon;
   const canPrimary = hasWorkAction(user, currentAction.action);
-  const canReturn = hasWorkAction(user, "return");
+  const canReturn = canPrimary;
 
   return (
     <div className="rounded-3xl border border-cyan-300/20 bg-cyan-500/[0.07] p-4">
@@ -347,11 +479,26 @@ const ActionPanel = ({
           className="w-full resize-none rounded-2xl border border-white/12 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-cyan-300/60 focus:outline-none"
         />
       </label>
+      {isSuperAdmin ? (
+        <label className="mt-4 block">
+          <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-amber-200">
+            Override Reason
+          </span>
+          <textarea
+            value={overrideReason}
+            onChange={(event) => setOverrideReason(event.target.value)}
+            rows={2}
+            maxLength={600}
+            placeholder="Required when overriding creator/checker/recommender separation."
+            className="w-full resize-none rounded-2xl border border-amber-300/20 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-amber-300/60 focus:outline-none"
+          />
+        </label>
+      ) : null}
       {canPrimary ? (
         <button
           type="button"
           disabled={busy}
-          onClick={() => onStageAction?.(currentAction.action, stageDescription)}
+          onClick={() => onStageAction?.(currentAction.action, stageDescription, { overrideReason })}
           className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-500 to-teal-500 px-4 py-3 text-sm font-black uppercase tracking-[0.16em] text-white shadow-[0_20px_45px_rgba(8,145,178,.2)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Icon size={16} />
@@ -365,24 +512,24 @@ const ActionPanel = ({
         <div className="mt-4 rounded-2xl border border-rose-300/15 bg-rose-500/[0.055] p-3">
           <div className="flex items-center gap-2 text-rose-100">
             <RotateCcw size={15} />
-            <p className="text-sm font-semibold">Return for Correction</p>
+            <p className="text-sm font-semibold">Enter correction reason before returning this work</p>
           </div>
           <textarea
             value={returnDescription}
             onChange={(event) => setReturnDescription(event.target.value)}
             rows={3}
             maxLength={1000}
-            placeholder="Enter correction reason before returning this work."
+            placeholder="Clearly describe the correction required before this work can continue through the approval workflow."
             className="mt-3 w-full resize-none rounded-2xl border border-white/12 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-rose-300/60 focus:outline-none"
           />
           <button
             type="button"
             disabled={busy}
-            onClick={() => onStageAction?.("return", returnDescription)}
+            onClick={() => onStageAction?.("return", returnDescription, { overrideReason })}
             className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-rose-300/30 bg-rose-500/15 px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-rose-100 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RotateCcw size={14} />
-            RETURN
+            RETURN FOR CORRECTION
           </button>
         </div>
       ) : null}
@@ -398,13 +545,18 @@ const WorkApprovalDetailsModal = ({
   onClose,
   onOpenMedia,
   onStageAction,
-  onComplete
+  onComplete,
+  onEdit
 }) => {
   const safeWork = work || null;
   const [exporting, setExporting] = useState(false);
   const [stageDescription, setStageDescription] = useState("");
   const [returnDescription, setReturnDescription] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
   const [completionDescription, setCompletionDescription] = useState("");
+  const [completedChainageFrom, setCompletedChainageFrom] = useState("");
+  const [completedChainageTo, setCompletedChainageTo] = useState("");
+  const [partialCompletionReason, setPartialCompletionReason] = useState("");
   const [completionFiles, setCompletionFiles] = useState([]);
   const [completionPreview, setCompletionPreview] = useState("");
   const before = useMemo(() => normalizeMedia(safeWork?.beforeImages, safeWork?.beforeImage), [safeWork]);
@@ -422,7 +574,7 @@ const WorkApprovalDetailsModal = ({
     safeWork?.createdBy?.name ||
     safeWork?.submittedBy?.name ||
     safeWork?.employeeName;
-  const completionDate = stage === "Completed"
+  const completionDate = ["Completed", "Partially Completed"].includes(stage)
     ? safeWork?.completedAt || safeWork?.completionDate || safeWork?.updatedAt
     : safeWork?.completionDate;
   const steps = useMemo(
@@ -457,7 +609,7 @@ const WorkApprovalDetailsModal = ({
       {
         label: "Approved",
         completed: Boolean(safeWork?.approvedAt || safeWork?.approvedBy),
-        current: stage === "Pending Approval",
+        current: stage === "Pending Final Approval",
         name: safeWork?.approvedByName || safeWork?.approvedBy,
         role: safeWork?.approvedByRole,
         date: safeWork?.approvedAt || safeWork?.approvalDate,
@@ -465,7 +617,7 @@ const WorkApprovalDetailsModal = ({
       },
       {
         label: "Completed",
-        completed: stage === "Completed",
+        completed: ["Completed", "Partially Completed"].includes(stage),
         current: stage === "Approved",
         name: safeWork?.completedBy,
         role: safeWork?.completedByRole,
@@ -488,13 +640,25 @@ const WorkApprovalDetailsModal = ({
   useEffect(() => {
     setStageDescription("");
     setReturnDescription("");
+    setOverrideReason("");
     setCompletionDescription("");
+    const defaultCompletedFrom =
+      stage === "Partially Completed"
+        ? safeWork?.remainingChainageFrom || safeWork?.completion?.remainingChainageFrom
+        : safeWork?.approvedChainageFrom || safeWork?.approvedChainage?.from || getChainageFrom(safeWork || {});
+    const defaultCompletedTo =
+      stage === "Partially Completed"
+        ? safeWork?.remainingChainageTo || safeWork?.completion?.remainingChainageTo
+        : safeWork?.approvedChainageTo || safeWork?.approvedChainage?.to || getChainageTo(safeWork || {});
+    setCompletedChainageFrom(defaultCompletedFrom || "");
+    setCompletedChainageTo(defaultCompletedTo || "");
+    setPartialCompletionReason("");
     setCompletionFiles([]);
     setCompletionPreview((prev) => {
       if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
       return "";
     });
-  }, [safeWork?._id, stage]);
+  }, [safeWork, stage]);
 
   useEffect(
     () => () => {
@@ -600,6 +764,12 @@ const WorkApprovalDetailsModal = ({
                     <InfoRow label="Chainage From" value={getChainageFrom(safeWork)} />
                     <InfoRow label="Chainage To" value={getChainageTo(safeWork)} />
                     <InfoRow label="Chainage Range" value={formatChainageRange(safeWork)} />
+                    <InfoRow label="Approved From" value={safeWork.approvedChainageFrom || safeWork.approvedChainage?.from || getChainageFrom(safeWork)} />
+                    <InfoRow label="Approved To" value={safeWork.approvedChainageTo || safeWork.approvedChainage?.to || getChainageTo(safeWork)} />
+                    <InfoRow label="Completed From" value={safeWork.completedChainageFrom} />
+                    <InfoRow label="Completed To" value={safeWork.completedChainageTo} />
+                    <InfoRow label="Remaining From" value={safeWork.remainingChainageFrom} />
+                    <InfoRow label="Remaining To" value={safeWork.remainingChainageTo} />
                     <InfoRow label="Workers Count" value={safeWork.workersCount} icon={UsersRound} />
                     <InfoRow label="Created By" value={createdBy} icon={UserRound} />
                     <InfoRow label="Created Role" value={safeWork.createdByRole} />
@@ -615,10 +785,11 @@ const WorkApprovalDetailsModal = ({
                   </div>
 
                   <DescriptionCard title="Work Description" value={safeWork.description || safeWork.workDescription || safeWork.details} />
-                  {safeWork.checkedDescription ? <DescriptionCard title="Checked Description" value={safeWork.checkedDescription} tone="emerald" /> : null}
-                  {safeWork.recommendedDescription ? <DescriptionCard title="Recommended Description" value={safeWork.recommendedDescription} tone="emerald" /> : null}
-                  {safeWork.approvalDescription ? <DescriptionCard title="Approval Description" value={safeWork.approvalDescription} tone="emerald" /> : null}
-                  {safeWork.returnDescription ? <DescriptionCard title="Return Description" value={safeWork.returnDescription} tone="rose" /> : null}
+                  {safeWork.checkedDescription ? <DescriptionCard title="Review Findings" value={safeWork.checkedDescription} tone="emerald" /> : null}
+                  {safeWork.recommendedDescription ? <DescriptionCard title="Recommendation Remarks" value={safeWork.recommendedDescription} tone="emerald" /> : null}
+                  {safeWork.approvalDescription ? <DescriptionCard title="Approval Remarks" value={safeWork.approvalDescription} tone="emerald" /> : null}
+                  {safeWork.partialCompletionReason ? <DescriptionCard title="Partial Completion Reason" value={safeWork.partialCompletionReason} tone="emerald" /> : null}
+                  {safeWork.returnDescription ? <DescriptionCard title="Correction Reason" value={safeWork.returnDescription} tone="rose" /> : null}
 
                   <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Workflow Timeline</p>
@@ -653,12 +824,21 @@ const WorkApprovalDetailsModal = ({
                     onCompletionFiles={onCompletionFiles}
                     onStageAction={onStageAction}
                     onComplete={onComplete}
+                    onEdit={onEdit}
                     stageDescription={stageDescription}
                     setStageDescription={setStageDescription}
                     returnDescription={returnDescription}
                     setReturnDescription={setReturnDescription}
+                    overrideReason={overrideReason}
+                    setOverrideReason={setOverrideReason}
                     completionDescription={completionDescription}
                     setCompletionDescription={setCompletionDescription}
+                    completedChainageFrom={completedChainageFrom}
+                    setCompletedChainageFrom={setCompletedChainageFrom}
+                    completedChainageTo={completedChainageTo}
+                    setCompletedChainageTo={setCompletedChainageTo}
+                    partialCompletionReason={partialCompletionReason}
+                    setPartialCompletionReason={setPartialCompletionReason}
                   />
                   <ImagePanel label="Before Work Media" tone="text-teal-300" item={beforeMedia[0]} onOpen={() => openMedia(0)} />
                   <ImagePanel label="After Work Media" tone="text-emerald-300" item={afterMedia[0]} onOpen={() => openMedia(beforeMedia.length)} />
