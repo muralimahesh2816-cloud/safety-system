@@ -44,15 +44,29 @@ Added componentized login experience under `admin-panel/src/components/login/`:
 - `LoginPanel.jsx`
 - `LoadingOverlay.jsx`
 - `AnimatedBackground.jsx`
+- `ppeSequence.js`
 
-The scene uses React Three Fiber, Three.js, Drei, GSAP, Framer Motion, React Suspense, procedural optimized geometry, cinematic camera movement, animated warehouse lighting, particles, helmet-on-head transition, scan overlay, glassmorphism login form, OTP step, and fallback rendering.
+The scene uses React Three Fiber, Three.js, Drei, GSAP, Framer Motion, React Suspense, procedural optimized geometry, cinematic camera movement, animated warehouse lighting, particles, scan overlay, glassmorphism login form, OTP step, and fallback rendering.
+
+## PPE Readiness Login Flow
+
+The login sequence now reinforces safety culture before authentication:
+
+- Worker starts without completed PPE status.
+- User begins secure login.
+- PPE sequence equips Helmet, Reflective Vest, and Safety Shoes.
+- UI and 3D scene update together through shared `ppeSequence.js` state.
+- Status changes to `Safety Check Passed`.
+- Login panel fades in and the existing OTP authentication flow continues unchanged.
+
+The current worker and PPE elements are optimized procedural R3F geometry for dependable production builds. The module boundaries allow future replacement with Mixamo/GLB worker, helmet, vest, shoe, and HDRI assets without changing the authentication flow.
 
 ## Performance And Accessibility
 
 - R3F scene is lazy-loaded.
 - Mobile, low-hardware, reduced-motion, or unsupported WebGL environments use a lightweight fallback.
 - Production sourcemaps are disabled for the admin panel to avoid third-party sourcemap warnings and reduce deploy output.
-- Login provides Skip Animation and keyboard-friendly controls.
+- Login provides Skip Animation, cancellable animation timeline handling, and keyboard-friendly controls.
 
 ## Validation
 

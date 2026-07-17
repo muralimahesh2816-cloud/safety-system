@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import gsap from "gsap";
 import { ArrowRight, BadgeCheck, HardHat, ShieldCheck, SkipForward } from "lucide-react";
@@ -6,6 +6,7 @@ import SafetyLogo from "../components/brand/SafetyLogo";
 import AnimatedBackground from "../components/login/AnimatedBackground";
 import LoginPanel from "../components/login/LoginPanel";
 import LoadingOverlay from "../components/login/LoadingOverlay";
+import { PPE_STEPS, getPpeProgress, isSafetyPassed } from "../components/login/ppeSequence";
 
 const HelmetScene = lazy(() => import("../components/login/HelmetScene"));
 
@@ -34,7 +35,10 @@ const useReducedMotion = () => {
 
 const LoginPage = ({ onLogin, onVerifyOtp, onResendOtp }) => {
   const reduceMotion = useReducedMotion();
+  const ppeTimelineRef = useRef(null);
   const [stage, setStage] = useState("intro");
+  const [ppeStep, setPpeStep] = useState(0);
+  const [scanLabel, setScanLabel] = useState("PPE readiness pending");
   const [formVisible, setFormVisible] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [webglReady, setWebglReady] = useState(false);
@@ -48,22 +52,58 @@ const LoginPage = ({ onLogin, onVerifyOtp, onResendOtp }) => {
     setWebglReady(canUseWebGL() && !reduceMotion && !lowPower && !mobile);
   }, [reduceMotion]);
 
+  useEffect(
+    () => () => {
+      ppeTimelineRef.current?.kill();
+    },
+    []
+  );
+
   const activated = stage !== "intro";
   const showScene = webglReady;
   const scanVisible = stage === "scanning";
+  const safetyPassed = isSafetyPassed(ppeStep);
+  const ppeProgress = useMemo(() => getPpeProgress(ppeStep), [ppeStep]);
 
   const beginLogin = () => {
     if (stage !== "intro") return;
+    ppeTimelineRef.current?.kill();
     setStage("scanning");
+    setScanLabel("Starting PPE readiness check");
+    setPpeStep(0);
     const timeline = gsap.timeline();
-    timeline.to({}, { duration: 2.25 });
-    timeline.call(() => {
-      setFormVisible(true);
-      setStage("form");
-    });
+    ppeTimelineRef.current = timeline;
+    timeline
+      .to({}, { duration: 0.35 })
+      .call(() => {
+        setPpeStep(1);
+        setScanLabel(PPE_STEPS[0].scanLabel);
+      })
+      .to({}, { duration: 0.82 })
+      .call(() => {
+        setPpeStep(2);
+        setScanLabel(PPE_STEPS[1].scanLabel);
+      })
+      .to({}, { duration: 0.82 })
+      .call(() => {
+        setPpeStep(3);
+        setScanLabel(PPE_STEPS[2].scanLabel);
+      })
+      .to({}, { duration: 0.55 })
+      .call(() => {
+        setScanLabel("Safety Check Passed");
+      })
+      .to({}, { duration: 0.45 })
+      .call(() => {
+        setFormVisible(true);
+        setStage("form");
+      });
   };
 
   const skipAnimation = () => {
+    ppeTimelineRef.current?.kill();
+    setPpeStep(PPE_STEPS.length);
+    setScanLabel("Safety Check Passed");
     setStage("form");
     setFormVisible(true);
   };
@@ -81,7 +121,7 @@ const LoginPage = ({ onLogin, onVerifyOtp, onResendOtp }) => {
       <AnimatedBackground active={activated} />
       {showScene ? (
         <Suspense fallback={<LoadingOverlay visible label="Loading 3D safety scene" />}>
-          <HelmetScene activated={activated} authenticated={authenticated} />
+          <HelmetScene activated={activated} authenticated={authenticated} ppeStep={ppeStep} />
         </Suspense>
       ) : (
         <div className="absolute inset-0 flex items-center justify-center opacity-80">
@@ -95,7 +135,7 @@ const LoginPage = ({ onLogin, onVerifyOtp, onResendOtp }) => {
         </div>
       )}
 
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(2,6,23,.88),rgba(2,6,23,.4)_48%,rgba(2,6,23,.86))]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(2,6,23,.94),rgba(2,6,23,.72)_44%,rgba(2,6,23,.36)_62%,rgba(2,6,23,.86))]" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-slate-950 to-transparent" />
 
       <section className="relative z-10 grid min-h-screen grid-cols-1 lg:grid-cols-[1.05fr_.95fr]">
@@ -133,7 +173,7 @@ const LoginPage = ({ onLogin, onVerifyOtp, onResendOtp }) => {
               transition={{ delay: 0.16 }}
               className="mt-5 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg"
             >
-              A cinematic secure login flow for work approvals, hazards, training, and operational safety governance.
+              Equip the worker with required PPE, pass the safety check, then access work approvals, hazards, training, and operational governance.
             </motion.p>
 
             {!formVisible ? (
@@ -156,13 +196,38 @@ const LoginPage = ({ onLogin, onVerifyOtp, onResendOtp }) => {
                 </button>
               </div>
             ) : null}
+            <AnimatePresence>
+              {stage !== "intro" ? (
+                <motion.div
+                  key={safetyPassed ? "safety-passed" : "safety-progress"}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className={`mt-6 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold backdrop-blur-xl ${
+                    safetyPassed
+                      ? "border-emerald-300/30 bg-emerald-400/12 text-emerald-100"
+                      : "border-cyan-300/25 bg-cyan-400/10 text-cyan-100"
+                  }`}
+                >
+                  <ShieldCheck size={16} />
+                  {safetyPassed ? "Safety Check Passed" : scanLabel}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </div>
 
           <div className="grid max-w-2xl grid-cols-1 gap-3 text-xs text-slate-300 sm:grid-cols-3">
-            {["Helmet scan", "Role protected", "Audit ready"].map((item) => (
-              <div key={item} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-3 backdrop-blur-xl">
-                <BadgeCheck size={16} className="text-cyan-300" />
-                {item}
+            {ppeProgress.map((item) => (
+              <div
+                key={item.key}
+                className={`flex items-center gap-2 rounded-2xl border px-3 py-3 backdrop-blur-xl ${
+                  item.complete
+                    ? "border-emerald-300/25 bg-emerald-400/10 text-emerald-100"
+                    : "border-white/10 bg-white/[0.045]"
+                }`}
+              >
+                <BadgeCheck size={16} className={item.complete ? "text-emerald-300" : "text-cyan-300"} />
+                {item.label}
               </div>
             ))}
           </div>
@@ -189,8 +254,23 @@ const LoginPage = ({ onLogin, onVerifyOtp, onResendOtp }) => {
                 <HardHat className="mx-auto text-orange-200" size={54} />
                 <h2 className="mt-5 font-display text-2xl font-semibold text-white">Safety Readiness Check</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-300">
-                  Begin the secure sequence to place the helmet, scan the vest, and reveal authenticated access.
+                  Begin the sequence to equip helmet, reflective vest, and safety shoes before authentication.
                 </p>
+                <div className="mt-5 space-y-2 text-left">
+                  {ppeProgress.map((item) => (
+                    <div key={item.key} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs">
+                      <span>{item.label}</span>
+                      <span className={item.complete ? "text-emerald-300" : "text-slate-500"}>
+                        {item.complete ? "Ready" : "Pending"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {safetyPassed ? (
+                  <p className="mt-4 rounded-2xl border border-emerald-300/25 bg-emerald-400/10 px-3 py-2 text-sm font-semibold text-emerald-100">
+                    Safety Check Passed
+                  </p>
+                ) : null}
               </motion.div>
             )}
           </AnimatePresence>
@@ -198,7 +278,7 @@ const LoginPage = ({ onLogin, onVerifyOtp, onResendOtp }) => {
       </section>
 
       <AnimatePresence>
-        {scanVisible ? <LoadingOverlay visible label="Helmet locked. Scanning safety profile" /> : null}
+        {scanVisible ? <LoadingOverlay visible label={scanLabel} /> : null}
       </AnimatePresence>
     </main>
   );
