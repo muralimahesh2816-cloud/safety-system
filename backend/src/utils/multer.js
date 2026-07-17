@@ -11,6 +11,25 @@ const IMAGE_MIME_TYPES = [
   "image/avif"
 ];
 
+const MIME_EXTENSIONS = {
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/png": [".png"],
+  "image/webp": [".webp"],
+  "image/gif": [".gif"],
+  "image/avif": [".avif"],
+  "video/mp4": [".mp4"],
+  "video/webm": [".webm"],
+  "video/quicktime": [".mov"],
+  "video/x-msvideo": [".avi"],
+  "video/x-matroska": [".mkv"]
+};
+
+const getExtension = (filename = "") => {
+  const clean = String(filename || "").toLowerCase();
+  const index = clean.lastIndexOf(".");
+  return index >= 0 ? clean.slice(index) : "";
+};
+
 const VIDEO_MIME_TYPES = [
   "video/mp4",
   "video/webm",
@@ -31,7 +50,12 @@ const createMemoryUpload = ({
       files: maxFiles
     },
     fileFilter: (_req, file, callback) => {
-      if (!allowedMimeTypes.length || allowedMimeTypes.includes(file.mimetype)) {
+      const allowedByMime = !allowedMimeTypes.length || allowedMimeTypes.includes(file.mimetype);
+      const expectedExtensions = MIME_EXTENSIONS[file.mimetype] || [];
+      const extension = getExtension(file.originalname);
+      const allowedByExtension = !expectedExtensions.length || expectedExtensions.includes(extension);
+
+      if (allowedByMime && allowedByExtension) {
         callback(null, true);
         return;
       }
@@ -39,7 +63,7 @@ const createMemoryUpload = ({
       callback(
         new ApiError(
           400,
-          `Unsupported file format. Allowed formats: ${allowedMimeTypes.join(", ")}`
+          `Unsupported file format or extension. Allowed formats: ${allowedMimeTypes.join(", ")}`
         )
       );
     }

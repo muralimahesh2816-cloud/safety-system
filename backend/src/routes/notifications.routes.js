@@ -4,6 +4,7 @@ const authMiddleware = require("../middleware/auth.middleware");
 const { authorizePermission } = require("../middleware/rbac.middleware");
 const Notification = require("../models/Notification");
 const audit = require("../middleware/audit.middleware");
+const { getPagination, buildPaginationMeta, hasPagination } = require("../utils/pagination");
 
 const router = express.Router();
 
@@ -12,14 +13,31 @@ router.get(
   authMiddleware,
   authorizePermission("notifications", "view"),
   asyncHandler(async (req, res) => {
-    const notifications = await Notification.find({ user: req.user.id }).sort({
+    const filters = { user: req.user.id };
+    if (req.query.read === "true") filters.read = true;
+    if (req.query.read === "false") filters.read = false;
+
+    const shouldPaginate = hasPagination(req.query);
+    const pagination = getPagination(req.query, { defaultLimit: 25, maxLimit: 100 });
+    let query = Notification.find(filters).sort({
       createdAt: -1
     });
-    const unreadCount = notifications.filter((item) => !item.read).length;
+    if (shouldPaginate) {
+      query = query.skip(pagination.skip).limit(pagination.limit);
+    }
+
+    const [notifications, unreadCount, total] = await Promise.all([
+      query,
+      Notification.countDocuments({ user: req.user.id, read: false }),
+      Notification.countDocuments(filters)
+    ]);
     res.json({
       success: true,
       unreadCount,
-      notifications
+      notifications,
+      pagination: shouldPaginate
+        ? buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total })
+        : { total, unpaginated: true }
     });
   })
 );

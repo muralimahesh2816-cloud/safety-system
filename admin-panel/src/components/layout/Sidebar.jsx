@@ -4,6 +4,7 @@ import {
   ClipboardCheck,
   Flame,
   GraduationCap,
+  HeartPulse,
   Menu,
   PanelLeftClose,
   Settings,
@@ -21,6 +22,7 @@ const icons = {
   training: GraduationCap,
   users: Users,
   reports: Flame,
+  health: HeartPulse,
   settings: Settings
 };
 

@@ -31,7 +31,11 @@ const userSchema = new mongoose.Schema(
     profilePhoto: {
       url: String,
       publicId: String,
-      storage: String
+      storage: String,
+      originalName: String,
+      mimeType: String,
+      size: Number,
+      fileHash: String
     },
     permissions: {
       type: Object,
@@ -57,5 +61,7 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.index({ role: 1, status: 1 });
+userSchema.index({ status: 1, lastLoginAt: -1 });
+userSchema.index({ email: 1, status: 1 });
 
 module.exports = mongoose.model("User", userSchema);

@@ -25,30 +25,62 @@ const buildMonthlyBuckets = (months = 6) => {
   return bucket;
 };
 
-const buildMonthlyTrend = (workList, hazardList, trainingList) => {
-  const bucket = buildMonthlyBuckets();
+const getMonthlyStartDate = (months = 6) => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+};
+
+const applyAggregateCounts = (bucket, rows, field) => {
   const indexMap = new Map(bucket.map((item, idx) => [item.key, idx]));
-
-  const mark = (date, key) => {
-    const d = new Date(date);
-    const mapKey = `${d.getFullYear()}-${d.getMonth() + 1}`;
-    const idx = indexMap.get(mapKey);
-    if (idx === undefined) return;
-    bucket[idx][key] += 1;
-  };
-
-  workList.forEach((item) => mark(item.createdAt, "work"));
-  hazardList.forEach((item) => mark(item.createdAt, "hazards"));
-  trainingList.forEach((item) =>
-    (item.completions || []).forEach((completion) => {
-      if (completion.isCompleted && completion.completedAt) {
-        mark(completion.completedAt, "trainingCompletions");
-      }
-    })
-  );
-
+  rows.forEach((row) => {
+    const key = `${row._id.year}-${row._id.month}`;
+    const index = indexMap.get(key);
+    if (index !== undefined) bucket[index][field] = row.count;
+  });
   return bucket;
 };
+
+const aggregateCreatedByMonth = (Model, startDate) =>
+  Model.aggregate([
+    { $match: { createdAt: { $gte: startDate } } },
+    {
+      $group: {
+        _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+        count: { $sum: 1 }
+      }
+    }
+  ]);
+
+const aggregateTrainingCompletionsByMonth = (startDate) =>
+  Training.aggregate([
+    { $unwind: "$completions" },
+    {
+      $match: {
+        "completions.isCompleted": true,
+        "completions.completedAt": { $gte: startDate }
+      }
+    },
+    {
+      $group: {
+        _id: {
+          year: { $year: "$completions.completedAt" },
+          month: { $month: "$completions.completedAt" }
+        },
+        count: { $sum: 1 }
+      }
+    }
+  ]);
+
+const aggregateUserLoginsByMonth = (startDate) =>
+  User.aggregate([
+    { $match: { lastLoginAt: { $gte: startDate } } },
+    {
+      $group: {
+        _id: { year: { $year: "$lastLoginAt" }, month: { $month: "$lastLoginAt" } },
+        count: { $sum: 1 }
+      }
+    }
+  ]);
 
 const calculateSafetyScore = ({ totalWork, completedWork, totalHazards, closedHazards }) => {
   const completionFactor = totalWork === 0 ? 100 : (completedWork / totalWork) * 100;
@@ -57,35 +89,62 @@ const calculateSafetyScore = ({ totalWork, completedWork, totalHazards, closedHa
 };
 
 const getDashboardSummary = async () => {
-  const [users, work, hazards, trainings, activities] = await Promise.all([
-    User.find().select("_id status role createdAt lastLoginAt"),
-    WorkApproval.find().select("_id status createdAt updatedAt"),
-    Hazard.find().select("_id status severity createdAt updatedAt"),
-    Training.find().select("_id category completions createdAt"),
+  const monthlyStart = getMonthlyStartDate();
+  const pendingWorkStatuses = [
+    "Pending",
+    "Under Review",
+    "Pending Check",
+    "Pending Recommendation",
+    "Pending Approval",
+    "Pending Final Approval"
+  ];
+  const completedWorkStatuses = ["Completed", "Partially Completed"];
+  const returnedWorkStatuses = ["Returned for Correction", "Rejected"];
+
+  const [
+    totalUsers,
+    activeUsers,
+    totalWorkApprovals,
+    pendingWork,
+    approvedWork,
+    completedWork,
+    partiallyCompletedWork,
+    returnedWork,
+    totalHazards,
+    openHazards,
+    closedHazards,
+    trainingRecords,
+    workMonthly,
+    hazardMonthly,
+    trainingCompletionMonthly,
+    userLoginMonthly,
+    activities
+  ] = await Promise.all([
+    User.countDocuments(),
+    User.countDocuments({ status: "active" }),
+    WorkApproval.countDocuments(),
+    WorkApproval.countDocuments({ status: { $in: pendingWorkStatuses } }),
+    WorkApproval.countDocuments({ status: "Approved" }),
+    WorkApproval.countDocuments({ status: { $in: completedWorkStatuses } }),
+    WorkApproval.countDocuments({ status: "Partially Completed" }),
+    WorkApproval.countDocuments({ status: { $in: returnedWorkStatuses } }),
+    Hazard.countDocuments(),
+    Hazard.countDocuments({ status: { $ne: "Closed" } }),
+    Hazard.countDocuments({ status: "Closed" }),
+    Training.countDocuments(),
+    aggregateCreatedByMonth(WorkApproval, monthlyStart),
+    aggregateCreatedByMonth(Hazard, monthlyStart),
+    aggregateTrainingCompletionsByMonth(monthlyStart),
+    aggregateUserLoginsByMonth(monthlyStart),
     AuditLog.find().sort({ createdAt: -1 }).limit(15)
   ]);
-
-  const totalUsers = users.length;
-  const activeUsers = users.filter((user) => user.status === "active").length;
-  const totalWorkApprovals = work.length;
-  const pendingWork = work.filter((item) => String(item.status || "").startsWith("Pending")).length;
-  const approvedWork = work.filter((item) => item.status === "Approved").length;
-  const completedWork = work.filter((item) => ["Completed", "Partially Completed"].includes(item.status)).length;
-  const partiallyCompletedWork = work.filter((item) => item.status === "Partially Completed").length;
-  const totalHazards = hazards.length;
-  const openHazards = hazards.filter((item) => item.status !== "Closed").length;
-  const closedHazards = hazards.filter((item) => item.status === "Closed").length;
-  const trainingRecords = trainings.length;
 
   const workStatus = [
     { name: "Pending", value: pendingWork },
     { name: "Approved", value: approvedWork },
     { name: "Completed", value: completedWork },
     { name: "Partially Completed", value: partiallyCompletedWork },
-    {
-      name: "Returned",
-      value: work.filter((item) => item.status === "Returned for Correction" || item.status === "Rejected").length
-    }
+    { name: "Returned", value: returnedWork }
   ];
 
   const hazardStatus = [
@@ -93,15 +152,16 @@ const getDashboardSummary = async () => {
     { name: "Closed", value: closedHazards }
   ];
 
-  const monthlyTrend = buildMonthlyTrend(work, hazards, trainings);
-  const userActivity = buildMonthlyBuckets(6).map((month) => ({
+  const monthlyTrend = buildMonthlyBuckets();
+  applyAggregateCounts(monthlyTrend, workMonthly, "work");
+  applyAggregateCounts(monthlyTrend, hazardMonthly, "hazards");
+  applyAggregateCounts(monthlyTrend, trainingCompletionMonthly, "trainingCompletions");
+
+  const userActivityBuckets = buildMonthlyBuckets().map((month) => ({ ...month, logins: 0 }));
+  applyAggregateCounts(userActivityBuckets, userLoginMonthly, "logins");
+  const userActivity = userActivityBuckets.map((month) => ({
     month: month.label,
-    logins: users.filter((user) => {
-      if (!user.lastLoginAt) return false;
-      const d = new Date(user.lastLoginAt);
-      const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
-      return key === month.key;
-    }).length
+    logins: month.logins
   }));
 
   const safetyPerformanceScore = calculateSafetyScore({

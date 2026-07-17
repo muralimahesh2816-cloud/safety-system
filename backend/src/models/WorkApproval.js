@@ -4,7 +4,11 @@ const assetSchema = new mongoose.Schema(
   {
     url: String,
     publicId: String,
-    storage: String
+    storage: String,
+    originalName: String,
+    mimeType: String,
+    size: Number,
+    fileHash: String
   },
   { _id: false }
 );
@@ -271,5 +275,9 @@ workApprovalSchema.pre("validate", function normalizeChainageRange() {
 workApprovalSchema.index({ status: 1, priority: 1, createdAt: -1 });
 workApprovalSchema.index({ chainageFrom: 1, chainageTo: 1, chainageNo: 1 });
 workApprovalSchema.index({ workflowStage: 1, createdAt: -1 });
+workApprovalSchema.index({ createdBy: 1, createdAt: -1 });
+workApprovalSchema.index({ location: 1, createdAt: -1 });
+workApprovalSchema.index({ approvalNumber: 1 });
+workApprovalSchema.index({ status: 1, workflowStage: 1, createdAt: -1 });
 
 module.exports = mongoose.model("WorkApproval", workApprovalSchema);

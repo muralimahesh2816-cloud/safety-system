@@ -22,6 +22,12 @@ const {
 } = require("../middleware/permission.middleware");
 const { updateUserPermissions } = require("../controllers/users.controller");
 const { createNotification } = require("../services/notifications.service");
+const {
+  escapeRegex,
+  getPagination,
+  buildPaginationMeta,
+  hasPagination
+} = require("../utils/pagination");
 
 const router = express.Router();
 const upload = createMemoryUpload({ maxFileSizeMb: 5, maxFiles: 1 });
@@ -31,9 +37,28 @@ router.get(
   authMiddleware,
   authorizePermission("users", "view"),
   asyncHandler(async (req, res) => {
-    const users = await User.find()
+    const filters = {};
+    const { role, status, search } = req.query;
+    if (role) filters.role = role;
+    if (status) filters.status = status;
+    if (search) {
+      const regex = new RegExp(escapeRegex(search), "i");
+      filters.$or = [{ name: regex }, { email: regex }, { mobile: regex }];
+    }
+
+    const shouldPaginate = hasPagination(req.query);
+    const pagination = getPagination(req.query);
+    let query = User.find(filters)
       .select("-password")
       .sort({ createdAt: -1 });
+    if (shouldPaginate) {
+      query = query.skip(pagination.skip).limit(pagination.limit);
+    }
+
+    const [users, total] = await Promise.all([
+      query,
+      User.countDocuments(filters)
+    ]);
     const mappedUsers = users.map((user) => {
       const pagePermissions = normalizePagePermissions(user.permissions, user.role);
       return {
@@ -44,7 +69,10 @@ router.get(
     });
     res.json({
       success: true,
-      users: mappedUsers
+      users: mappedUsers,
+      pagination: shouldPaginate
+        ? buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total })
+        : { total, unpaginated: true }
     });
     await audit(req, "view", "users");
   })

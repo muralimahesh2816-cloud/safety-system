@@ -17,6 +17,12 @@ const {
 const { uploadManyAssets } = require("../utils/uploads");
 const { createMemoryUpload } = require("../utils/multer");
 const { createNotification } = require("../services/notifications.service");
+const {
+  escapeRegex,
+  getPagination,
+  buildPaginationMeta,
+  hasPagination
+} = require("../utils/pagination");
 
 const router = express.Router();
 const upload = createMemoryUpload({ maxFileSizeMb: 10, maxFiles: 7 });
@@ -51,13 +57,41 @@ router.get(
   "/",
   authMiddleware,
   authorizePermission("hazards", "view"),
-  asyncHandler(async (_req, res) => {
-    const records = await Hazard.find()
+  asyncHandler(async (req, res) => {
+    const filters = {};
+    const { status, category, severity, location, assignedTo, search } = req.query;
+    if (status) filters.status = status;
+    if (category) filters.category = category;
+    if (severity) filters.severity = severity;
+    if (location) filters.location = new RegExp(escapeRegex(location), "i");
+    if (assignedTo) filters.assignedTo = assignedTo;
+    if (search) {
+      const regex = new RegExp(escapeRegex(search), "i");
+      filters.$or = [{ title: regex }, { description: regex }, { location: regex }];
+    }
+
+    const shouldPaginate = hasPagination(req.query);
+    const pagination = getPagination(req.query);
+    let query = Hazard.find(filters)
       .populate("reportedBy", "name role")
       .populate("assignedTo", "name role")
       .populate("correctiveActions.owner", "name role")
       .sort({ createdAt: -1 });
-    res.json({ success: true, records: records.map(toLegacyHazardRecord) });
+    if (shouldPaginate) {
+      query = query.skip(pagination.skip).limit(pagination.limit);
+    }
+
+    const [records, total] = await Promise.all([
+      query,
+      Hazard.countDocuments(filters)
+    ]);
+    res.json({
+      success: true,
+      records: records.map(toLegacyHazardRecord),
+      pagination: shouldPaginate
+        ? buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total })
+        : { total, unpaginated: true }
+    });
   })
 );
 

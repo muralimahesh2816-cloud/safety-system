@@ -28,6 +28,12 @@ const {
   normalizeChainagePayload,
   parseComparableChainage
 } = require("../utils/chainage");
+const {
+  escapeRegex,
+  getPagination,
+  buildPaginationMeta,
+  hasPagination
+} = require("../utils/pagination");
 
 const router = express.Router();
 const MB = 1024 * 1024;
@@ -581,26 +587,34 @@ const buildWorkQuery = (query = {}) => {
   const search = String(query.search || query.q || "").trim();
 
   if (query.status) {
-    filters.$or = [{ status: query.status }, { workflowStage: query.status }];
+    filters.$and = [
+      ...(filters.$and || []),
+      { $or: [{ status: query.status }, { workflowStage: query.status }] }
+    ];
   }
   if (query.workType) filters.workType = query.workType;
   if (query.plaza) filters.plaza = query.plaza;
-  if (query.location) filters.location = new RegExp(query.location, "i");
+  if (query.location) filters.location = new RegExp(escapeRegex(query.location), "i");
 
   if (search) {
-    const regex = new RegExp(search, "i");
-    filters.$or = [
-      { chainageFrom: regex },
-      { chainageTo: regex },
-      { chainageNo: regex },
-      { chainage: regex },
-      { location: regex },
-      { workType: regex },
-      { title: regex },
-      { checkedBy: regex },
-      { recommendedBy: regex },
-      { approvedBy: regex },
-      { createdByName: regex }
+    const regex = new RegExp(escapeRegex(search), "i");
+    filters.$and = [
+      ...(filters.$and || []),
+      {
+        $or: [
+          { chainageFrom: regex },
+          { chainageTo: regex },
+          { chainageNo: regex },
+          { chainage: regex },
+          { location: regex },
+          { workType: regex },
+          { title: regex },
+          { checkedBy: regex },
+          { recommendedBy: regex },
+          { approvedBy: regex },
+          { createdByName: regex }
+        ]
+      }
     ];
   }
 
@@ -621,11 +635,27 @@ router.get(
   authMiddleware,
   authorizePermission("work", "view"),
   asyncHandler(async (req, res) => {
-    const records = await WorkApproval.find(buildWorkQuery(req.query))
+    const filters = buildWorkQuery(req.query);
+    const shouldPaginate = hasPagination(req.query);
+    const pagination = getPagination(req.query);
+    let query = WorkApproval.find(filters)
       .populate("createdBy", "name role")
       .populate("assignedTo", "name role")
       .sort({ createdAt: -1 });
-    res.json({ success: true, records: records.map(toLegacyWorkRecord) });
+    if (shouldPaginate) {
+      query = query.skip(pagination.skip).limit(pagination.limit);
+    }
+    const [records, total] = await Promise.all([
+      query,
+      WorkApproval.countDocuments(filters)
+    ]);
+    res.json({
+      success: true,
+      records: records.map(toLegacyWorkRecord),
+      pagination: shouldPaginate
+        ? buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total })
+        : { total, unpaginated: true }
+    });
   })
 );
 

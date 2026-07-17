@@ -10,6 +10,12 @@ const { uploadAsset } = require("../utils/uploads");
 const { IMAGE_MIME_TYPES, VIDEO_MIME_TYPES, createMemoryUpload } = require("../utils/multer");
 const User = require("../models/User");
 const { createNotification } = require("../services/notifications.service");
+const {
+  escapeRegex,
+  getPagination,
+  buildPaginationMeta,
+  hasPagination
+} = require("../utils/pagination");
 
 const router = express.Router();
 const upload = createMemoryUpload({
@@ -23,20 +29,49 @@ router.get(
   authMiddleware,
   authorizePermission("training", "view"),
   asyncHandler(async (req, res) => {
-    const { category, search } = req.query;
+    const { category, search, role } = req.query;
     const query = { isPublished: true };
     if (category) query.category = category;
+    if (role) {
+      query.$and = [
+        {
+          $or: [
+            { recommendedForRoles: { $size: 0 } },
+            { recommendedForRoles: role }
+          ]
+        }
+      ];
+    }
     if (search) {
-      query.$or = [
-        { title: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } }
+      const regex = new RegExp(escapeRegex(search), "i");
+      query.$and = [
+        ...(query.$and || []),
+        {
+          $or: [{ title: regex }, { description: regex }]
+        }
       ];
     }
 
-    const records = await Training.find(query)
+    const shouldPaginate = hasPagination(req.query);
+    const pagination = getPagination(req.query);
+    let findQuery = Training.find(query)
       .populate("createdBy", "name role")
       .sort({ createdAt: -1 });
-    res.json({ success: true, records });
+    if (shouldPaginate) {
+      findQuery = findQuery.skip(pagination.skip).limit(pagination.limit);
+    }
+
+    const [records, total] = await Promise.all([
+      findQuery,
+      Training.countDocuments(query)
+    ]);
+    res.json({
+      success: true,
+      records,
+      pagination: shouldPaginate
+        ? buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total })
+        : { total, unpaginated: true }
+    });
   })
 );
 

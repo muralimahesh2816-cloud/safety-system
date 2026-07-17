@@ -1,15 +1,19 @@
 const express = require("express");
 const path = require("path");
 const { env, isProduction } = require("./config/env");
+const requestContext = require("./middleware/request-context.middleware");
 const applySecurityMiddleware = require("./middleware/security.middleware");
 const { csrfProtection } = require("./middleware/csrf.middleware");
 const apiRoutes = require("./routes");
 const workRoutes = require("./routes/work.routes");
 const { findCloudinaryAssetByFilename } = require("./utils/uploads");
+const { getHealthStatus } = require("./services/health.service");
 const { notFoundHandler, errorHandler } = require("./middleware/error.middleware");
 
 const app = express();
 
+app.set("trust proxy", 1);
+app.use(requestContext);
 applySecurityMiddleware(app);
 
 if (isProduction) {
@@ -170,11 +174,24 @@ app.use((req, res, next) => {
   csrfProtection(req, res, next);
 });
 
-app.get("/health", (_req, res) => {
+const healthHandler = async (_req, res, next) => {
+  try {
+    const health = await getHealthStatus();
+    res.status(health.success ? 200 : 503).json(health);
+  } catch (error) {
+    next(error);
+  }
+};
+
+app.get("/health", healthHandler);
+app.get("/api/v1/health", healthHandler);
+
+app.get("/version", (_req, res) => {
   res.json({
     success: true,
-    status: "ok",
-    service: "Safety HSE Enterprise API"
+    service: "Safety HSE Enterprise API",
+    environment: env.nodeEnv,
+    buildVersion: process.env.RENDER_GIT_COMMIT || process.env.BUILD_VERSION || "local"
   });
 });
 

@@ -741,6 +741,8 @@ export const authService = {
         };
       }
     ),
+  verifyOtp: async (payload) => (await client.post("/auth/verify-otp", payload)).data,
+  resendOtp: async (payload) => (await client.post("/auth/resend-otp", payload)).data,
   logout: async () => {
     try {
       return (await client.post("/auth/logout")).data;
@@ -1322,6 +1324,11 @@ export const settingsService = {
       async () => ({ success: true })
     );
   }
+};
+
+export const healthService = {
+  get: async () => (await client.get("/health")).data,
+  backupReadiness: async () => (await client.get("/backup/readiness")).data
 };
 
 export const notificationService = {

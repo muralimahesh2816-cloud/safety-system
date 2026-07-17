@@ -22,7 +22,18 @@ const loginSchema = z.object({
   password: z.string().min(1)
 });
 
+const otpSchema = z.object({
+  email: z.string().email(),
+  otp: z.string().regex(/^\d{6}$/, "OTP must be a 6 digit code")
+});
+
+const resendOtpSchema = z.object({
+  email: z.string().email()
+});
+
 module.exports = {
   registerSchema,
-  loginSchema
+  loginSchema,
+  otpSchema,
+  resendOtpSchema
 };

@@ -1,10 +1,12 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { v4: uuidv4 } = require("uuid");
 const { Readable } = require("stream");
 const cloudinary = require("cloudinary").v2;
 const { env, hasCloudinary, isProduction } = require("../config/env");
 const ApiError = require("./api-error");
+const logger = require("./logger");
 
 cloudinary.config({
   cloud_name: env.cloudinary.cloudName,
@@ -18,6 +20,19 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 const toPublicLocalPath = (filename) => `/uploads/${filename}`;
+
+const sanitizeOriginalName = (value = "") =>
+  String(value || "upload")
+    .replace(/\\/g, "/")
+    .split("/")
+    .pop()
+    .replace(/[^\w.\- ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120) || "upload";
+
+const getFileHash = (file) =>
+  crypto.createHash("sha256").update(file?.buffer || Buffer.alloc(0)).digest("hex");
 
 const cleanCloudinaryFolderPart = (value = "") =>
   String(value || "")
@@ -98,7 +113,11 @@ const saveLocally = async (file) => {
   return {
     url: toPublicLocalPath(filename),
     publicId: filename,
-    storage: "local"
+    storage: "local",
+    originalName: sanitizeOriginalName(file.originalname),
+    mimeType: file.mimetype,
+    size: file.size,
+    fileHash: getFileHash(file)
   };
 };
 
@@ -118,7 +137,11 @@ const uploadToCloudinary = (file, folder, resourceType = "auto") =>
           url: result.secure_url,
           publicId: result.public_id,
           folder: resolveCloudinaryFolder(folder),
-          storage: "cloudinary"
+          storage: "cloudinary",
+          originalName: sanitizeOriginalName(file.originalname),
+          mimeType: file.mimetype,
+          size: file.size,
+          fileHash: getFileHash(file)
         });
       }
     );
@@ -127,19 +150,39 @@ const uploadToCloudinary = (file, folder, resourceType = "auto") =>
 
 const uploadAsset = async (file, folder, resourceType = "auto") => {
   if (!file) return null;
+  const metadata = {
+    originalName: sanitizeOriginalName(file.originalname),
+    mimeType: file.mimetype,
+    size: file.size,
+    fileHash: getFileHash(file),
+    folder,
+    resourceType
+  };
 
   if (hasCloudinary) {
     try {
-      return await uploadToCloudinary(file, folder, resourceType);
+      const uploaded = await uploadToCloudinary(file, folder, resourceType);
+      logger.upload("info", "cloudinary_upload_success", metadata);
+      return uploaded;
     } catch (error) {
       if (isProduction) {
+        logger.upload("error", "cloudinary_upload_failed", {
+          ...metadata,
+          message: error.message
+        });
         throw new ApiError(502, "Cloudinary upload failed. Check Cloudinary environment variables.");
       }
+      logger.upload("warn", "cloudinary_upload_fallback_local", {
+        ...metadata,
+        message: error.message
+      });
       return saveLocally(file);
     }
   }
 
-  return saveLocally(file);
+  const uploaded = await saveLocally(file);
+  logger.upload("info", "local_upload_success", metadata);
+  return uploaded;
 };
 
 const uploadManyAssets = async (files, folder, resourceType = "auto") => {

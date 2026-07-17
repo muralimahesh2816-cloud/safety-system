@@ -25,12 +25,20 @@ const trainingSchema = new mongoose.Schema(
     thumbnail: {
       url: String,
       publicId: String,
-      storage: String
+      storage: String,
+      originalName: String,
+      mimeType: String,
+      size: Number,
+      fileHash: String
     },
     video: {
       url: String,
       publicId: String,
-      storage: String
+      storage: String,
+      originalName: String,
+      mimeType: String,
+      size: Number,
+      fileHash: String
     },
     tags: [String],
     durationMinutes: Number,
@@ -43,5 +51,9 @@ const trainingSchema = new mongoose.Schema(
 );
 
 trainingSchema.index({ category: 1, isPublished: 1 });
+trainingSchema.index({ isPublished: 1, createdAt: -1 });
+trainingSchema.index({ createdBy: 1, createdAt: -1 });
+trainingSchema.index({ recommendedForRoles: 1, isPublished: 1 });
+trainingSchema.index({ "completions.user": 1, "completions.isCompleted": 1 });
 
 module.exports = mongoose.model("Training", trainingSchema);

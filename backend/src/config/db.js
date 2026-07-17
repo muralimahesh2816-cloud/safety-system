@@ -33,11 +33,11 @@ const connectDb = async () => {
   mongoose.set("strictQuery", true);
   try {
     await mongoose.connect(env.mongoUri);
-    logger.info("MongoDB connected");
+    logger.database("info", "MongoDB connected");
   } catch (error) {
     const authInfo = parseMongoAuthInfo(env.mongoUri);
     if ((error?.message || "").toLowerCase().includes("bad auth")) {
-      logger.error("MongoDB authentication failed", {
+      logger.database("error", "MongoDB authentication failed", {
         host: authInfo.host || "unknown",
         username: authInfo.username || "unknown",
         hasDatabasePath: authInfo.hasDatabasePath,

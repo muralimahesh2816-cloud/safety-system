@@ -7,7 +7,9 @@ const authMiddleware = require("../middleware/auth.middleware");
 const audit = require("../middleware/audit.middleware");
 const {
   registerSchema,
-  loginSchema
+  loginSchema,
+  otpSchema,
+  resendOtpSchema
 } = require("../validators/auth.validators");
 const User = require("../models/User");
 const SessionToken = require("../models/SessionToken");
@@ -28,6 +30,7 @@ const {
 } = require("../utils/tokens");
 const { issueCsrfToken } = require("../middleware/csrf.middleware");
 const { authRateLimiter } = require("../middleware/rateLimit.middleware");
+const { setOtpForUser, verifyOtpForUser } = require("../services/auth.service");
 
 const router = express.Router();
 
@@ -188,6 +191,28 @@ router.post(
       throw new ApiError(403, "User is blocked", null, "USER_BLOCKED");
     }
 
+    const requiresOtp = Boolean(
+      env.enforceOtpAuth ||
+        user.isTwoFactorEnabled ||
+        settings?.security?.twoFactorAuthentication
+    );
+
+    if (requiresOtp) {
+      user.failedLoginAttempts = 0;
+      user.lockedUntil = null;
+      user.loginLockedUntil = null;
+      await user.save();
+
+      const otpResponse = await setOtpForUser(user, { force: true });
+      await audit(req, "otp_sent", "auth", { email: user.email }, user._id);
+      res.json({
+        success: true,
+        ...otpResponse,
+        email: user.email
+      });
+      return;
+    }
+
     user.failedLoginAttempts = 0;
     user.lockedUntil = null;
     user.lastLoginAt = new Date();
@@ -207,6 +232,56 @@ router.post(
       token: accessToken,
       csrfToken,
       user: buildUserResponse(user)
+    });
+  })
+);
+
+router.post(
+  "/verify-otp",
+  authRateLimiter,
+  validate(otpSchema),
+  asyncHandler(async (req, res) => {
+    const user = await User.findOne({ email: req.body.email });
+    if (!user) {
+      throw new ApiError(401, "Invalid or expired OTP");
+    }
+
+    await verifyOtpForUser(user, req.body.otp);
+    user.failedLoginAttempts = 0;
+    user.lockedUntil = null;
+    user.lastLoginAt = new Date();
+    appendLoginHistory(user, req, true);
+    await user.save();
+
+    const { accessToken, csrfToken } = await createSession(user, req, res);
+    await audit(req, "otp_verification", "auth", { email: user.email }, user._id);
+    await audit(req, "login", "auth", { email: user.email, otpVerified: true }, user._id);
+
+    res.json({
+      success: true,
+      token: accessToken,
+      csrfToken,
+      user: buildUserResponse(user)
+    });
+  })
+);
+
+router.post(
+  "/resend-otp",
+  authRateLimiter,
+  validate(resendOtpSchema),
+  asyncHandler(async (req, res) => {
+    const user = await User.findOne({ email: req.body.email });
+    if (!user || user.status !== "active") {
+      throw new ApiError(401, "Unable to resend OTP for this account");
+    }
+
+    const otpResponse = await setOtpForUser(user);
+    await audit(req, "otp_resend", "auth", { email: user.email }, user._id);
+    res.json({
+      success: true,
+      ...otpResponse,
+      email: user.email
     });
   })
 );
@@ -268,7 +343,12 @@ router.post(
   "/logout",
   asyncHandler(async (req, res) => {
     const token = req.cookies?.refreshToken || req.body?.refreshToken;
+    let session = null;
     if (token) {
+      session = await SessionToken.findOne({
+        tokenHash: hashToken(token),
+        revokedAt: null
+      }).select("user");
       await SessionToken.updateOne(
         { tokenHash: hashToken(token), revokedAt: null },
         { $set: { revokedAt: new Date() } }
@@ -281,6 +361,9 @@ router.post(
       path: "/",
       ...(isProduction ? { partitioned: true } : {})
     });
+    if (session?.user) {
+      await audit(req, "logout", "auth", { tokenRevoked: true }, session.user);
+    }
     res.json({ success: true, message: "Logged out" });
   })
 );

@@ -31,7 +31,14 @@ const env = {
     pass: process.env.SMTP_PASS || "",
     from: process.env.SMTP_FROM || process.env.SMTP_USER || ""
   },
-  sessionTimeoutMinutes: Number(process.env.SESSION_TIMEOUT_MINUTES || 30)
+  sessionTimeoutMinutes: Number(process.env.SESSION_TIMEOUT_MINUTES || 30),
+  enforceOtpAuth: process.env.ENFORCE_OTP_AUTH === "true",
+  allowLocalUploadsInProduction: process.env.ALLOW_LOCAL_UPLOADS_IN_PRODUCTION === "true",
+  backup: {
+    provider: process.env.BACKUP_PROVIDER || "manual",
+    storageUriConfigured: Boolean(process.env.BACKUP_STORAGE_URI),
+    retentionDays: Number(process.env.BACKUP_RETENTION_DAYS || 30)
+  }
 };
 
 const isProduction = env.nodeEnv === "production";
@@ -39,18 +46,53 @@ const hasCloudinary = Boolean(
   env.cloudinary.cloudName && env.cloudinary.apiKey && env.cloudinary.apiSecret
 );
 
-if (
-  isProduction &&
-  (!process.env.JWT_ACCESS_SECRET ||
+const validateEnvironment = () => {
+  const errors = [];
+  const warnings = [];
+
+  if (!env.mongoUri) errors.push("MONGODB_URI is required.");
+  if (!env.frontendUrl) errors.push("FRONTEND_URL is required.");
+  if (!env.backendPublicUrl) errors.push("BACKEND_PUBLIC_URL is required.");
+
+  if (
+    !process.env.JWT_ACCESS_SECRET ||
     !process.env.JWT_REFRESH_SECRET ||
     env.jwtAccessSecret.includes("change-me") ||
-    env.jwtRefreshSecret.includes("change-me"))
-) {
-  throw new Error("JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be set in production.");
-}
+    env.jwtRefreshSecret.includes("change-me")
+  ) {
+    const message = "JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be strong non-default values.";
+    if (isProduction) errors.push(message);
+    else warnings.push(message);
+  }
+
+  if (env.bcryptRounds < 10) {
+    warnings.push("BCRYPT_ROUNDS should be at least 10.");
+  }
+
+  if (isProduction) {
+    if (!env.smtp.host || !env.smtp.user || !env.smtp.pass || !env.smtp.from) {
+      errors.push("SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM are required in production for OTP/email delivery.");
+    }
+    if (!hasCloudinary && !env.allowLocalUploadsInProduction) {
+      errors.push("Cloudinary credentials are required in production unless ALLOW_LOCAL_UPLOADS_IN_PRODUCTION=true.");
+    }
+  }
+
+  if (errors.length) {
+    throw new Error(`Environment validation failed: ${errors.join(" ")}`);
+  }
+
+  if (warnings.length) {
+    // eslint-disable-next-line no-console
+    console.warn(`Environment validation warnings: ${warnings.join(" ")}`);
+  }
+};
+
+validateEnvironment();
 
 module.exports = {
   env,
   isProduction,
-  hasCloudinary
+  hasCloudinary,
+  validateEnvironment
 };

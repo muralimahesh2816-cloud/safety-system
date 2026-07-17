@@ -18,5 +18,6 @@ export const NAV_MODULES = [
   { key: "training", label: "Training" },
   { key: "users", label: "Users" },
   { key: "reports", label: "Reports" },
+  { key: "health", label: "System Health" },
   { key: "settings", label: "Settings" }
 ];

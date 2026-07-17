@@ -16,6 +16,7 @@ import HazardsPage from "./pages/HazardsPage";
 import TrainingPage from "./pages/TrainingPage";
 import UsersPage from "./pages/UsersPage";
 import ReportsPage from "./pages/ReportsPage";
+import SystemHealthPage from "./pages/SystemHealthPage";
 import SettingsPage from "./pages/SettingsPage";
 import { settingsService } from "./api/services";
 import { IMAGE_PLACEHOLDER_URL } from "./utils/media";
@@ -28,6 +29,7 @@ const moduleTitles = {
   training: "Training Streaming Portal",
   users: "User Governance",
   reports: "Enterprise Reporting",
+  health: "System Health",
   settings: "System Configuration"
 };
 
@@ -53,7 +55,7 @@ const ModuleGuard = ({ user, moduleKey, children }) => {
 };
 
 const AppContent = () => {
-  const { user, loading, isAuthenticated, login, logout } = useAuth();
+  const { user, loading, isAuthenticated, login, verifyOtp, resendOtp, logout } = useAuth();
   const [activeModule, setActiveModule] = useState("dashboard");
   const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(30);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsed);
@@ -78,6 +80,8 @@ const AppContent = () => {
         return <UsersPage currentUser={user} />;
       case "reports":
         return <ReportsPage />;
+      case "health":
+        return <SystemHealthPage />;
       case "settings":
         return <SettingsPage user={user} />;
       case "dashboard":
@@ -230,7 +234,7 @@ const AppContent = () => {
   }
 
   if (!isAuthenticated) {
-    return <LoginPage onLogin={login} />;
+    return <LoginPage onLogin={login} onVerifyOtp={verifyOtp} onResendOtp={resendOtp} />;
   }
 
   return (

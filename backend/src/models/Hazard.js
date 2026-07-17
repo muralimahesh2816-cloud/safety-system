@@ -4,7 +4,11 @@ const assetSchema = new mongoose.Schema(
   {
     url: String,
     publicId: String,
-    storage: String
+    storage: String,
+    originalName: String,
+    mimeType: String,
+    size: Number,
+    fileHash: String
   },
   { _id: false }
 );
@@ -73,5 +77,9 @@ const hazardSchema = new mongoose.Schema(
 );
 
 hazardSchema.index({ status: 1, category: 1, severity: 1 });
+hazardSchema.index({ status: 1, createdAt: -1 });
+hazardSchema.index({ location: 1, createdAt: -1 });
+hazardSchema.index({ reportedBy: 1, createdAt: -1 });
+hazardSchema.index({ assignedTo: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Hazard", hazardSchema);

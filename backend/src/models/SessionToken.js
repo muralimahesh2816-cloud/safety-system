@@ -13,6 +13,7 @@ const sessionTokenSchema = new mongoose.Schema(
 );
 
 sessionTokenSchema.index({ user: 1, createdAt: -1 });
+sessionTokenSchema.index({ user: 1, revokedAt: 1, expiresAt: 1 });
 sessionTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model("SessionToken", sessionTokenSchema);

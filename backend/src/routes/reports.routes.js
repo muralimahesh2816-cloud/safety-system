@@ -2,6 +2,7 @@ const express = require("express");
 const asyncHandler = require("../utils/async-handler");
 const authMiddleware = require("../middleware/auth.middleware");
 const { authorizePermission } = require("../middleware/rbac.middleware");
+const audit = require("../middleware/audit.middleware");
 const WorkApproval = require("../models/WorkApproval");
 const Hazard = require("../models/Hazard");
 const User = require("../models/User");
@@ -171,13 +172,14 @@ router.get(
   "/work",
   authMiddleware,
   authorizePermission("reports", "view"),
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
     const records = await WorkApproval.find()
       .populate("createdBy", "name role")
       .select(
         "title plaza approvalNumber workType description location chainage chainageNo chainageFrom chainageTo approvedChainage completedChainageFrom completedChainageTo remainingChainageFrom remainingChainageTo partialCompletionReason completion workersCount priority status workflowStage createdBy createdByName createdByRole checkedBy checkedByRole checkedDescription checkedAt checked recommendedBy recommendedByRole recommendedDescription recommendedAt recommended approvedBy approvedByRole approvalDescription approvedAt approved returnedBy returnedByRole returnDescription returnStage returnedAt returnedHistory completedBy completedByRole completionDescription completedAt beforeImages afterImages beforeVideos afterVideos beforeImage afterImage beforeVideo afterVideo timeline chainageAuditHistory createdAt updatedAt"
       )
       .sort({ createdAt: -1 });
+    await audit(req, "report_work_view", "reports", { type: "work", rows: records.length });
     res.json(records.map(toLegacyWorkRecord));
   })
 );
@@ -186,7 +188,7 @@ router.get(
   "/hazard",
   authMiddleware,
   authorizePermission("reports", "view"),
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
     const records = await Hazard.find()
       .populate("reportedBy", "name")
       .populate("correctiveActions.owner", "name")
@@ -194,6 +196,7 @@ router.get(
         "title date plaza location reportedBy reportedByName category description severity likelihood riskScore action correctiveActions closureNotes status evidenceImages closureImages beforeImage afterImage createdAt updatedAt"
       )
       .sort({ createdAt: -1 });
+    await audit(req, "report_hazard_view", "reports", { type: "hazard", rows: records.length });
     res.json(records.map(toLegacyHazardRecord));
   })
 );
@@ -265,6 +268,11 @@ router.get(
       }
     };
 
+    await audit(req, "report_analytics_view", "reports", {
+      period,
+      totals: analytics.totals
+    });
+
     res.json({
       success: true,
       analytics,
@@ -295,6 +303,11 @@ router.get(
       training: filterByPeriod(training, period)
     };
     const rows = toRows(filtered);
+    await audit(req, "report_export", "reports", {
+      format,
+      period,
+      rows: rows.length
+    });
 
     if (format === "csv") {
       const csv = buildCsv(rows);

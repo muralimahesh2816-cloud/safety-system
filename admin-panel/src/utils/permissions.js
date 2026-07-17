@@ -155,6 +155,7 @@ const moduleAliases = {
   training: "training",
   reports: "reports",
   users: "users",
+  health: "settings",
   settings: "settings"
 };
 
