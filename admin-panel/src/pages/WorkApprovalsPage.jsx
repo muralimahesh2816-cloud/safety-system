@@ -8,6 +8,7 @@ import MediaStudioModal from "../components/common/MediaStudioModal";
 import SafeChartContainer from "../components/common/SafeChartContainer";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import WorkApprovalDetailsModal from "../components/modals/WorkApprovalDetailsModal";
+import WorkCompletionSummaryCard from "../components/work/WorkCompletionSummaryCard";
 import { workService } from "../api/services";
 import {
   closeLoadingPopup,
@@ -19,10 +20,11 @@ import {
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
 import {
-  formatChainageRange,
+  getChainageDisplay,
   getChainageFrom,
   getChainageTo,
   matchesChainageSearch,
+  normalizeWorkStage,
   validateChainageRange
 } from "../utils/chainage";
 import { checkedByUsers, recommendedByUsers, statusColors, workTypes } from "../config/workApprovalConfig";
@@ -89,14 +91,7 @@ const getDefaultQueueFilter = (user = {}) => {
   if (APPROVAL_ROLES.includes(role)) return "pending_approval";
   return "my_created";
 };
-const getWorkflowStage = (work = {}) => {
-  const status = work.workflowStage || work.status || "";
-  if (WORKFLOW_STAGES.includes(status)) return status;
-  if (status === "Pending Approval") return "Pending Final Approval";
-  if (status === "Pending" || status === "Under Review" || !status) return "Pending Check";
-  if (status === "Rejected") return "Returned for Correction";
-  return status;
-};
+const getWorkflowStage = (work = {}) => normalizeWorkStage(work);
 const getRequiredAction = (work = {}) => ({
   "Pending Check": "Awaiting Check",
   "Pending Recommendation": "Awaiting Recommendation",
@@ -300,11 +295,15 @@ const WorkApprovalsPage = ({ user }) => {
   const [chainageErrors, setChainageErrors] = useState({ chainageFrom: "", chainageTo: "" });
   const [editChainageErrors, setEditChainageErrors] = useState({ chainageFrom: "", chainageTo: "" });
   const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [pagination, setPagination] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [busyWorkId, setBusyWorkId] = useState("");
   const [editingWork, setEditingWork] = useState(null);
   const [editForm, setEditForm] = useState(initialForm);
   const [editSaving, setEditSaving] = useState(false);
   const submitLockRef = useRef(false);
+  const submissionKeyRef = useRef("");
   const workActionLockRef = useRef(false);
   const editLockRef = useRef(false);
 
@@ -319,16 +318,19 @@ const WorkApprovalsPage = ({ user }) => {
     [user]
   );
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
+  const fetchAll = useCallback(async ({ page = 1, append = false } = {}) => {
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     setError("");
     try {
-      const workRes = await workService.list();
-      setRecords(workRes.records || []);
+      const workRes = await workService.list({ page, limit: 25 });
+      setRecords((previous) => append ? [...previous, ...(workRes.records || [])] : workRes.records || []);
+      setPagination(workRes.pagination || null);
     } catch (fetchError) {
       setError(fetchError?.response?.data?.message || "Unable to load work approvals");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
@@ -376,34 +378,47 @@ const WorkApprovalsPage = ({ user }) => {
     if (submitLockRef.current) return;
     submitLockRef.current = true;
     setSubmitting(true);
+    setUploadProgress(0);
     await showLoadingPopup("Uploading Please Wait...", "Submitting work approval...");
 
     let uploadErrorMessage = "";
     try {
-      await workService.create({
+      if (!submissionKeyRef.current) {
+        submissionKeyRef.current = window.crypto?.randomUUID?.() || `work-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      }
+      const response = await workService.create({
         ...form,
-        ...chainageValidation.values,
-        chainage: chainageValidation.values.chainageFrom,
-        chainageNo: chainageValidation.values.chainageFrom,
+        idempotencyKey: submissionKeyRef.current,
+        requestedChainageFrom: chainageValidation.values.chainageFrom,
+        requestedChainageTo: chainageValidation.values.chainageTo,
         title: form.title || `${form.workType} - ${form.location}`,
         workersCount: Number(form.workersCount),
         beforeImages,
-        beforeVideos
+        beforeVideos,
+        onUploadProgress: (progressEvent) => {
+          if (!progressEvent.total) return;
+          setUploadProgress(Math.round((progressEvent.loaded / progressEvent.total) * 100));
+        }
       });
+      if (response.work) {
+        setRecords((previous) => [response.work, ...previous.filter((item) => getWorkRecordId(item) !== getWorkRecordId(response.work))]);
+        setPagination((previous) => previous ? { ...previous, total: previous.total + 1 } : previous);
+      }
       setForm(initialForm);
       setChainageErrors({ chainageFrom: "", chainageTo: "" });
       setBeforeImages([]);
       setBeforeVideos([]);
       if (beforePreview?.startsWith("blob:")) URL.revokeObjectURL(beforePreview);
       setBeforePreview("");
+      submissionKeyRef.current = "";
       await showSuccessPopup("Work Approval Submitted Successfully");
-      fetchAll();
     } catch (submitError) {
       uploadErrorMessage = getApiErrorMessage(submitError, "Failed to submit work approval.");
       setError(uploadErrorMessage);
     } finally {
       submitLockRef.current = false;
       setSubmitting(false);
+      setUploadProgress(0);
       await closeLoadingPopup();
     }
 
@@ -489,7 +504,6 @@ const WorkApprovalsPage = ({ user }) => {
       setRecords((prev) => prev.map((item) => (getWorkRecordId(item) === id ? updatedWork : item)));
       setSelectedWork((prev) => (prev && getWorkRecordId(prev) === id ? updatedWork : prev));
       await showSuccessPopup(actionConfig.success);
-      fetchAll();
     } catch (statusError) {
       statusErrorMessage = getApiErrorMessage(statusError, "Workflow action failed");
       setError(statusErrorMessage);
@@ -543,7 +557,6 @@ const WorkApprovalsPage = ({ user }) => {
       setRecords((prev) => prev.map((item) => (getWorkRecordId(item) === id ? updatedWork : item)));
       setSelectedWork((prev) => (prev && getWorkRecordId(prev) === id ? updatedWork : prev));
       await showSuccessPopup("Work Marked Completed Successfully");
-      fetchAll();
     } catch (uploadError) {
       uploadErrorMessage = getApiErrorMessage(uploadError, "Image upload failed");
       setError(uploadErrorMessage);
@@ -579,7 +592,6 @@ const WorkApprovalsPage = ({ user }) => {
       await workService.remove(id);
       setRecords((prev) => prev.filter((item) => getWorkRecordId(item) !== id));
       await showSuccessPopup("Work Approval Deleted Successfully");
-      await fetchAll();
     } catch (deleteError) {
       const message = deleteError?.response?.data?.message || "Delete failed";
       setError(message);
@@ -637,7 +649,8 @@ const WorkApprovalsPage = ({ user }) => {
         workType: editForm.workType,
         category: editForm.category,
         location: editForm.location,
-        ...chainageValidation.values,
+        requestedChainageFrom: chainageValidation.values.chainageFrom,
+        requestedChainageTo: chainageValidation.values.chainageTo,
         chainage: chainageValidation.values.chainageFrom,
         chainageNo: chainageValidation.values.chainageFrom,
         workersCount: Number(editForm.workersCount),
@@ -653,7 +666,6 @@ const WorkApprovalsPage = ({ user }) => {
       setSelectedWork((prev) => (prev && getWorkRecordId(prev) === id ? updatedWork : prev));
       setEditingWork(null);
       await showSuccessPopup("Work Approval Updated Successfully");
-      fetchAll();
     } catch (editError) {
       const message = editError?.response?.data?.message || editError?.message || "Work edit failed";
       setError(message);
@@ -953,7 +965,7 @@ const WorkApprovalsPage = ({ user }) => {
               disabled={submitting}
               className="w-full rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-3 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "Uploading..." : "Submit Work"}
+              {submitting ? `Uploading${uploadProgress ? ` ${uploadProgress}%` : "..."}` : "Submit Work"}
             </button>
           </form>
 
@@ -1221,7 +1233,8 @@ const WorkApprovalsPage = ({ user }) => {
 
                 const recordId = getWorkRecordId(work);
                 const workflowStage = getWorkflowStage(work);
-                const workCompleted = workflowStage === "Completed";
+                const workCompleted = ["Completed", "Partially Completed"].includes(workflowStage);
+                const chainageDisplay = getChainageDisplay(work, true);
                 const statusSinceText = getWorkStatusSinceText(work);
                 const actionRequired = getRequiredAction(work);
 
@@ -1264,39 +1277,27 @@ const WorkApprovalsPage = ({ user }) => {
                           )}
                         </button>
                         <div className="min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-cyan-300">
+                            {work.approvalNumber || "Work Approval"}
+                          </p>
                           <p className="truncate text-base font-semibold text-white">{work.workType || work.title || "Work Approval"}</p>
                           <p className="mt-1 text-xs text-slate-300">
-                            {work.location || "-"} | {formatChainageRange(work, true)}
+                            {work.location || "-"} | {chainageDisplay.label}: {chainageDisplay.range}
                           </p>
-                          <p className="mt-1 text-xs text-slate-400">
-                            Approved Chainage: {work.approvedChainageFrom || getChainageFrom(work) || "-"} to {work.approvedChainageTo || getChainageTo(work) || "-"}
-                          </p>
-                          {work.completedChainageFrom || work.completedChainageTo ? (
-                            <p className="mt-1 text-xs text-lime-200">
-                              Completed Chainage: {work.completedChainageFrom || "-"} to {work.completedChainageTo || "-"}
-                            </p>
-                          ) : null}
                           <p className="mt-1 text-xs text-slate-300">Created By: {getWorkReporterName(work) || "-"}</p>
-                          {work.checkedBy || work.recommendedBy ? (
-                            <p className="mt-1 text-xs text-slate-400">
-                              {work.checkedBy ? `Checked: ${work.checkedBy}` : ""}
-                              {work.checkedBy && work.recommendedBy ? " | " : ""}
-                              {work.recommendedBy ? `Recommended: ${work.recommendedBy}` : ""}
-                            </p>
-                          ) : null}
-                          {getApprovedByName(work) ? (
-                            <p className="mt-1 text-xs text-slate-400">
-                              Approved By: {getApprovedByName(work)}
-                            </p>
-                          ) : null}
                           <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getStageBadgeClass(workflowStage)}`}>
-                              {workflowStage}
-                            </span>
-                            <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-100">
-                              {actionRequired}
-                            </span>
+                            {!workCompleted ? (
+                              <>
+                                <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getStageBadgeClass(workflowStage)}`}>
+                                  {workflowStage}
+                                </span>
+                                <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-100">
+                                  {actionRequired}
+                                </span>
+                              </>
+                            ) : null}
                             <span className="text-[11px] text-slate-400">Workers: {work.workersCount || "-"}</span>
+                            <span className="text-[11px] text-slate-400">Media: {work.mediaCount || beforeMediaItems.length + afterMediaItems.length}</span>
                           </div>
                           <p className="mt-2 text-xs text-slate-400">{formatDateTime(work.createdAt)}</p>
                         </div>
@@ -1418,11 +1419,7 @@ const WorkApprovalsPage = ({ user }) => {
                       </div>
                     </div>
 
-                    {workCompleted ? (
-                      <p className="mt-3 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100">
-                        {workflowStage} work is locked. Status cannot be changed.
-                      </p>
-                    ) : null}
+                    {workCompleted ? <WorkCompletionSummaryCard work={work} className="mt-3" /> : null}
 
                     <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-2.5">
                       <p className="mb-1 text-xs text-slate-300">Timeline</p>
@@ -1451,6 +1448,18 @@ const WorkApprovalsPage = ({ user }) => {
                 <p className="text-sm text-slate-300">
                   No work approval records available for the selected filter.
                 </p>
+              ) : null}
+              {pagination?.hasNextPage ? (
+                <div className="flex justify-center pt-2">
+                  <button
+                    type="button"
+                    disabled={loadingMore}
+                    onClick={() => fetchAll({ page: pagination.page + 1, append: true })}
+                    className="rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-5 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loadingMore ? "Loading..." : `Load More (${records.length} of ${pagination.total})`}
+                  </button>
+                </div>
               ) : null}
             </div>
           )}

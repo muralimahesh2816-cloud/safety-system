@@ -1,4 +1,10 @@
 const mongoose = require("mongoose");
+const {
+  WORK_STAGES,
+  WORK_STAGE_VALUES,
+  isPostApprovalStage,
+  normalizeWorkStage
+} = require("../constants/work-status");
 
 const assetSchema = new mongoose.Schema(
   {
@@ -46,6 +52,8 @@ const completionSchema = new mongoose.Schema(
     remainingChainageFrom: { type: String, default: "" },
     remainingChainageTo: { type: String, default: "" },
     partialCompletionReason: { type: String, default: "" },
+    completionPercentage: { type: Number, min: 0, max: 100, default: 0 },
+    remainingChainageSegments: { type: [chainageRangeSchema], default: [] },
     date: Date
   },
   { _id: false }
@@ -135,9 +143,13 @@ const workApprovalSchema = new mongoose.Schema(
     location: { type: String, required: true },
     chainage: { type: String, default: "" },
     chainageNo: { type: String, default: "" },
-    chainageFrom: { type: String, required: true, trim: true },
-    chainageTo: { type: String, required: true, trim: true },
+    chainageFrom: { type: String, default: "", trim: true },
+    chainageTo: { type: String, default: "", trim: true },
+    requestedChainageFrom: { type: String, required: true, trim: true },
+    requestedChainageTo: { type: String, required: true, trim: true },
     approvedChainage: { type: chainageRangeSchema, default: () => ({}) },
+    approvedChainageFrom: { type: String, default: "", trim: true },
+    approvedChainageTo: { type: String, default: "", trim: true },
     workersCount: { type: Number, default: 0 },
     priority: {
       type: String,
@@ -149,31 +161,17 @@ const workApprovalSchema = new mongoose.Schema(
       enum: [
         "Pending",
         "Under Review",
-        "Pending Check",
-        "Pending Recommendation",
         "Pending Approval",
-        "Pending Final Approval",
-        "Approved",
-        "Partially Completed",
         "Rejected",
-        "Returned for Correction",
-        "Completed"
+        "Final Approved",
+        ...WORK_STAGE_VALUES
       ],
-      default: "Pending Check"
+      default: WORK_STAGES.PENDING_CHECK
     },
     workflowStage: {
       type: String,
-      enum: [
-        "Pending Check",
-        "Pending Recommendation",
-        "Pending Approval",
-        "Pending Final Approval",
-        "Approved",
-        "Partially Completed",
-        "Returned for Correction",
-        "Completed"
-      ],
-      default: "Pending Check"
+      enum: ["Pending Approval", ...WORK_STAGE_VALUES],
+      default: WORK_STAGES.PENDING_CHECK
     },
     beforeImages: [assetSchema],
     afterImages: [assetSchema],
@@ -219,6 +217,8 @@ const workApprovalSchema = new mongoose.Schema(
     remainingChainageFrom: { type: String, default: "" },
     remainingChainageTo: { type: String, default: "" },
     partialCompletionReason: { type: String, default: "" },
+    completionPercentage: { type: Number, min: 0, max: 100, default: 0 },
+    remainingChainageSegments: { type: [chainageRangeSchema], default: [] },
     completedAt: Date,
     completion: completionSchema,
     workflow: [workflowSchema],
@@ -238,6 +238,7 @@ const workApprovalSchema = new mongoose.Schema(
     createdByName: { type: String, default: "" },
     createdByRole: { type: String, default: "" },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    idempotencyKey: { type: String, trim: true },
     startDate: Date,
     dueDate: Date
   },
@@ -245,25 +246,26 @@ const workApprovalSchema = new mongoose.Schema(
 );
 
 workApprovalSchema.pre("validate", function normalizeChainageRange() {
-  const legacyChainage = this.chainageNo || this.chainage || "";
-  if (!this.chainageFrom) this.chainageFrom = legacyChainage;
-  if (!this.chainageTo) this.chainageTo = legacyChainage;
-  if (!this.chainage) this.chainage = this.chainageFrom;
-  if (!this.chainageNo) this.chainageNo = this.chainageFrom;
+  const legacyFrom = this.chainageFrom || this.chainageNo || this.chainage || "";
+  const legacyTo = this.chainageTo || legacyFrom;
+  if (!this.requestedChainageFrom) this.requestedChainageFrom = legacyFrom;
+  if (!this.requestedChainageTo) this.requestedChainageTo = legacyTo;
   if (!this.approvedChainage) this.approvedChainage = {};
-  if (!this.approvedChainage.from) this.approvedChainage.from = this.chainageFrom;
-  if (!this.approvedChainage.to) this.approvedChainage.to = this.chainageTo;
+  const normalizedStage = normalizeWorkStage(this);
+  if (isPostApprovalStage(normalizedStage)) {
+    const approvedFrom = this.approvedChainageFrom || this.approvedChainage.from || this.requestedChainageFrom;
+    const approvedTo = this.approvedChainageTo || this.approvedChainage.to || this.requestedChainageTo;
+    this.approvedChainageFrom = approvedFrom;
+    this.approvedChainageTo = approvedTo;
+    this.approvedChainage.from = approvedFrom;
+    this.approvedChainage.to = approvedTo;
+  }
   if (!this.approvalNumber && this._id) {
     this.approvalNumber = `WA-${String(this._id).slice(-8).toUpperCase()}`;
   }
   if (!this.workflowStage) {
-    if (this.status === "Completed") this.workflowStage = "Completed";
-    else if (this.status === "Partially Completed") this.workflowStage = "Partially Completed";
-    else if (this.status === "Approved") this.workflowStage = "Approved";
-    else if (this.status === "Rejected") this.workflowStage = "Returned for Correction";
-    else if (this.recommendedAt || this.recommendedBy) this.workflowStage = "Pending Final Approval";
-    else if (this.checkedAt || this.checkedBy) this.workflowStage = "Pending Recommendation";
-    else this.workflowStage = "Pending Check";
+    const derivedStage = normalizeWorkStage(this);
+    this.workflowStage = derivedStage === WORK_STAGES.UNKNOWN ? WORK_STAGES.PENDING_CHECK : derivedStage;
   }
   if (this.workflowStage === "Pending Approval") this.workflowStage = "Pending Final Approval";
   if (this.status === "Pending Approval") this.status = "Pending Final Approval";
@@ -279,5 +281,12 @@ workApprovalSchema.index({ createdBy: 1, createdAt: -1 });
 workApprovalSchema.index({ location: 1, createdAt: -1 });
 workApprovalSchema.index({ approvalNumber: 1 });
 workApprovalSchema.index({ status: 1, workflowStage: 1, createdAt: -1 });
+workApprovalSchema.index({ workType: 1, createdAt: -1 });
+workApprovalSchema.index({ location: 1, workflowStage: 1, createdAt: -1 });
+workApprovalSchema.index({ checkedById: 1, workflowStage: 1, createdAt: -1 });
+workApprovalSchema.index({ recommendedById: 1, workflowStage: 1, createdAt: -1 });
+workApprovalSchema.index({ approvedById: 1, workflowStage: 1, createdAt: -1 });
+workApprovalSchema.index({ completedAt: -1 });
+workApprovalSchema.index({ idempotencyKey: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model("WorkApproval", workApprovalSchema);

@@ -21,7 +21,12 @@ import {
 import { formatDateTime } from "../../utils/format";
 import { getMediaUrl } from "../../utils/media";
 import { exportWorkApprovalDetailsPdf } from "../../utils/detailPdfExport";
-import { formatChainageRange, getChainageFrom, getChainageTo } from "../../utils/chainage";
+import {
+  getApprovedChainageFrom,
+  getApprovedChainageTo,
+  getChainageDisplay
+} from "../../utils/chainage";
+import WorkCompletionSummaryCard from "../work/WorkCompletionSummaryCard";
 
 const WORKFLOW_STAGES = [
   "Pending Check",
@@ -243,8 +248,8 @@ const ActionPanel = ({
   const isChecker = Boolean(userId && checkerId && userId === checkerId);
   const recommenderId = String(safeWork.recommendedById || safeWork.recommendedBy?._id || "");
   const isRecommender = Boolean(userId && recommenderId && userId === recommenderId);
-  const approvedChainageFrom = safeWork.approvedChainageFrom || safeWork.approvedChainage?.from || getChainageFrom(safeWork);
-  const approvedChainageTo = safeWork.approvedChainageTo || safeWork.approvedChainage?.to || getChainageTo(safeWork);
+  const approvedChainageFrom = getApprovedChainageFrom(safeWork);
+  const approvedChainageTo = getApprovedChainageTo(safeWork);
   const currentAction = {
     "Pending Check": {
       action: "check",
@@ -272,35 +277,7 @@ const ActionPanel = ({
     }
   }[stage];
 
-  if (stage === "Completed") {
-    return (
-      <div className="rounded-3xl border border-emerald-300/20 bg-emerald-500/[0.08] p-4">
-        <div className="flex items-center gap-2 text-emerald-100">
-          <CheckCircle2 size={18} />
-          <p className="font-semibold">{stage === "Partially Completed" ? "Work partially completed" : "Workflow completed"}</p>
-        </div>
-        <p className="mt-2 text-sm text-slate-300">
-          Work was completed by {safeWork.completedBy || safeWork.approvedBy || "-"} on {formatDateTime(safeWork.completedAt || safeWork.completionDate || safeWork.updatedAt)}.
-        </p>
-        {safeWork.completedChainageFrom || safeWork.completedChainageTo ? (
-          <p className="mt-3 text-sm text-slate-200">
-            Completed chainage: {safeWork.completedChainageFrom || "-"} to {safeWork.completedChainageTo || "-"}
-          </p>
-        ) : null}
-        {safeWork.remainingChainageFrom || safeWork.remainingChainageTo ? (
-          <p className="mt-1 text-sm text-lime-200">
-            Remaining chainage: {safeWork.remainingChainageFrom || "-"} to {safeWork.remainingChainageTo || "-"}
-          </p>
-        ) : null}
-        {safeWork.partialCompletionReason ? (
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-200">{safeWork.partialCompletionReason}</p>
-        ) : null}
-        {safeWork.completionDescription ? (
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-200">{safeWork.completionDescription}</p>
-        ) : null}
-      </div>
-    );
-  }
+  if (stage === "Completed") return null;
 
   if (stage === "Returned for Correction") {
     return (
@@ -613,6 +590,7 @@ const WorkApprovalDetailsModal = ({
   const completionDate = ["Completed", "Partially Completed"].includes(stage)
     ? safeWork?.completedAt || safeWork?.completionDate || safeWork?.updatedAt
     : safeWork?.completionDate;
+  const chainageDisplay = getChainageDisplay(safeWork || {});
   const steps = useMemo(
     () => [
       {
@@ -681,11 +659,11 @@ const WorkApprovalDetailsModal = ({
     const defaultCompletedFrom =
       stage === "Partially Completed"
         ? safeWork?.remainingChainageFrom || safeWork?.completion?.remainingChainageFrom
-        : safeWork?.approvedChainageFrom || safeWork?.approvedChainage?.from || getChainageFrom(safeWork || {});
+        : getApprovedChainageFrom(safeWork || {});
     const defaultCompletedTo =
       stage === "Partially Completed"
         ? safeWork?.remainingChainageTo || safeWork?.completion?.remainingChainageTo
-        : safeWork?.approvedChainageTo || safeWork?.approvedChainage?.to || getChainageTo(safeWork || {});
+        : getApprovedChainageTo(safeWork || {});
     setCompletedChainageFrom(defaultCompletedFrom || "");
     setCompletedChainageTo(defaultCompletedTo || "");
     setPartialCompletionReason("");
@@ -797,15 +775,7 @@ const WorkApprovalDetailsModal = ({
                     <InfoRow label="Approval No" value={safeWork.approvalNumber} />
                     <InfoRow label="Work Type" value={safeWork.workType || safeWork.title} icon={Wrench} />
                     <InfoRow label="Location" value={safeWork.location || safeWork.plaza} icon={MapPin} />
-                    <InfoRow label="Chainage From" value={getChainageFrom(safeWork)} />
-                    <InfoRow label="Chainage To" value={getChainageTo(safeWork)} />
-                    <InfoRow label="Chainage Range" value={formatChainageRange(safeWork)} />
-                    <InfoRow label="Approved From" value={safeWork.approvedChainageFrom || safeWork.approvedChainage?.from || getChainageFrom(safeWork)} />
-                    <InfoRow label="Approved To" value={safeWork.approvedChainageTo || safeWork.approvedChainage?.to || getChainageTo(safeWork)} />
-                    <InfoRow label="Completed From" value={safeWork.completedChainageFrom} />
-                    <InfoRow label="Completed To" value={safeWork.completedChainageTo} />
-                    <InfoRow label="Remaining From" value={safeWork.remainingChainageFrom} />
-                    <InfoRow label="Remaining To" value={safeWork.remainingChainageTo} />
+                    <InfoRow label={chainageDisplay.label} value={chainageDisplay.range} />
                     <InfoRow label="Workers Count" value={safeWork.workersCount} icon={UsersRound} />
                     <InfoRow label="Created By" value={createdBy} icon={UserRound} />
                     <InfoRow label="Created Role" value={safeWork.createdByRole} />
@@ -817,14 +787,12 @@ const WorkApprovalDetailsModal = ({
                     <InfoRow label="Recommended Date" value={safeWork.recommendedAt ? formatDateTime(safeWork.recommendedAt) : "-"} />
                     <InfoRow label="Approved By" value={safeWork.approvedByName || safeWork.approvedBy} />
                     <InfoRow label="Approved Date" value={safeWork.approvedAt || safeWork.approvalDate ? formatDateTime(safeWork.approvedAt || safeWork.approvalDate) : "-"} />
-                    <InfoRow label="Completion Date" value={completionDate ? formatDateTime(completionDate) : "-"} />
                   </div>
 
                   <DescriptionCard title="Work Description" value={safeWork.description || safeWork.workDescription || safeWork.details} />
                   {safeWork.checkedDescription ? <DescriptionCard title="Review Findings" value={safeWork.checkedDescription} tone="emerald" /> : null}
                   {safeWork.recommendedDescription ? <DescriptionCard title="Recommendation Remarks" value={safeWork.recommendedDescription} tone="emerald" /> : null}
                   {safeWork.approvalDescription ? <DescriptionCard title="Approval Remarks" value={safeWork.approvalDescription} tone="emerald" /> : null}
-                  {safeWork.partialCompletionReason ? <DescriptionCard title="Partial Completion Reason" value={safeWork.partialCompletionReason} tone="emerald" /> : null}
                   {safeWork.returnDescription ? <DescriptionCard title="Correction Reason" value={safeWork.returnDescription} tone="rose" /> : null}
 
                   <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
@@ -850,6 +818,9 @@ const WorkApprovalDetailsModal = ({
                 </div>
 
                 <div className="space-y-4">
+                  {["Completed", "Partially Completed"].includes(stage) ? (
+                    <WorkCompletionSummaryCard work={safeWork} />
+                  ) : null}
                   <ActionPanel
                     work={safeWork}
                     user={user}

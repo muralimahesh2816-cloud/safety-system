@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "migrate:work-chainage": "node backend/scripts/migrate-work-chainage-range.js",
+    "audit:work-fields": "node backend/scripts/audit-work-approval-fields.js",
+    "migrate:work-chainage": "node backend/scripts/migrate-work-approval-chainage.js",
     "test": "node backend/tests/production-readiness.test.js"
   },
   "keywords": [],

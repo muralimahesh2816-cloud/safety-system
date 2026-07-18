@@ -5,6 +5,7 @@ const Training = require("../models/Training");
 const AuditLog = require("../models/AuditLog");
 const { ROLES } = require("../constants/roles");
 const { env } = require("../config/env");
+const { WORK_STAGES } = require("../constants/work-status");
 
 const monthLabel = (date) =>
   new Intl.DateTimeFormat("en-US", {
@@ -105,7 +106,90 @@ const WORK_ACTION_ROLES = {
 const userCan = (user, action) => {
   const role = user?.role;
   if ([ROLES.ADMIN, ROLES.SUPER_ADMIN].includes(role) && env.workflowAdminOverrideEnabled) return true;
-  return (WORK_ACTION_ROLES[action] || []).includes(role) && user?.permissions?.work?.[action] === true;
+  return (WORK_ACTION_ROLES[action] || []).includes(role) && user?.permissions?.work?.[action] !== false;
+};
+
+const matchesStage = (values) => ({
+  $expr: {
+    $in: [
+      {
+        $cond: [
+          {
+            $and: [
+              { $ne: [{ $ifNull: ["$workflowStage", ""] }, ""] },
+              { $ne: ["$workflowStage", null] }
+            ]
+          },
+          "$workflowStage",
+          "$status"
+        ]
+      },
+      values
+    ]
+  }
+});
+
+const aggregateWorkKpis = async () => {
+  const [result = {}] = await WorkApproval.aggregate([
+    {
+      $facet: {
+        total: [{ $count: "value" }],
+        pendingCheck: [
+          { $match: matchesStage(["Pending", "Under Review", WORK_STAGES.PENDING_CHECK]) },
+          { $count: "value" }
+        ],
+        pendingRecommendation: [
+          { $match: matchesStage([WORK_STAGES.PENDING_RECOMMENDATION]) },
+          { $count: "value" }
+        ],
+        pendingFinalApproval: [
+          { $match: matchesStage(["Pending Approval", WORK_STAGES.PENDING_FINAL_APPROVAL]) },
+          { $count: "value" }
+        ],
+        approved: [
+          { $match: matchesStage(["Final Approved", WORK_STAGES.APPROVED]) },
+          { $count: "value" }
+        ],
+        workInProgress: [
+          { $match: matchesStage([WORK_STAGES.WORK_IN_PROGRESS]) },
+          { $count: "value" }
+        ],
+        completed: [
+          {
+            $match: matchesStage([
+              WORK_STAGES.COMPLETED,
+              "COMPLETED",
+              "complete",
+              "Work Completed",
+              "Final Completed"
+            ])
+          },
+          { $count: "value" }
+        ],
+        partiallyCompleted: [
+          { $match: matchesStage([WORK_STAGES.PARTIALLY_COMPLETED]) },
+          { $count: "value" }
+        ],
+        returnedForCorrection: [
+          { $match: matchesStage([WORK_STAGES.RETURNED, "Rejected"]) },
+          { $count: "value" }
+        ]
+      }
+    }
+  ]);
+
+  const value = (key) => result[key]?.[0]?.value || 0;
+  return {
+    total: value("total"),
+    pendingCheck: value("pendingCheck"),
+    pendingRecommendation: value("pendingRecommendation"),
+    pendingFinalApproval: value("pendingFinalApproval"),
+    approved: value("approved"),
+    workInProgress: value("workInProgress"),
+    completed: value("completed"),
+    partiallyCompleted: value("partiallyCompleted"),
+    returnedForCorrection: value("returnedForCorrection")
+  };
 };
 
 const buildAssignedTasks = async (user = {}) => {
@@ -230,26 +314,10 @@ const buildAssignedTasks = async (user = {}) => {
 
 const getDashboardSummary = async (user = {}) => {
   const monthlyStart = getMonthlyStartDate();
-  const pendingWorkStatuses = [
-    "Pending",
-    "Under Review",
-    "Pending Check",
-    "Pending Recommendation",
-    "Pending Approval",
-    "Pending Final Approval"
-  ];
-  const completedWorkStatuses = ["Completed", "Partially Completed"];
-  const returnedWorkStatuses = ["Returned for Correction", "Rejected"];
-
   const [
     totalUsers,
     activeUsers,
-    totalWorkApprovals,
-    pendingWork,
-    approvedWork,
-    completedWork,
-    partiallyCompletedWork,
-    returnedWork,
+    workKpis,
     totalHazards,
     openHazards,
     closedHazards,
@@ -265,12 +333,7 @@ const getDashboardSummary = async (user = {}) => {
   ] = await Promise.all([
     User.countDocuments(),
     User.countDocuments({ status: "active" }),
-    WorkApproval.countDocuments(),
-    WorkApproval.countDocuments({ status: { $in: pendingWorkStatuses } }),
-    WorkApproval.countDocuments({ status: "Approved" }),
-    WorkApproval.countDocuments({ status: { $in: completedWorkStatuses } }),
-    WorkApproval.countDocuments({ status: "Partially Completed" }),
-    WorkApproval.countDocuments({ status: { $in: returnedWorkStatuses } }),
+    aggregateWorkKpis(),
     Hazard.countDocuments(),
     Hazard.countDocuments({ status: { $ne: "Closed" } }),
     Hazard.countDocuments({ status: "Closed" }),
@@ -294,6 +357,14 @@ const getDashboardSummary = async (user = {}) => {
       }
     })
   ]);
+
+  const totalWorkApprovals = workKpis.total;
+  const pendingWork =
+    workKpis.pendingCheck + workKpis.pendingRecommendation + workKpis.pendingFinalApproval;
+  const approvedWork = workKpis.approved + workKpis.workInProgress;
+  const completedWork = workKpis.completed;
+  const partiallyCompletedWork = workKpis.partiallyCompleted;
+  const returnedWork = workKpis.returnedForCorrection;
 
   const workStatus = [
     { name: "Pending", value: pendingWork },
@@ -334,8 +405,14 @@ const getDashboardSummary = async (user = {}) => {
       totalWorkApprovals,
       pendingWork,
       approvedWork,
+      workInProgress: workKpis.workInProgress,
       completedWork,
+      partiallyCompleted: workKpis.partiallyCompleted,
       partiallyCompletedWork,
+      pendingCheck: workKpis.pendingCheck,
+      pendingRecommendation: workKpis.pendingRecommendation,
+      pendingFinalApproval: workKpis.pendingFinalApproval,
+      returnedForCorrection: workKpis.returnedForCorrection,
       totalHazards,
       openHazards,
       closedHazards,

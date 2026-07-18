@@ -192,6 +192,7 @@ const ReportsPage = () => {
         wch: Math.min(Math.max(header.length + 4, header.includes("Description") || header.includes("Action") ? 28 : 14), 38)
       }));
       ws["!autofilter"] = { ref: `A${metadataRows.length}:${finalColumn}${metadataRows.length + rows.length}` };
+      ws["!freeze"] = { xSplit: 0, ySplit: metadataRows.length, topLeftCell: `A${metadataRows.length + 1}`, activePane: "bottomLeft", state: "frozen" };
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Report");

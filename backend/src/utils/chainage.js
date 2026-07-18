@@ -1,10 +1,34 @@
 const cleanChainage = (value = "") => String(value || "").trim();
 
-const getChainageFrom = (work = {}) =>
-  cleanChainage(work.chainageFrom || work.chainage || work.chainageNo || "");
+const getRequestedChainageFrom = (work = {}) =>
+  cleanChainage(
+    work.requestedChainageFrom ||
+      work.chainageFrom ||
+      work.chainage ||
+      work.chainageNo ||
+      ""
+  );
 
-const getChainageTo = (work = {}) =>
-  cleanChainage(work.chainageTo || work.chainageFrom || work.chainage || work.chainageNo || "");
+const getRequestedChainageTo = (work = {}) =>
+  cleanChainage(
+    work.requestedChainageTo ||
+      work.chainageTo ||
+      work.requestedChainageFrom ||
+      work.chainageFrom ||
+      work.chainage ||
+      work.chainageNo ||
+      ""
+  );
+
+// Legacy aliases remain available while existing routes and records are migrated.
+const getChainageFrom = getRequestedChainageFrom;
+const getChainageTo = getRequestedChainageTo;
+
+const getApprovedChainageFrom = (work = {}) =>
+  cleanChainage(work.approvedChainageFrom || work.approvedChainage?.from || "");
+
+const getApprovedChainageTo = (work = {}) =>
+  cleanChainage(work.approvedChainageTo || work.approvedChainage?.to || "");
 
 const parseComparableChainage = (value = "") => {
   const cleaned = cleanChainage(value)
@@ -19,24 +43,29 @@ const parseComparableChainage = (value = "") => {
     return Number(plusMatch[1]) + Number(plusMatch[2]) / 1000;
   }
 
+  if (!/^\d+(?:\.\d+)?$/.test(cleaned)) return null;
   const numeric = Number(cleaned);
-  return Number.isFinite(numeric) ? numeric : null;
+  if (!Number.isFinite(numeric)) return null;
+
+  // Six-digit road chainage values such as 328500 mean KM 328+500.
+  return Number.isInteger(numeric) && numeric >= 10000 ? numeric / 1000 : numeric;
 };
 
 const normalizeChainagePayload = (payload = {}) => {
-  const chainageFrom = cleanChainage(payload.chainageFrom || payload.chainage || payload.chainageNo || "");
-  const chainageTo = cleanChainage(payload.chainageTo || "");
+  const requestedChainageFrom = getRequestedChainageFrom(payload);
+  const requestedChainageTo = getRequestedChainageTo(payload);
 
   return {
-    chainageFrom,
-    chainageTo,
-    chainage: cleanChainage(payload.chainage || chainageFrom),
-    chainageNo: cleanChainage(payload.chainageNo || chainageFrom)
+    requestedChainageFrom,
+    requestedChainageTo
   };
 };
 
 const validateChainageRange = (payload = {}) => {
-  const { chainageFrom, chainageTo } = normalizeChainagePayload(payload);
+  const {
+    requestedChainageFrom: chainageFrom,
+    requestedChainageTo: chainageTo
+  } = normalizeChainagePayload(payload);
   if (!chainageFrom) return { valid: false, field: "chainageFrom", message: "Chainage From is required." };
   if (!chainageTo) return { valid: false, field: "chainageTo", message: "Chainage To is required." };
 
@@ -63,8 +92,12 @@ const formatChainageRange = (work = {}, compact = false) => {
 
 module.exports = {
   cleanChainage,
+  getApprovedChainageFrom,
+  getApprovedChainageTo,
   getChainageFrom,
   getChainageTo,
+  getRequestedChainageFrom,
+  getRequestedChainageTo,
   normalizeChainagePayload,
   parseComparableChainage,
   validateChainageRange,

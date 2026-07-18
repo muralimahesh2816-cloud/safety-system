@@ -2,7 +2,16 @@ import axios from "axios";
 import { client } from "./client";
 import { API_BASE_URL } from "../config/appConfig";
 import { normalizePermissions, toPermissionPayload } from "../utils/permissions";
-import { getChainageFrom } from "../utils/chainage";
+import {
+  calculateCompletionPercentage,
+  getApprovedChainageFrom,
+  getApprovedChainageTo,
+  getChainageDisplay,
+  getChainageFrom,
+  getChainageTo,
+  isPostApprovalStage,
+  normalizeWorkStage
+} from "../utils/chainage";
 
 const LOCAL_BACKEND_ROOT = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
 const LEGACY_BASE_URL = process.env.REACT_APP_LEGACY_API_URL || LOCAL_BACKEND_ROOT;
@@ -80,7 +89,13 @@ const buildDashboardSummaryFallback = ({
   const totalWorkApprovals = workRecords.length;
   const pendingWork = workRecords.filter((item) => String(item.status || item.workflowStage || "").startsWith("Pending") || !item.status).length;
   const approvedWork = workRecords.filter((item) => item.status === "Approved").length;
-  const completedWork = workRecords.filter((item) => ["Completed", "Partially Completed"].includes(item.status)).length;
+  const completedWork = workRecords.filter((item) => normalizeWorkStage(item) === "Completed").length;
+  const partiallyCompletedWork = workRecords.filter((item) => normalizeWorkStage(item) === "Partially Completed").length;
+  const pendingCheck = workRecords.filter((item) => normalizeWorkStage(item) === "Pending Check").length;
+  const pendingRecommendation = workRecords.filter((item) => normalizeWorkStage(item) === "Pending Recommendation").length;
+  const pendingFinalApproval = workRecords.filter((item) => normalizeWorkStage(item) === "Pending Final Approval").length;
+  const workInProgress = workRecords.filter((item) => normalizeWorkStage(item) === "Work In Progress").length;
+  const returnedForCorrection = workRecords.filter((item) => normalizeWorkStage(item) === "Returned for Correction").length;
   const rejectedWork = workRecords.filter((item) => ["Rejected", "Returned for Correction"].includes(item.status)).length;
 
   const totalHazards = hazardRecords.length;
@@ -204,6 +219,13 @@ const buildDashboardSummaryFallback = ({
       pendingWork,
       approvedWork,
       completedWork,
+      partiallyCompleted: partiallyCompletedWork,
+      partiallyCompletedWork,
+      pendingCheck,
+      pendingRecommendation,
+      pendingFinalApproval,
+      workInProgress,
+      returnedForCorrection,
       totalHazards,
       openHazards,
       closedHazards,
@@ -349,9 +371,10 @@ const mapWorkRecord = (item = {}) => {
       : [];
 
   const chainageFrom = getChainageFrom(item);
-  const chainageTo = getStrictChainageTo(item);
-  const approvedChainageFrom = item.approvedChainageFrom || item.approvedChainage?.from || chainageFrom;
-  const approvedChainageTo = item.approvedChainageTo || item.approvedChainage?.to || chainageTo || chainageFrom;
+  const chainageTo = getChainageTo(item);
+  const workflowStage = normalizeWorkStage(item);
+  const approvedChainageFrom = getApprovedChainageFrom({ ...item, workflowStage });
+  const approvedChainageTo = getApprovedChainageTo({ ...item, workflowStage });
   const completedChainageFrom = item.completedChainageFrom || item.completion?.completedChainageFrom || "";
   const completedChainageTo = item.completedChainageTo || item.completion?.completedChainageTo || "";
   const remainingChainageFrom = item.remainingChainageFrom || item.completion?.remainingChainageFrom || "";
@@ -365,14 +388,7 @@ const mapWorkRecord = (item = {}) => {
     "";
   const createdByRole = item.createdByRole || item.createdBy?.role || "";
   const approvedByName = item.approvedByName || item.approvedBy || item.approvedById?.name || "";
-  const rawStatus = item.status || "";
-  const rawWorkflowStage = item.workflowStage || rawStatus;
-  const workflowStage = rawWorkflowStage === "Pending Approval"
-    ? "Pending Final Approval"
-    : rawWorkflowStage || "Pending Check";
-  const status = rawStatus === "Pending Approval"
-    ? "Pending Final Approval"
-    : rawStatus || "Pending";
+  const status = workflowStage;
 
   return {
     ...item,
@@ -384,9 +400,11 @@ const mapWorkRecord = (item = {}) => {
     priority: item.priority || "Medium",
     chainageFrom,
     chainageTo,
+    requestedChainageFrom: item.requestedChainageFrom || chainageFrom,
+    requestedChainageTo: item.requestedChainageTo || chainageTo,
     chainage: item.chainage || chainageFrom,
     chainageNo: item.chainageNo || item.chainage || chainageFrom,
-    approvedChainage: item.approvedChainage || { from: approvedChainageFrom, to: approvedChainageTo },
+    approvedChainage: { from: approvedChainageFrom, to: approvedChainageTo },
     approvedChainageFrom,
     approvedChainageTo,
     completedChainageFrom,
@@ -394,6 +412,8 @@ const mapWorkRecord = (item = {}) => {
     remainingChainageFrom,
     remainingChainageTo,
     partialCompletionReason,
+    completionPercentage: Number(item.completionPercentage ?? item.completion?.completionPercentage ?? 0),
+    remainingChainageSegments: item.remainingChainageSegments || item.completion?.remainingChainageSegments || [],
     status,
     beforeImages,
     afterImages,
@@ -567,6 +587,13 @@ const normalizeReportRows = (rows = [], type = "work") =>
       };
     }
 
+    const chainageDisplay = getChainageDisplay(item);
+    const approvedFrom = getApprovedChainageFrom(item);
+    const approvedTo = getApprovedChainageTo(item);
+    const approvedRange = isPostApprovalStage(item)
+      ? `${approvedFrom || "-"} to ${approvedTo || "-"}`
+      : "-";
+
     return {
       "Approval No": item.approvalNumber || (item._id ? `WA-${String(item._id).slice(-8).toUpperCase()}` : "-"),
       Date: item.date || item.createdAt || "-",
@@ -576,7 +603,9 @@ const normalizeReportRows = (rows = [], type = "work") =>
       Location: item.location || "-",
       "Chainage From": getChainageFrom(item) || "-",
       "Chainage To": getStrictChainageTo(item) || "-",
-      "Approved Chainage": `${item.approvedChainageFrom || item.approvedChainage?.from || getChainageFrom(item) || "-"} to ${item.approvedChainageTo || item.approvedChainage?.to || getStrictChainageTo(item) || "-"}`,
+      "Requested Chainage": `${getChainageFrom(item) || "-"} to ${getChainageTo(item) || "-"}`,
+      "Displayed Chainage": `${chainageDisplay.label}: ${chainageDisplay.range}`,
+      "Approved Chainage": approvedRange,
       "Completed Chainage": item.completedChainageFrom || item.completedChainageTo
         ? `${item.completedChainageFrom || "-"} to ${item.completedChainageTo || "-"}`
         : "-",
@@ -584,6 +613,7 @@ const normalizeReportRows = (rows = [], type = "work") =>
         ? `${item.remainingChainageFrom || "-"} to ${item.remainingChainageTo || "-"}`
         : "-",
       "Partial Completion Reason": item.partialCompletionReason || "-",
+      "Completion %": `${calculateCompletionPercentage(item)}%`,
       "Workers Count": item.workersCount || "-",
       "Created By": item.createdByName || item.reportedBy || item.createdBy?.name || "-",
       "Created Role": item.createdByRole || item.createdBy?.role || "-",
@@ -607,6 +637,11 @@ const normalizeReportRows = (rows = [], type = "work") =>
       "Completed By": item.completedBy || "-",
       "Completion Description": item.completionDescription || "-",
       "Completion Date": item.completionDate || "-",
+      "Updated Date": item.updatedAt || "-",
+      "Audit History Summary": (item.timeline || item.approvalHistory || [])
+        .map((entry) => entry.label || entry.action || entry.status)
+        .filter(Boolean)
+        .join(" | ") || "-",
       "Before Image": item.beforeImage || item.beforeImages || "",
       "After Image": item.afterImage || item.afterImages || "",
       "Before Video": item.beforeVideo || item.beforeVideos || "",
@@ -683,16 +718,19 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
       (item) =>
         withinDateRange(item.date || item.createdAt, fromDate, toDate) &&
         (!plaza || item.plaza === plaza) &&
-        item.status === "Approved"
+        isPostApprovalStage(item)
     );
     return filtered.map((item) => ({
       "Approval No": item.approvalNumber || (item._id ? `WA-${String(item._id).slice(-8).toUpperCase()}` : "-"),
       Date: item.date || item.createdAt || "-",
       "Work Type": item.workType || "-",
+      Description: item.description || "-",
+      Plaza: item.plaza || "-",
       Location: item.location || "-",
       "Chainage From": getChainageFrom(item) || "-",
       "Chainage To": getStrictChainageTo(item) || "-",
-      "Approved Chainage": `${item.approvedChainageFrom || item.approvedChainage?.from || getChainageFrom(item) || "-"} to ${item.approvedChainageTo || item.approvedChainage?.to || getStrictChainageTo(item) || "-"}`,
+      "Requested Chainage": `${getChainageFrom(item) || "-"} to ${getChainageTo(item) || "-"}`,
+      "Approved Chainage": `${getApprovedChainageFrom(item) || "-"} to ${getApprovedChainageTo(item) || "-"}`,
       "Completed Chainage": item.completedChainageFrom || item.completedChainageTo
         ? `${item.completedChainageFrom || "-"} to ${item.completedChainageTo || "-"}`
         : "-",
@@ -700,6 +738,7 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
         ? `${item.remainingChainageFrom || "-"} to ${item.remainingChainageTo || "-"}`
         : "-",
       "Partial Completion Reason": item.partialCompletionReason || "-",
+      "Completion %": `${calculateCompletionPercentage(item)}%`,
       "Workers Count": item.workersCount || "-",
       "Created By": item.createdByName || item.reportedBy || item.createdBy?.name || "-",
       "Checked By": item.checkedBy || "-",
@@ -719,6 +758,11 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
       "Completed By": item.completedBy || "-",
       "Completion Description": item.completionDescription || "-",
       "Completion Date": item.completionDate || "-",
+      "Updated Date": item.updatedAt || "-",
+      "Audit History Summary": (item.timeline || item.approvalHistory || [])
+        .map((entry) => entry.label || entry.action || entry.status)
+        .filter(Boolean)
+        .join(" | ") || "-",
       "Before Image": item.beforeImage || item.beforeImages || "",
       "After Image": item.afterImage || item.afterImages || "",
       "Before Video": item.beforeVideo || item.beforeVideos || "",
@@ -797,7 +841,7 @@ export const dashboardService = {
       async () => (await client.get("/dashboard/summary")).data,
       async () => {
         const [workRes, hazardRes, usersRes, trainingRes] = await Promise.allSettled([
-          workService.list(),
+          workService.list({ unpaginated: true }),
           hazardService.list(),
           userService.list(),
           trainingService.list()
@@ -914,11 +958,12 @@ export const userService = {
 };
 
 export const workService = {
-  list: async () => {
-    const res = await client.get("/work-approvals");
+  list: async (params = { page: 1, limit: 25 }) => {
+    const res = await client.get("/work-approvals", { params });
     return {
       success: true,
-      records: (res.data.records || []).map(mapWorkRecord)
+      records: (res.data.records || []).map(mapWorkRecord),
+      pagination: res.data.pagination || null
     };
   },
   details: async (id) => {
@@ -928,25 +973,28 @@ export const workService = {
   create: async (payload) => {
     const formData = new FormData();
     const chainageFrom = String(
-      payload.chainageFrom || payload.chainage || payload.chainageNo || ""
+      payload.requestedChainageFrom || payload.chainageFrom || payload.chainage || payload.chainageNo || ""
     ).trim();
-    const chainageTo = String(payload.chainageTo || "").trim();
+    const chainageTo = String(payload.requestedChainageTo || payload.chainageTo || "").trim();
 
     Object.entries(payload).forEach(([key, value]) => {
-      if (["beforeImages", "beforeVideos"].includes(key)) return;
+      if (["beforeImages", "beforeVideos", "idempotencyKey", "onUploadProgress"].includes(key)) return;
       if (value !== undefined && value !== null) {
         formData.append(key, value);
       }
     });
-    formData.set("chainageFrom", chainageFrom);
-    formData.set("chainageTo", chainageTo);
-    formData.set("chainage", chainageFrom);
-    formData.set("chainageNo", chainageFrom);
+    formData.set("requestedChainageFrom", chainageFrom);
+    formData.set("requestedChainageTo", chainageTo);
     formData.set("description", String(payload.description || "").trim());
     formData.set("workersCount", String(Number(payload.workersCount || 0)));
     (payload.beforeImages || []).forEach((file) => formData.append("beforeImages", file));
     (payload.beforeVideos || []).forEach((file) => formData.append("beforeVideos", file));
-    const res = await client.post("/work-approvals", formData);
+    const idempotencyKey = payload.idempotencyKey ||
+      (window.crypto?.randomUUID?.() || `work-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const res = await client.post("/work-approvals", formData, {
+      headers: { "Idempotency-Key": idempotencyKey },
+      onUploadProgress: payload.onUploadProgress
+    });
     return { success: true, work: mapWorkRecord(res.data.work) };
   },
   update: async (id, payload) => {

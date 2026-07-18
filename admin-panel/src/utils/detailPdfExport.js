@@ -2,15 +2,15 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import companyLogoUrl from "../assets/vertis-logo.svg";
 import { getMediaUrl } from "./media";
-import { formatChainageRange, getChainageFrom, getChainageTo } from "./chainage";
-
-const normalizeChainageForCompare = (value = "") => String(value || "").trim().replace(/\s+/g, "").toLowerCase();
-
-const getStrictChainageTo = (work = {}) => {
-  const to = String(work.chainageTo || work["Chainage To"] || "").trim();
-  const from = getChainageFrom(work);
-  return to && normalizeChainageForCompare(to) !== normalizeChainageForCompare(from) ? to : "";
-};
+import {
+  calculateCompletionPercentage,
+  getApprovedChainageFrom,
+  getApprovedChainageTo,
+  getChainageFrom,
+  getChainageTo,
+  isPostApprovalStage,
+  normalizeWorkStage
+} from "./chainage";
 
 const COMPANY_NAME = "Udupi Tollway Pvt Ltd";
 const SYSTEM_NAME = "Safety HSE Enterprise System";
@@ -19,6 +19,12 @@ const safe = (value) => {
   if (value === undefined || value === null || value === "") return "-";
   if (typeof value === "object") return value.name || value.email || "-";
   return String(value);
+};
+
+const formatRange = (from, to) => {
+  if (!from && !to) return "";
+  if (from && to && from !== to) return `${from} to ${to}`;
+  return from || to;
 };
 
 const formatDate = (value) => {
@@ -234,7 +240,8 @@ const finalizePdf = async ({ reportTitle, fileName, detailRows, descriptionTitle
   const generatedAt = new Date().toLocaleString("en-IN");
   const generatedBy = localStorage.getItem("name") || localStorage.getItem("userName") || "Safety HSE User";
 
-  let y = addDetailsTable(doc, detailRows);
+  const officialRows = detailRows.filter(([, value]) => value !== undefined && value !== null && value !== "" && value !== "-");
+  let y = addDetailsTable(doc, officialRows);
   y = addDescription(doc, descriptionTitle, description, y);
   addTimeline(doc, timeline, y);
 
@@ -273,9 +280,7 @@ export const exportHazardDetailsPdf = async (hazard = {}) => {
       ["Evidence Images", evidence.length],
       ["Evidence Videos", evidenceVideos.length],
       ["Closure Images", closure.length],
-      ["Closure Videos", closureVideos.length],
-      ["Evidence Video URLs", evidenceVideos.join("\n")],
-      ["Closure Video URLs", closureVideos.join("\n")]
+      ["Closure Videos", closureVideos.length]
     ],
     descriptionTitle: "Hazard Description",
     description: hazard.description || hazard.details || hazard.observation || "No description entered.",
@@ -292,7 +297,9 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
   const after = normalizeMedia(work.afterImages, work.afterImage);
   const beforeVideos = normalizeMedia(work.beforeVideos, work.beforeVideo);
   const afterVideos = normalizeMedia(work.afterVideos, work.afterVideo);
-  const status = work.workflowStage || work.status || "Pending Check";
+  const status = normalizeWorkStage(work);
+  const postApproval = isPostApprovalStage(work);
+  const completed = ["Completed", "Partially Completed"].includes(status);
   const completionDate = ["Completed", "Partially Completed"].includes(status)
     ? work.completedAt || work.completionDate || work.updatedAt
     : work.completionDate;
@@ -303,16 +310,12 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
       ["Approval Number", work.approvalNumber],
       ["Work Type", work.workType || work.title],
       ["Location", work.location || work.plaza],
-      ["Chainage From", getChainageFrom(work)],
-      ["Chainage To", getStrictChainageTo(work)],
-      ["Chainage Range", formatChainageRange(work)],
-      ["Approved Chainage From", work.approvedChainageFrom || work.approvedChainage?.from || getChainageFrom(work)],
-      ["Approved Chainage To", work.approvedChainageTo || work.approvedChainage?.to || getChainageTo(work)],
-      ["Completed Chainage From", work.completedChainageFrom],
-      ["Completed Chainage To", work.completedChainageTo],
-      ["Remaining Chainage From", work.remainingChainageFrom],
-      ["Remaining Chainage To", work.remainingChainageTo],
-      ["Partial Completion Reason", work.partialCompletionReason],
+      ["Requested Chainage", formatRange(getChainageFrom(work), getChainageTo(work))],
+      ["Approved Chainage", postApproval ? formatRange(getApprovedChainageFrom(work), getApprovedChainageTo(work)) : ""],
+      ["Completed Chainage", completed ? formatRange(work.completedChainageFrom, work.completedChainageTo) : ""],
+      ["Completion", completed ? `${calculateCompletionPercentage(work)}%` : ""],
+      ["Remaining Chainage", status === "Partially Completed" ? formatRange(work.remainingChainageFrom, work.remainingChainageTo) : ""],
+      ["Partial Completion Reason", status === "Partially Completed" ? work.partialCompletionReason : ""],
       ["Workers Count", work.workersCount],
       ["Created By", work.createdByName || work.reportedBy || work.createdBy || work.submittedBy],
       ["Created Role", work.createdByRole],
@@ -339,9 +342,7 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
       ["Before Images", before.length],
       ["Before Videos", beforeVideos.length],
       ["After Images", after.length],
-      ["After Videos", afterVideos.length],
-      ["Before Video URLs", beforeVideos.join("\n")],
-      ["After Video URLs", afterVideos.join("\n")]
+      ["After Videos", afterVideos.length]
     ],
     descriptionTitle: "Work Description",
     description: work.description || work.workDescription || work.details || "No description entered.",

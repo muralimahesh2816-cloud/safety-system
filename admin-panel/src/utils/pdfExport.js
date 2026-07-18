@@ -8,13 +8,16 @@ const reportColumns = {
     { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
     { header: "Work Type", keys: ["Work Type", "workType", "title"] },
     { header: "Description", keys: ["Description", "description", "workDescription"] },
+    { header: "Plaza", keys: ["Plaza", "plaza"] },
     { header: "Location", keys: ["Location", "location"] },
     { header: "Chainage From", keys: ["Chainage From", "chainageFrom", "chainage", "chainageNo"], type: "chainageFrom" },
     { header: "Chainage To", keys: ["Chainage To", "chainageTo"], type: "chainageTo" },
+    { header: "Requested Chainage", keys: ["Requested Chainage", "requestedChainage"] },
     { header: "Approved Chainage", keys: ["Approved Chainage", "approvedChainage"] },
     { header: "Completed Chainage", keys: ["Completed Chainage", "completedChainage"] },
     { header: "Remaining Chainage", keys: ["Remaining Chainage", "remainingChainage"] },
     { header: "Partial Reason", keys: ["Partial Completion Reason", "partialCompletionReason"] },
+    { header: "Completion %", keys: ["Completion %", "completionPercentage"] },
     { header: "Workers", keys: ["Workers", "Workers Count", "workersCount"] },
     { header: "Created By", keys: ["Created By", "createdByName", "reportedBy", "createdBy"] },
     { header: "Created Role", keys: ["Created Role", "createdByRole"] },
@@ -31,13 +34,19 @@ const reportColumns = {
     { header: "Approved Role", keys: ["Approved Role", "approvedByRole"] },
     { header: "Approval Date", keys: ["Approval Date", "approvedAt", "approvalDate"], type: "date" },
     { header: "Approval Remarks", keys: ["Approval Remarks", "Approval Description", "approvalDescription"] },
+    { header: "Returned By", keys: ["Returned By", "returnedBy"] },
+    { header: "Returned Date", keys: ["Returned Date", "returnedAt"], type: "date" },
+    { header: "Return Reason", keys: ["Return Description", "returnDescription"] },
     { header: "Completion Date", keys: ["Completion Date", "completionDate", "completedAt"], type: "date" },
+    { header: "Completed By", keys: ["Completed By", "completedBy"] },
     { header: "Completion Description", keys: ["Completion Description", "completionDescription"] },
+    { header: "Updated Date", keys: ["Updated Date", "updatedAt"], type: "date" },
+    { header: "Audit History Summary", keys: ["Audit History Summary", "auditHistorySummary"] },
     { header: "Status", keys: ["Status", "status"] },
-    { header: "Before Image", keys: ["Before Image", "beforeImage", "beforeImages"], type: "imageStatus" },
-    { header: "After Image", keys: ["After Image", "afterImage", "afterImages"], type: "imageStatus" },
-    { header: "Before Video", keys: ["Before Video", "beforeVideo", "beforeVideos"], type: "imageStatus" },
-    { header: "After Video", keys: ["After Video", "afterVideo", "afterVideos"], type: "imageStatus" },
+    { header: "Before Image", keys: ["Before Image", "beforeImage", "beforeImages"] },
+    { header: "After Image", keys: ["After Image", "afterImage", "afterImages"] },
+    { header: "Before Video", keys: ["Before Video", "beforeVideo", "beforeVideos"] },
+    { header: "After Video", keys: ["After Video", "afterVideo", "afterVideos"] },
     { header: "Media Count", keys: ["Media Count", "mediaCount"] }
   ],
   hazard: [
@@ -52,10 +61,10 @@ const reportColumns = {
     { header: "Action Team", keys: ["Action Team", "Action", "action", "actionTeam"] },
     { header: "Action Taken", keys: ["Action Taken", "closureNotes", "actionTaken", "correctiveAction"] },
     { header: "Status", keys: ["Status", "status"] },
-    { header: "Evidence Image", keys: ["Evidence Image", "beforeImage", "evidenceImages"], type: "imageStatus" },
-    { header: "Closure Image", keys: ["Closure Image", "afterImage", "closureImages"], type: "imageStatus" },
-    { header: "Evidence Video", keys: ["Evidence Video", "beforeVideo", "evidenceVideos"], type: "imageStatus" },
-    { header: "Closure Video", keys: ["Closure Video", "afterVideo", "closureVideos"], type: "imageStatus" },
+    { header: "Evidence Image", keys: ["Evidence Image", "beforeImage", "evidenceImages"] },
+    { header: "Closure Image", keys: ["Closure Image", "afterImage", "closureImages"] },
+    { header: "Evidence Video", keys: ["Evidence Video", "beforeVideo", "evidenceVideos"] },
+    { header: "Closure Video", keys: ["Closure Video", "afterVideo", "closureVideos"] },
     { header: "Media Count", keys: ["Media Count", "mediaCount"] }
   ],
   training: [
@@ -85,13 +94,17 @@ const reportColumns = {
     { header: "Approval No", keys: ["Approval No", "approvalNumber"] },
     { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
     { header: "Work Type", keys: ["Work Type", "workType", "title"] },
+    { header: "Description", keys: ["Description", "description", "workDescription"] },
+    { header: "Plaza", keys: ["Plaza", "plaza"] },
     { header: "Location", keys: ["Location", "location"] },
     { header: "Chainage From", keys: ["Chainage From", "chainageFrom", "chainage", "chainageNo"], type: "chainageFrom" },
     { header: "Chainage To", keys: ["Chainage To", "chainageTo"], type: "chainageTo" },
+    { header: "Requested Chainage", keys: ["Requested Chainage", "requestedChainage"] },
     { header: "Approved Chainage", keys: ["Approved Chainage", "approvedChainage"] },
     { header: "Completed Chainage", keys: ["Completed Chainage", "completedChainage"] },
     { header: "Remaining Chainage", keys: ["Remaining Chainage", "remainingChainage"] },
     { header: "Partial Reason", keys: ["Partial Completion Reason", "partialCompletionReason"] },
+    { header: "Completion %", keys: ["Completion %", "completionPercentage"] },
     { header: "Workers", keys: ["Workers", "Workers Count", "workersCount"] },
     { header: "Created By", keys: ["Created By", "createdByName", "reportedBy", "createdBy"] },
     { header: "Workflow Stage", keys: ["Workflow Stage", "workflowStage", "status"] },
@@ -107,21 +120,73 @@ const reportColumns = {
     { header: "Approved Role", keys: ["Approved Role", "approvedByRole"] },
     { header: "Approval Date", keys: ["Approval Date", "approvedAt", "approvalDate"], type: "date" },
     { header: "Approval Remarks", keys: ["Approval Remarks", "Approval Description", "approvalDescription"] },
+    { header: "Returned By", keys: ["Returned By", "returnedBy"] },
+    { header: "Returned Date", keys: ["Returned Date", "returnedAt"], type: "date" },
+    { header: "Return Reason", keys: ["Return Description", "returnDescription"] },
     { header: "Completion Date", keys: ["Completion Date", "completionDate", "completedAt"], type: "date" },
+    { header: "Completed By", keys: ["Completed By", "completedBy"] },
     { header: "Completion Description", keys: ["Completion Description", "completionDescription"] },
+    { header: "Updated Date", keys: ["Updated Date", "updatedAt"], type: "date" },
+    { header: "Audit History Summary", keys: ["Audit History Summary", "auditHistorySummary"] },
     { header: "Status", keys: ["Status", "status"] },
-    { header: "Before Image", keys: ["Before Image", "beforeImage", "beforeImages"], type: "imageStatus" },
-    { header: "After Image", keys: ["After Image", "afterImage", "afterImages"], type: "imageStatus" },
-    { header: "Before Video", keys: ["Before Video", "beforeVideo", "beforeVideos"], type: "imageStatus" },
-    { header: "After Video", keys: ["After Video", "afterVideo", "afterVideos"], type: "imageStatus" },
+    { header: "Before Image", keys: ["Before Image", "beforeImage", "beforeImages"] },
+    { header: "After Image", keys: ["After Image", "afterImage", "afterImages"] },
+    { header: "Before Video", keys: ["Before Video", "beforeVideo", "beforeVideos"] },
+    { header: "After Video", keys: ["After Video", "afterVideo", "afterVideos"] },
     { header: "Media Count", keys: ["Media Count", "mediaCount"] }
   ]
 };
 
+// Official PDFs intentionally exclude internal identifiers, raw media paths, and verbose audit fields.
+const pdfReportColumns = {
+  work: [
+    { header: "Approval No", keys: ["Approval No", "approvalNumber"] },
+    { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
+    { header: "Work Type", keys: ["Work Type", "workType", "title"] },
+    { header: "Description", keys: ["Description", "description", "workDescription"] },
+    { header: "Location", keys: ["Location", "location"] },
+    { header: "Requested Chainage", keys: ["Requested Chainage", "requestedChainage"] },
+    { header: "Approved Chainage", keys: ["Approved Chainage", "approvedChainage"] },
+    { header: "Completed Chainage", keys: ["Completed Chainage", "completedChainage"] },
+    { header: "Completion %", keys: ["Completion %", "completionPercentage"] },
+    { header: "Workers", keys: ["Workers", "Workers Count", "workersCount"] },
+    { header: "Workflow Stage", keys: ["Workflow Stage", "workflowStage", "status"] },
+    { header: "Created By", keys: ["Created By", "createdByName", "reportedBy"] },
+    { header: "Approved By", keys: ["Approved By", "approvedByName", "approvedBy"] },
+    { header: "Completion Date", keys: ["Completion Date", "completionDate", "completedAt"], type: "date" }
+  ],
+  approved: null,
+  hazard: [
+    { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
+    { header: "Plaza", keys: ["Plaza", "plaza"] },
+    { header: "Location", keys: ["Location", "location"] },
+    { header: "Reported By", keys: ["Reported By", "reportedBy"] },
+    { header: "Category", keys: ["Category", "category"] },
+    { header: "Description", keys: ["Description", "description"] },
+    { header: "Risk Level", keys: ["Risk Level", "riskLevel", "severity"] },
+    { header: "Risk Score", keys: ["Risk Score", "riskScore"] },
+    { header: "Action Team", keys: ["Action Team", "actionTeam", "Action"] },
+    { header: "Action Taken", keys: ["Action Taken", "closureNotes", "actionTaken"] },
+    { header: "Status", keys: ["Status", "status"] }
+  ],
+  training: [
+    { header: "Training Title", keys: ["Training Title", "Title", "title"] },
+    { header: "Trainer", keys: ["Trainer", "trainer", "uploadedBy"] },
+    { header: "Category", keys: ["Category", "category"] },
+    { header: "Duration", keys: ["Duration", "duration", "durationMinutes"] },
+    { header: "Completions", keys: ["Completions", "completionCount"] },
+    { header: "Uploaded Date", keys: ["Uploaded Date", "Date", "createdAt"], type: "date" },
+    { header: "Status", keys: ["Status", "status"] }
+  ]
+};
+pdfReportColumns.approved = pdfReportColumns.work;
+
 const safeValue = (value) => {
   if (value === undefined || value === null || value === "") return "-";
   if (Array.isArray(value)) return value.map(safeValue).filter((item) => item !== "-").join(", ") || "-";
-  if (typeof value === "object") return value.name || value.email || value.action || "-";
+  if (typeof value === "object") {
+    return value.url || value.secure_url || value.path || value.filename || value.name || value.email || value.action || "-";
+  }
   return String(value);
 };
 
@@ -170,14 +235,19 @@ const formatColumnValue = (row, column) => {
 
 export const getReportColumns = (type = "work") => reportColumns[type] || reportColumns.work;
 
-export const normalizeReportRowsByType = (rows = [], type = "work") => {
-  const columns = getReportColumns(type);
-  return rows.map((row) =>
+export const getPdfReportColumns = (type = "work") =>
+  pdfReportColumns[type] || reportColumns[type] || pdfReportColumns.work;
+
+const normalizeRowsWithColumns = (rows = [], columns = []) =>
+  rows.map((row) =>
     columns.reduce((acc, column) => {
       acc[column.header] = formatColumnValue(row, column);
       return acc;
     }, {})
   );
+
+export const normalizeReportRowsByType = (rows = [], type = "work") => {
+  return normalizeRowsWithColumns(rows, getReportColumns(type));
 };
 
 const formatGeneratedDate = (value) =>
@@ -318,10 +388,11 @@ export const exportReportPdf = async ({
   generatedBy = "System",
   generatedAt = new Date()
 }) => {
-  const normalizedRows = normalizeReportRowsByType(rows, type);
+  const pdfColumns = getPdfReportColumns(type);
+  const normalizedRows = normalizeRowsWithColumns(rows, pdfColumns);
   if (!normalizedRows.length) return false;
 
-  const headers = getReportColumns(type).map((column) => column.header);
+  const headers = pdfColumns.map((column) => column.header);
   const body = normalizedRows.map((row) => headers.map((header) => row[header] ?? "-"));
   const compactTable = headers.length > 14;
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });

@@ -47,6 +47,14 @@ const likelihoodWeight = {
   "Almost Certain": 4
 };
 
+const queueNotification = (payload) => {
+  setImmediate(() => {
+    createNotification(payload).catch(() => {
+      // Notification delivery must not roll back an authoritative hazard update.
+    });
+  });
+};
+
 const validateHazardMedia = ({ images = [], videos = [], label = "Hazard media" }) => {
   if (images.length > HAZARD_MEDIA_MAX_COUNT) {
     throw new ApiError(400, `${label}: maximum ${HAZARD_MEDIA_MAX_COUNT} images allowed`);
@@ -152,16 +160,10 @@ router.post(
     if (!evidenceFiles.length) {
       throw new ApiError(400, "Before image is required");
     }
-    const evidenceImages = await uploadManyAssets(
-      evidenceFiles,
-      "safety-hse/hazards/evidence",
-      "image"
-    );
-    const evidenceVideos = await uploadManyAssets(
-      evidenceVideoFiles,
-      "safety-hse/hazards/evidence-videos",
-      "video"
-    );
+    const [evidenceImages, evidenceVideos] = await Promise.all([
+      uploadManyAssets(evidenceFiles, "safety-hse/hazards/evidence", "image"),
+      uploadManyAssets(evidenceVideoFiles, "safety-hse/hazards/evidence-videos", "video")
+    ]);
 
     const payload = parsed.data;
     const normalizedTitle =
@@ -195,7 +197,7 @@ router.post(
     });
 
     if (hazard.assignedTo) {
-      await createNotification({
+      queueNotification({
         userId: hazard.assignedTo,
         type: "hazard",
         title: "Hazard Assigned",
@@ -303,7 +305,7 @@ router.patch(
     });
     await hazard.save();
 
-    await createNotification({
+    queueNotification({
       userId: user._id,
       type: "hazard",
       title: "New Hazard Assignment",
@@ -372,16 +374,10 @@ router.patch(
     if (!closureFiles.length) {
       throw new ApiError(400, "After image is required to close hazard");
     }
-    const closureImages = await uploadManyAssets(
-      closureFiles,
-      "safety-hse/hazards/closure",
-      "image"
-    );
-    const closureVideos = await uploadManyAssets(
-      closureVideoFiles,
-      "safety-hse/hazards/closure-videos",
-      "video"
-    );
+    const [closureImages, closureVideos] = await Promise.all([
+      uploadManyAssets(closureFiles, "safety-hse/hazards/closure", "image"),
+      uploadManyAssets(closureVideoFiles, "safety-hse/hazards/closure-videos", "video")
+    ]);
 
     hazard.status = "Closed";
     hazard.closureNotes = parsed.data.closureNotes;

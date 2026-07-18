@@ -241,13 +241,67 @@ const DashboardPage = ({ onModuleSelect }) => {
             delay={0.2}
           />
           <KPIBox
+            title="Partially Completed"
+            value={kpis.partiallyCompleted}
+            icon={Construction}
+            backgroundIcon={Wrench}
+            gradient="from-lime-500/35 via-emerald-700/20 to-slate-950/70"
+            accent="text-lime-200"
+            delay={0.22}
+          />
+          <KPIBox
+            title="Pending Check"
+            value={kpis.pendingCheck}
+            icon={ClipboardCheck}
+            backgroundIcon={HardHat}
+            gradient="from-cyan-500/30 via-sky-700/20 to-slate-950/70"
+            accent="text-cyan-100"
+            delay={0.24}
+          />
+          <KPIBox
+            title="Pending Recommendation"
+            value={kpis.pendingRecommendation}
+            icon={Clock3}
+            backgroundIcon={ShieldCheck}
+            gradient="from-violet-500/30 via-indigo-700/20 to-slate-950/70"
+            accent="text-violet-100"
+            delay={0.26}
+          />
+          <KPIBox
+            title="Pending Final Approval"
+            value={kpis.pendingFinalApproval}
+            icon={ShieldCheck}
+            backgroundIcon={ClipboardCheck}
+            gradient="from-amber-500/30 via-orange-700/20 to-slate-950/70"
+            accent="text-amber-100"
+            delay={0.28}
+          />
+          <KPIBox
+            title="Work In Progress"
+            value={kpis.workInProgress}
+            icon={Wrench}
+            backgroundIcon={Construction}
+            gradient="from-blue-500/30 via-cyan-700/20 to-slate-950/70"
+            accent="text-blue-100"
+            delay={0.3}
+          />
+          <KPIBox
+            title="Returned for Correction"
+            value={kpis.returnedForCorrection}
+            icon={TriangleAlert}
+            backgroundIcon={ClipboardCheck}
+            gradient="from-rose-500/30 via-red-800/20 to-slate-950/70"
+            accent="text-rose-100"
+            delay={0.32}
+          />
+          <KPIBox
             title="Total Hazards"
             value={kpis.totalHazards}
             icon={TriangleAlert}
             backgroundIcon={Siren}
             gradient="from-rose-500/35 via-red-600/20 to-slate-950/70"
             accent="text-rose-200"
-            delay={0.24}
+            delay={0.34}
           />
           <KPIBox
             title="Open Hazards"
@@ -256,7 +310,7 @@ const DashboardPage = ({ onModuleSelect }) => {
             backgroundIcon={TriangleAlert}
             gradient="from-orange-500/35 via-rose-600/20 to-slate-950/70"
             accent="text-orange-200"
-            delay={0.28}
+            delay={0.36}
           />
           <KPIBox
             title="Closed Hazards"
@@ -265,7 +319,7 @@ const DashboardPage = ({ onModuleSelect }) => {
             backgroundIcon={TriangleAlert}
             gradient="from-green-500/35 via-emerald-600/20 to-slate-950/70"
             accent="text-green-200"
-            delay={0.32}
+            delay={0.38}
           />
           <KPIBox
             title="Training Records"
@@ -274,7 +328,7 @@ const DashboardPage = ({ onModuleSelect }) => {
             backgroundIcon={HardHat}
             gradient="from-cyan-400/35 via-indigo-600/20 to-slate-950/70"
             accent="text-cyan-100"
-            delay={0.36}
+            delay={0.4}
           />
         </div>
       )}

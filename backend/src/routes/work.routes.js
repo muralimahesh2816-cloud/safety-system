@@ -11,6 +11,11 @@ const { env } = require("../config/env");
 const WorkApproval = require("../models/WorkApproval");
 const { ROLES } = require("../constants/roles");
 const {
+  WORK_STAGES,
+  isPostApprovalStage,
+  normalizeWorkStage
+} = require("../constants/work-status");
+const {
   createWorkSchema,
   updateWorkSchema,
   statusUpdateSchema,
@@ -34,14 +39,15 @@ const {
 const {
   getChainageFrom,
   getChainageTo,
+  getApprovedChainageFrom,
+  getApprovedChainageTo,
   normalizeChainagePayload,
   parseComparableChainage
 } = require("../utils/chainage");
 const {
   escapeRegex,
   getPagination,
-  buildPaginationMeta,
-  hasPagination
+  buildPaginationMeta
 } = require("../utils/pagination");
 
 const router = express.Router();
@@ -55,25 +61,17 @@ const upload = createMemoryUpload({
   maxFiles: 22
 });
 
-const runWorkflowNotification = async (label, operation) => {
-  try {
-    await operation();
-  } catch (error) {
-    logger.warn("Workflow notification delivery failed", {
-      label,
-      message: error.message
-    });
-  }
-};
-
-const WORK_STAGES = {
-  PENDING_CHECK: "Pending Check",
-  PENDING_RECOMMENDATION: "Pending Recommendation",
-  PENDING_FINAL_APPROVAL: "Pending Final Approval",
-  APPROVED: "Approved",
-  PARTIALLY_COMPLETED: "Partially Completed",
-  RETURNED: "Returned for Correction",
-  COMPLETED: "Completed"
+const runWorkflowNotification = (label, operation) => {
+  setImmediate(() => {
+    Promise.resolve()
+      .then(operation)
+      .catch((error) => {
+        logger.warn("Workflow notification delivery failed", {
+          label,
+          message: error.message
+        });
+      });
+  });
 };
 
 const WORK_STAGE_LABELS = {
@@ -118,20 +116,7 @@ const normalizeObjectId = (value) => (value ? String(value) : "");
 const sameUser = (left, right) => normalizeObjectId(left) && normalizeObjectId(left) === normalizeObjectId(right);
 const isAdminWorkflowOverrideEnabled = () => env.workflowAdminOverrideEnabled === true;
 
-const deriveWorkflowStage = (work = {}) => {
-  if (work.workflowStage === "Pending Approval") return WORK_STAGES.PENDING_FINAL_APPROVAL;
-  if (work.workflowStage) return work.workflowStage;
-  if (work.status === "Pending Approval") return WORK_STAGES.PENDING_FINAL_APPROVAL;
-  if (work.status === "Pending Recommendation") return WORK_STAGES.PENDING_RECOMMENDATION;
-  if (work.status === WORK_STAGES.PARTIALLY_COMPLETED) return WORK_STAGES.PARTIALLY_COMPLETED;
-  if (work.status === "Completed") return WORK_STAGES.COMPLETED;
-  if (work.status === "Approved") return WORK_STAGES.APPROVED;
-  if (work.status === "Rejected" || work.status === "Returned for Correction") return WORK_STAGES.RETURNED;
-  if (work.approvedAt || work.approvedBy) return WORK_STAGES.APPROVED;
-  if (work.recommendedAt || work.recommendedBy) return WORK_STAGES.PENDING_FINAL_APPROVAL;
-  if (work.checkedAt || work.checkedBy) return WORK_STAGES.PENDING_RECOMMENDATION;
-  return WORK_STAGES.PENDING_CHECK;
-};
+const deriveWorkflowStage = (work = {}) => normalizeWorkStage(work);
 
 const assertStagePermission = (req, action) => {
   const role = req.user?.role;
@@ -310,10 +295,13 @@ const updateStageActorFields = (work, prefix, actor) => {
 
 const normalizeComparable = (value = "") => String(value || "").trim().replace(/\s+/g, "").toUpperCase();
 
-const getApprovedChainage = (work = {}) => ({
-  from: String(work.approvedChainage?.from || getChainageFrom(work) || "").trim(),
-  to: String(work.approvedChainage?.to || getChainageTo(work) || "").trim()
-});
+const getApprovedChainage = (work = {}) => {
+  if (!isPostApprovalStage(work)) return { from: "", to: "" };
+  return {
+    from: String(getApprovedChainageFrom(work) || getChainageFrom(work) || "").trim(),
+    to: String(getApprovedChainageTo(work) || getChainageTo(work) || "").trim()
+  };
+};
 
 const validateCompletionChainage = (work, payload) => {
   const approved = getApprovedChainage(work);
@@ -372,6 +360,24 @@ const validateCompletionChainage = (work, payload) => {
     );
   }
 
+  const remainingChainageSegments = [];
+  let completionPercentage = isFullCompletion || closesRemainingChainage ? 100 : 0;
+  if (numbersComparable && !isFullCompletion && !closesRemainingChainage) {
+    if (completedFromNumber > approvedFromNumber) {
+      remainingChainageSegments.push({ from: approved.from, to: completedFrom });
+    }
+    if (completedToNumber < approvedToNumber) {
+      remainingChainageSegments.push({ from: completedTo, to: approved.to });
+    }
+    const approvedLength = approvedToNumber - approvedFromNumber;
+    const completedLength = completedToNumber - completedFromNumber;
+    completionPercentage = approvedLength === 0
+      ? 100
+      : Math.max(0, Math.min(100, Math.round((completedLength / approvedLength) * 100)));
+  }
+
+  const primaryRemaining = remainingChainageSegments[0] || { from: "", to: "" };
+
   return {
     approved,
     completedFrom,
@@ -379,16 +385,10 @@ const validateCompletionChainage = (work, payload) => {
     isFullCompletion: isFullCompletion || closesRemainingChainage,
     closesRemainingChainage,
     partialCompletionReason,
-    remainingFrom: isFullCompletion || closesRemainingChainage
-      ? ""
-      : normalizeComparable(completedFrom) !== normalizeComparable(approved.from)
-      ? approved.from
-      : completedTo,
-    remainingTo: isFullCompletion || closesRemainingChainage
-      ? ""
-      : normalizeComparable(completedFrom) !== normalizeComparable(approved.from)
-      ? completedFrom
-      : approved.to
+    completionPercentage,
+    remainingChainageSegments,
+    remainingFrom: primaryRemaining.from,
+    remainingTo: primaryRemaining.to
   };
 };
 
@@ -443,8 +443,10 @@ const completeWorkWithMedia = async (req, res) => {
     throw new ApiError(400, "At least one completion image or video is required");
   }
 
-  const uploads = await uploadManyAssets(afterFiles, "safety-hse/work/after", "image");
-  const videoUploads = await uploadManyAssets(afterVideoFiles, "safety-hse/work/after-videos", "video");
+  const [uploads, videoUploads] = await Promise.all([
+    uploadManyAssets(afterFiles, "safety-hse/work/after", "image"),
+    uploadManyAssets(afterVideoFiles, "safety-hse/work/after-videos", "video")
+  ]);
   const actor = createStageActor(req, payload.description);
   const storedCompletedFrom = completionChainage.closesRemainingChainage
     ? completionChainage.approved.from
@@ -466,6 +468,8 @@ const completeWorkWithMedia = async (req, res) => {
   work.remainingChainageFrom = completionChainage.remainingFrom;
   work.remainingChainageTo = completionChainage.remainingTo;
   work.partialCompletionReason = completionChainage.partialCompletionReason;
+  work.completionPercentage = completionChainage.completionPercentage;
+  work.remainingChainageSegments = completionChainage.remainingChainageSegments;
   work.completedAt = actor.date;
   work.completion = {
     ...actor,
@@ -473,7 +477,9 @@ const completeWorkWithMedia = async (req, res) => {
     completedChainageTo: storedCompletedTo,
     remainingChainageFrom: completionChainage.remainingFrom,
     remainingChainageTo: completionChainage.remainingTo,
-    partialCompletionReason: completionChainage.partialCompletionReason
+    partialCompletionReason: completionChainage.partialCompletionReason,
+    completionPercentage: completionChainage.completionPercentage,
+    remainingChainageSegments: completionChainage.remainingChainageSegments
   };
   work.status = completionChainage.isFullCompletion ? WORK_STAGES.COMPLETED : WORK_STAGES.PARTIALLY_COMPLETED;
   work.workflowStage = work.status;
@@ -535,17 +541,27 @@ const toLegacyWorkRecord = (record) => {
     (plain.afterVideos?.length || 0);
   const chainageFrom = getChainageFrom(plain);
   const chainageTo = getChainageTo(plain);
-  const approvedChainageFrom = plain.approvedChainage?.from || chainageFrom;
-  const approvedChainageTo = plain.approvedChainage?.to || chainageTo;
+  const workflowStage = deriveWorkflowStage(plain);
+  const hasApprovalSnapshot = isPostApprovalStage(workflowStage);
+  const approvedChainageFrom = hasApprovalSnapshot
+    ? getApprovedChainageFrom(plain) || chainageFrom
+    : "";
+  const approvedChainageTo = hasApprovalSnapshot
+    ? getApprovedChainageTo(plain) || chainageTo
+    : "";
   const completedChainageFrom = plain.completedChainageFrom || plain.completion?.completedChainageFrom || "";
   const completedChainageTo = plain.completedChainageTo || plain.completion?.completedChainageTo || "";
   const remainingChainageFrom = plain.remainingChainageFrom || plain.completion?.remainingChainageFrom || "";
   const remainingChainageTo = plain.remainingChainageTo || plain.completion?.remainingChainageTo || "";
   const partialCompletionReason = plain.partialCompletionReason || plain.completion?.partialCompletionReason || "";
+  const completionPercentage = Number(
+    plain.completionPercentage ?? plain.completion?.completionPercentage ?? 0
+  );
+  const remainingChainageSegments =
+    plain.remainingChainageSegments || plain.completion?.remainingChainageSegments || [];
   const createdByName = plain.createdByName || plain.createdBy?.name || "";
   const createdByRole = plain.createdByRole || plain.createdBy?.role || "";
   const approvedBy = plain.approvedBy || plain.approvedById?.name || "";
-  const workflowStage = deriveWorkflowStage(plain);
   return {
     ...plain,
     approvalNumber: plain.approvalNumber || (plain._id ? `WA-${String(plain._id).slice(-8).toUpperCase()}` : ""),
@@ -556,6 +572,8 @@ const toLegacyWorkRecord = (record) => {
       : plain.status || workflowStage,
     chainageFrom,
     chainageTo,
+    requestedChainageFrom: chainageFrom,
+    requestedChainageTo: chainageTo,
     chainage: plain.chainage || chainageFrom,
     chainageNo: plain.chainageNo || plain.chainage || chainageFrom,
     approvedChainage: {
@@ -569,6 +587,8 @@ const toLegacyWorkRecord = (record) => {
     remainingChainageFrom,
     remainingChainageTo,
     partialCompletionReason,
+    completionPercentage,
+    remainingChainageSegments,
     beforeImage,
     afterImage,
     beforeVideo,
@@ -630,6 +650,8 @@ const buildWorkQuery = (query = {}) => {
         $or: [
           { chainageFrom: regex },
           { chainageTo: regex },
+          { requestedChainageFrom: regex },
+          { requestedChainageTo: regex },
           { chainageNo: regex },
           { chainage: regex },
           { location: regex },
@@ -644,14 +666,21 @@ const buildWorkQuery = (query = {}) => {
     ];
   }
 
-  if (query.date) {
-    const start = new Date(query.date);
+  const dateFrom = query.dateFrom || query.date;
+  const dateTo = query.dateTo || query.date;
+  if (dateFrom || dateTo) {
+    const start = dateFrom ? new Date(dateFrom) : new Date(0);
     if (!Number.isNaN(start.getTime())) {
-      const end = new Date(start);
+      const end = dateTo ? new Date(dateTo) : new Date();
       end.setHours(23, 59, 59, 999);
       filters.createdAt = { $gte: start, $lte: end };
     }
   }
+
+  if (query.createdBy) filters.createdByName = new RegExp(escapeRegex(query.createdBy), "i");
+  if (query.checkedBy) filters.checkedBy = new RegExp(escapeRegex(query.checkedBy), "i");
+  if (query.recommendedBy) filters.recommendedBy = new RegExp(escapeRegex(query.recommendedBy), "i");
+  if (query.approvedBy) filters.approvedBy = new RegExp(escapeRegex(query.approvedBy), "i");
 
   return filters;
 };
@@ -662,12 +691,16 @@ router.get(
   authorizePermission("work", "view"),
   asyncHandler(async (req, res) => {
     const filters = buildWorkQuery(req.query);
-    const shouldPaginate = hasPagination(req.query);
-    const pagination = getPagination(req.query);
+    const shouldPaginate = req.query.unpaginated !== "true";
+    const pagination = getPagination(
+      { ...req.query, limit: req.query.limit || 25 },
+      { defaultLimit: 25, maxLimit: 100 }
+    );
     let query = WorkApproval.find(filters)
       .populate("createdBy", "name role")
       .populate("assignedTo", "name role")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     if (shouldPaginate) {
       query = query.skip(pagination.skip).limit(pagination.limit);
     }
@@ -696,6 +729,20 @@ router.post(
     { name: "beforeVideo", maxCount: 1 }
   ]),
   asyncHandler(async (req, res) => {
+    const idempotencyKey = String(req.get("Idempotency-Key") || "").trim().slice(0, 120);
+    if (idempotencyKey) {
+      const existingWork = await WorkApproval.findOne({ idempotencyKey }).lean();
+      if (existingWork) {
+        return res.status(200).json({
+          success: true,
+          message: "Work approval already submitted",
+          work: toLegacyWorkRecord(existingWork),
+          data: toLegacyWorkRecord(existingWork),
+          duplicate: true
+        });
+      }
+    }
+
     const normalizedBody = {
       ...req.body,
       ...normalizeChainagePayload(req.body)
@@ -711,16 +758,10 @@ router.post(
     if (!beforeFiles.length) {
       throw new ApiError(400, "Before image is required");
     }
-    const beforeImages = await uploadManyAssets(
-      beforeFiles,
-      "safety-hse/work/before",
-      "image"
-    );
-    const beforeVideos = await uploadManyAssets(
-      beforeVideoFiles,
-      "safety-hse/work/before-videos",
-      "video"
-    );
+    const [beforeImages, beforeVideos] = await Promise.all([
+      uploadManyAssets(beforeFiles, "safety-hse/work/before", "image"),
+      uploadManyAssets(beforeVideoFiles, "safety-hse/work/before-videos", "video")
+    ]);
 
     const payload = parsed.data;
     const normalizedChainage = normalizeChainagePayload(payload);
@@ -731,10 +772,11 @@ router.post(
       status: WORK_STAGES.PENDING_CHECK,
       workflowStage: WORK_STAGES.PENDING_CHECK,
       description: payload.description || "",
-      approvedChainage: {
-        from: normalizedChainage.chainageFrom,
-        to: normalizedChainage.chainageTo
-      },
+      requestedChainageFrom: normalizedChainage.requestedChainageFrom,
+      requestedChainageTo: normalizedChainage.requestedChainageTo,
+      approvedChainage: { from: "", to: "" },
+      approvedChainageFrom: "",
+      approvedChainageTo: "",
       beforeImages,
       beforeImage: beforeImages[0]?.url || "",
       beforeVideos,
@@ -742,6 +784,7 @@ router.post(
       createdBy: req.user.id,
       createdByName: req.user.name || "",
       createdByRole: req.user.role || "",
+      idempotencyKey: idempotencyKey || undefined,
       assignedTo: payload.assignedTo || null,
       startDate: parseDate(payload.startDate),
       dueDate: parseDate(payload.dueDate),
@@ -755,21 +798,28 @@ router.post(
       ]
     });
 
+    await audit(req, "create", "work", { title: work.title }, work._id);
     if (work.assignedTo) {
-      await createNotification({
-        userId: work.assignedTo,
-        type: "work",
-        title: "New Work Approval",
-        message: `${work.title} was assigned to you`,
-        data: { workId: work._id }
-      });
+      runWorkflowNotification("work_assigned", () =>
+        createNotification({
+          userId: work.assignedTo,
+          type: "work",
+          title: "New Work Approval",
+          message: `${work.title} was assigned to you`,
+          data: { workId: work._id }
+        })
+      );
     }
-
-    await runWorkflowNotification("work_created", () =>
+    runWorkflowNotification("work_created", () =>
       notifyWorkCreated({ work, actorId: req.user.id })
     );
-    await audit(req, "create", "work", { title: work.title }, work._id);
-    res.status(201).json({ success: true, work: toLegacyWorkRecord(work) });
+    const responseWork = toLegacyWorkRecord(work);
+    res.status(201).json({
+      success: true,
+      message: "Work approval submitted successfully",
+      work: responseWork,
+      data: responseWork
+    });
   })
 );
 
@@ -819,10 +869,6 @@ router.patch(
       "category",
       "plaza",
       "location",
-      "chainage",
-      "chainageNo",
-      "chainageFrom",
-      "chainageTo",
       "workersCount",
       "priority"
     ];
@@ -842,30 +888,22 @@ router.patch(
 
     const normalizedChainage = normalizeChainagePayload({
       ...req.body,
-      chainageFrom: req.body.chainageFrom || work.chainageFrom,
-      chainageTo: req.body.chainageTo || work.chainageTo,
-      chainage: req.body.chainage || work.chainage,
-      chainageNo: req.body.chainageNo || work.chainageNo
+      requestedChainageFrom:
+        req.body.requestedChainageFrom || req.body.chainageFrom || getChainageFrom(work),
+      requestedChainageTo:
+        req.body.requestedChainageTo || req.body.chainageTo || getChainageTo(work)
     });
-    work.chainageFrom = normalizedChainage.chainageFrom;
-    work.chainageTo = normalizedChainage.chainageTo;
-    work.chainage = normalizedChainage.chainage;
-    work.chainageNo = normalizedChainage.chainageNo;
+    work.requestedChainageFrom = normalizedChainage.requestedChainageFrom;
+    work.requestedChainageTo = normalizedChainage.requestedChainageTo;
     work.title = work.title || `${work.workType} - ${work.location}`;
-    if (![WORK_STAGES.APPROVED, WORK_STAGES.COMPLETED, WORK_STAGES.PARTIALLY_COMPLETED].includes(currentStage)) {
-      work.approvedChainage = {
-        from: normalizedChainage.chainageFrom,
-        to: normalizedChainage.chainageTo
-      };
-    }
 
     if (
-      normalizeComparable(previousChainageFrom) !== normalizeComparable(normalizedChainage.chainageFrom) ||
-      normalizeComparable(previousChainageTo) !== normalizeComparable(normalizedChainage.chainageTo)
+      normalizeComparable(previousChainageFrom) !== normalizeComparable(normalizedChainage.requestedChainageFrom) ||
+      normalizeComparable(previousChainageTo) !== normalizeComparable(normalizedChainage.requestedChainageTo)
     ) {
       work.chainageAuditHistory.push({
-        approvedChainageFrom: previousChainageFrom,
-        approvedChainageTo: previousChainageTo,
+        approvedChainageFrom: getApprovedChainageFrom(work),
+        approvedChainageTo: getApprovedChainageTo(work),
         completedChainageFrom: "",
         completedChainageTo: "",
         remainingChainageFrom: "",
@@ -874,8 +912,8 @@ router.patch(
         updatedByName: req.user.name || "",
         updatedByRole: req.user.role || "",
         updateDescription: currentStage === WORK_STAGES.RETURNED
-          ? "Chainage corrected during returned-work resubmission"
-          : "Work approval chainage updated before completion",
+          ? `Requested chainage corrected from ${previousChainageFrom} - ${previousChainageTo}`
+          : `Requested chainage updated from ${previousChainageFrom} - ${previousChainageTo}`,
         partialCompletionReason: ""
       });
     }
@@ -1055,9 +1093,13 @@ router.post(
     work.approvedByRole = actor.role;
     work.approvalDescription = actor.description;
     work.approvedAt = actor.date;
+    const approvedChainageFrom = getChainageFrom(work);
+    const approvedChainageTo = getChainageTo(work);
+    work.approvedChainageFrom = approvedChainageFrom;
+    work.approvedChainageTo = approvedChainageTo;
     work.approvedChainage = {
-      from: getChainageFrom(work),
-      to: getChainageTo(work)
+      from: approvedChainageFrom,
+      to: approvedChainageTo
     };
     work.status = WORK_STAGES.APPROVED;
     work.workflowStage = WORK_STAGES.APPROVED;
