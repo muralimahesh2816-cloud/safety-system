@@ -63,7 +63,7 @@ const toRows = ({ work, hazards, users, training }) => {
 
 const normalizeWorkflowStage = (record = {}) => {
   const stage = record.workflowStage || record.status || "Pending Check";
-  return stage === "Pending Approval" ? "Pending Final Approval" : stage;
+  return ["Pending Approval", "Pending Recommendation"].includes(stage) ? "Pending Final Approval" : stage;
 };
 
 const toLegacyWorkRecord = (record) => ({
@@ -89,7 +89,9 @@ const toLegacyWorkRecord = (record) => ({
   partialCompletionReason: record.partialCompletionReason || record.completion?.partialCompletionReason || "",
   workersCount: record.workersCount || 0,
   priority: record.priority || "Medium",
-  status: record.status === "Pending Approval" ? "Pending Final Approval" : record.status || normalizeWorkflowStage(record),
+  status: ["Pending Approval", "Pending Recommendation"].includes(record.status)
+    ? "Pending Final Approval"
+    : record.status || normalizeWorkflowStage(record),
   workflowStage: normalizeWorkflowStage(record),
   reportedBy: record.createdByName || record.createdBy?.name || "",
   createdByName: record.createdByName || record.createdBy?.name || "",

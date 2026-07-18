@@ -16,14 +16,6 @@ const CHECKER_ROLES = [
   ROLES.MAINTENANCE_ENGINEER
 ];
 
-const RECOMMENDER_ROLES = [
-  ROLES.PROJECT_MANAGER,
-  ROLES.CONSTRUCTION_MANAGER,
-  ROLES.OPERATIONS_MANAGER,
-  ROLES.MAINTENANCE_MANAGER,
-  ROLES.SAFETY_MANAGER
-];
-
 const FINAL_APPROVER_ROLES = [
   ROLES.PROJECT_MANAGER,
   ROLES.MAINTENANCE_MANAGER,
@@ -123,7 +115,7 @@ const buildWorkEmailHtml = async ({ title, intro, work, actionLabel, actionUrl, 
   ];
   const progressItems = progress.length
     ? progress
-    : ["Created", "Pending Check", "Pending Recommendation", "Pending Approval", "Approved", "Completed"];
+    : ["Created", "Pending Check", "Pending Final Approval", "Approved", "Completed"];
 
   return `<!doctype html>
 <html>
@@ -381,33 +373,17 @@ const notifyWorkCreated = async ({ work, actorId }) => {
 };
 
 const notifyWorkChecked = async ({ work, actorId }) => {
-  const users = await getActiveUsersByRolesOrPermission({ roles: RECOMMENDER_ROLES, workPermission: "recommend" });
-  return sendWorkStageNotification({
-    users,
-    work,
-    title: "Work Approval Ready for Recommendation",
-    intro: "A work approval has been checked and is ready for recommendation.",
-    message: `${work.workType || work.title || "Work approval"} is ready for recommendation.`,
-    actionLabel: "Review Recommendation",
-    priority: "high",
-    color: "orange",
-    progress: ["Created", "Checked", "Pending Recommendation"],
-    createdBy: actorId
-  });
-};
-
-const notifyWorkRecommended = async ({ work, actorId }) => {
   const users = await getActiveUsersByRolesOrPermission({ roles: FINAL_APPROVER_ROLES, workPermission: "approve" });
   return sendWorkStageNotification({
     users,
     work,
     title: "Work Approval Ready for Final Approval",
-    intro: "A work approval has been recommended and is ready for final approval.",
+    intro: "A work approval has been checked and is ready for final approval.",
     message: `${work.workType || work.title || "Work approval"} is ready for final approval.`,
     actionLabel: "Review Final Approval",
     priority: "urgent",
     color: "red",
-    progress: ["Created", "Checked", "Recommended", "Pending Approval"],
+    progress: ["Created", "Checked", "Pending Final Approval"],
     createdBy: actorId
   });
 };
@@ -423,7 +399,7 @@ const notifyWorkApproved = async ({ work, actorId }) => {
     actionLabel: "Open Work Approval",
     priority: "medium",
     color: "green",
-    progress: ["Created", "Checked", "Recommended", "Approved"],
+    progress: ["Created", "Checked", "Approved"],
     createdBy: actorId
   });
 };
@@ -506,14 +482,12 @@ const createNotification = async ({
 
 module.exports = {
   CHECKER_ROLES,
-  RECOMMENDER_ROLES,
   FINAL_APPROVER_ROLES,
   buildWorkUrl,
   createEnterpriseNotification,
   createNotification,
   notifyWorkCreated,
   notifyWorkChecked,
-  notifyWorkRecommended,
   notifyWorkApproved,
   notifyWorkReturned,
   notifyWorkCompleted

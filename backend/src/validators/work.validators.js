@@ -59,7 +59,6 @@ const statusUpdateSchema = z.object({
     "Pending",
     "Under Review",
     "Pending Check",
-    "Pending Recommendation",
     "Pending Approval",
     "Pending Final Approval",
     "Approved",
@@ -70,14 +69,12 @@ const statusUpdateSchema = z.object({
   ]),
   comment: z.string().optional().default(""),
   approvedBy: z.string().optional().default(""),
-  checkedBy: z.string().trim().optional(),
-  recommendedBy: z.string().trim().optional()
+  checkedBy: z.string().trim().optional()
 });
 
 const stageActionSchema = z.object({
   description: z.string().trim().optional().default(""),
   reviewFindings: z.string().trim().optional().default(""),
-  recommendationRemarks: z.string().trim().optional().default(""),
   approvalRemarks: z.string().trim().optional().default(""),
   overrideReason: z.string().trim().optional().default("")
 });

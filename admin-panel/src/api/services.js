@@ -365,6 +365,14 @@ const mapWorkRecord = (item = {}) => {
     "";
   const createdByRole = item.createdByRole || item.createdBy?.role || "";
   const approvedByName = item.approvedByName || item.approvedBy || item.approvedById?.name || "";
+  const rawStatus = item.status || "";
+  const rawWorkflowStage = item.workflowStage || rawStatus;
+  const workflowStage = ["Pending Approval", "Pending Recommendation"].includes(rawWorkflowStage)
+    ? "Pending Final Approval"
+    : rawWorkflowStage || "Pending Check";
+  const status = ["Pending Approval", "Pending Recommendation"].includes(rawStatus)
+    ? "Pending Final Approval"
+    : rawStatus || "Pending";
 
   return {
     ...item,
@@ -386,7 +394,7 @@ const mapWorkRecord = (item = {}) => {
     remainingChainageFrom,
     remainingChainageTo,
     partialCompletionReason,
-    status: item.status === "Pending Approval" ? "Pending Final Approval" : item.status || "Pending",
+    status,
     beforeImages,
     afterImages,
     beforeVideos,
@@ -418,7 +426,7 @@ const mapWorkRecord = (item = {}) => {
     approvalDescription: item.approvalDescription || "",
     approvedAt: item.approvedAt || item.approvalDate || "",
     approvalDate: item.approvalDate || item.approvedAt || "",
-    workflowStage: item.workflowStage === "Pending Approval" ? "Pending Final Approval" : item.workflowStage || item.status || "Pending Check",
+    workflowStage,
     returnedBy: item.returnedBy || "",
     returnedByRole: item.returnedByRole || "",
     returnDescription: item.returnDescription || "",
@@ -557,10 +565,6 @@ const normalizeReportRows = (rows = [], type = "work") =>
       "Checked Role": item.checkedByRole || "-",
       "Checked Date": item.checkedAt || "-",
       "Review Findings": item.checkedDescription || item.checked?.reviewFindings || "-",
-      "Recommended By": item.recommendedBy || "-",
-      "Recommended Role": item.recommendedByRole || "-",
-      "Recommended Date": item.recommendedAt || "-",
-      "Recommendation Remarks": item.recommendedDescription || item.recommended?.recommendationRemarks || "-",
       "Workflow Stage": item.workflowStage || item.status || "Pending Check",
       Status: item.status || item.workflowStage || "Pending Check",
       "Approved By": item.approvedByName || item.approvedBy || "-",
@@ -672,10 +676,6 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
       "Checked Role": item.checkedByRole || "-",
       "Checked Date": item.checkedAt || "-",
       "Review Findings": item.checkedDescription || "-",
-      "Recommended By": item.recommendedBy || "-",
-      "Recommended Role": item.recommendedByRole || "-",
-      "Recommended Date": item.recommendedAt || "-",
-      "Recommendation Remarks": item.recommendedDescription || "-",
       "Approved By": item.approvedByName || item.approvedBy || "Admin",
       "Approved Role": item.approvedByRole || "-",
       "Approval Date": item.approvedAt || item.approvalDate || "-",
@@ -926,11 +926,6 @@ export const workService = {
   check: async (id, payload) => {
     const body = typeof payload === "string" ? { reviewFindings: payload, description: payload } : payload;
     const res = await client.post(`/work-approvals/${id}/check`, body);
-    return { success: true, work: mapWorkRecord(res.data.work) };
-  },
-  recommend: async (id, payload) => {
-    const body = typeof payload === "string" ? { recommendationRemarks: payload, description: payload } : payload;
-    const res = await client.post(`/work-approvals/${id}/recommend`, body);
     return { success: true, work: mapWorkRecord(res.data.work) };
   },
   approve: async (id, payload) => {

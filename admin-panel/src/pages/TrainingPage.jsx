@@ -84,6 +84,9 @@ const initialForm = {
   category: ""
 };
 
+const normalizeRole = (role = "") =>
+  String(role || "").trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_");
+
 const TrainingPage = ({ user }) => {
   const [records, setRecords] = useState([]);
   const [history, setHistory] = useState([]);
@@ -103,7 +106,8 @@ const TrainingPage = ({ user }) => {
   const uploadLockRef = useRef(false);
   const previewVideoRef = useRef(null);
 
-  const canManageConcepts = ["super_admin", "admin"].includes(user?.role);
+  const currentRole = normalizeRole(user?.role);
+  const canManageConcepts = ["super_admin", "admin", "safety_manager"].includes(currentRole);
   const canUpload = canManageConcepts;
 
   const fetchTraining = useCallback(async () => {

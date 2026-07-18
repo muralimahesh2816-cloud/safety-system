@@ -11,7 +11,6 @@ import {
   MapPin,
   Maximize2,
   RotateCcw,
-  ShieldCheck,
   UploadCloud,
   UsersRound,
   UserRound,
@@ -25,7 +24,6 @@ import { formatChainageRange, getChainageFrom, getChainageTo } from "../../utils
 
 const WORKFLOW_STAGES = [
   "Pending Check",
-  "Pending Recommendation",
   "Pending Final Approval",
   "Approved",
   "Partially Completed",
@@ -33,7 +31,6 @@ const WORKFLOW_STAGES = [
   "Returned for Correction"
 ];
 const CHECKING_ROLES = ["safety_officer", "safety_engineer", "site_engineer", "project_engineer", "maintenance_engineer"];
-const RECOMMENDING_ROLES = ["project_manager", "construction_manager", "operations_manager", "maintenance_manager", "safety_manager"];
 const APPROVAL_ROLES = ["maintenance_manager", "project_manager", "admin"];
 
 const valueOrDash = (value) => (value === undefined || value === null || value === "" ? "-" : value);
@@ -55,7 +52,7 @@ const getWorkflowStage = (work) => {
   const safeWork = work || {};
   const status = safeWork.workflowStage || safeWork.status || "";
   if (WORKFLOW_STAGES.includes(status)) return status;
-  if (status === "Pending Approval") return "Pending Final Approval";
+  if (status === "Pending Approval" || status === "Pending Recommendation") return "Pending Final Approval";
   if (status === "Rejected") return "Returned for Correction";
   if (status === "Pending" || status === "Under Review" || !status) return "Pending Check";
   return status;
@@ -68,7 +65,6 @@ const hasWorkAction = (user = {}, action) => {
   if (user?.permissions?.work?.[action] === true) return true;
   const roleFallbacks = {
     check: CHECKING_ROLES,
-    recommend: RECOMMENDING_ROLES,
     approve: APPROVAL_ROLES,
     complete: [],
     return: []
@@ -87,7 +83,6 @@ const isVideoUrl = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url)
 
 const statusTone = (status = "Pending Check") => ({
   "Pending Check": "border-cyan-400/40 bg-cyan-500/15 text-cyan-100",
-  "Pending Recommendation": "border-violet-400/40 bg-violet-500/15 text-violet-100",
   "Pending Final Approval": "border-amber-400/40 bg-amber-500/15 text-amber-100",
   Approved: "border-sky-400/40 bg-sky-500/15 text-sky-100",
   "Partially Completed": "border-lime-400/40 bg-lime-500/15 text-lime-100",
@@ -234,6 +229,9 @@ const ActionPanel = ({
   const safeWork = work || {};
   const userRole = normalizeRole(user?.role);
   const isCreator = isCreatorOfWork(safeWork, user);
+  const userId = getUserId(user);
+  const checkerId = String(safeWork.checkedById || safeWork.checkedBy?._id || "");
+  const isChecker = Boolean(userId && checkerId && userId === checkerId);
   const isSuperAdmin = userRole === "super_admin";
   const approvedChainageFrom = safeWork.approvedChainageFrom || safeWork.approvedChainage?.from || getChainageFrom(safeWork);
   const approvedChainageTo = safeWork.approvedChainageTo || safeWork.approvedChainage?.to || getChainageTo(safeWork);
@@ -245,14 +243,6 @@ const ActionPanel = ({
       placeholder: "Enter findings after reviewing the work location, chainage, manpower, PPE evidence, work description, and submitted media.",
       button: "CHECK WORK",
       icon: FileCheck2
-    },
-    "Pending Recommendation": {
-      action: "recommend",
-      title: "Enter recommendation remarks before recommending this work",
-      label: "Recommendation Remarks",
-      placeholder: "Enter remarks after reviewing the original submission, review findings, checker details, chainage, media evidence, and correction history.",
-      button: "RECOMMEND WORK",
-      icon: ShieldCheck
     },
     "Pending Final Approval": {
       action: "approve",
@@ -442,6 +432,20 @@ const ActionPanel = ({
     return null;
   }
 
+  if (currentAction.action === "approve" && (isCreator || isChecker)) {
+    return (
+      <div className="rounded-3xl border border-amber-300/20 bg-amber-500/[0.07] p-4">
+        <div className="flex items-center gap-2 text-amber-100">
+          <Clock3 size={18} />
+          <p className="font-semibold">Final approval unavailable</p>
+        </div>
+        <p className="mt-2 text-sm text-slate-300">
+          Creator and checker separation is mandatory. This work must be approved by another authorized final approver.
+        </p>
+      </div>
+    );
+  }
+
   if (isCreator && !isSuperAdmin) {
     return (
       <div className="rounded-3xl border border-cyan-300/20 bg-cyan-500/[0.07] p-4">
@@ -489,7 +493,7 @@ const ActionPanel = ({
             onChange={(event) => setOverrideReason(event.target.value)}
             rows={2}
             maxLength={600}
-            placeholder="Required when overriding creator/checker/recommender separation."
+            placeholder="Required when overriding creator/checker/final approver separation."
             className="w-full resize-none rounded-2xl border border-amber-300/20 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-amber-300/60 focus:outline-none"
           />
         </label>
@@ -596,15 +600,6 @@ const WorkApprovalDetailsModal = ({
         role: safeWork?.checkedByRole,
         date: safeWork?.checkedAt,
         description: safeWork?.checkedDescription
-      },
-      {
-        label: "Recommended",
-        completed: Boolean(safeWork?.recommendedAt || safeWork?.recommendedBy),
-        current: stage === "Pending Recommendation",
-        name: safeWork?.recommendedBy,
-        role: safeWork?.recommendedByRole,
-        date: safeWork?.recommendedAt,
-        description: safeWork?.recommendedDescription
       },
       {
         label: "Approved",
@@ -777,8 +772,6 @@ const WorkApprovalDetailsModal = ({
                     <InfoRow label="Current Stage" value={stage} icon={Clock3} />
                     <InfoRow label="Checked By" value={safeWork.checkedBy} />
                     <InfoRow label="Checked Date" value={safeWork.checkedAt ? formatDateTime(safeWork.checkedAt) : "-"} />
-                    <InfoRow label="Recommended By" value={safeWork.recommendedBy} />
-                    <InfoRow label="Recommended Date" value={safeWork.recommendedAt ? formatDateTime(safeWork.recommendedAt) : "-"} />
                     <InfoRow label="Approved By" value={safeWork.approvedByName || safeWork.approvedBy} />
                     <InfoRow label="Approved Date" value={safeWork.approvedAt || safeWork.approvalDate ? formatDateTime(safeWork.approvedAt || safeWork.approvalDate) : "-"} />
                     <InfoRow label="Completion Date" value={completionDate ? formatDateTime(completionDate) : "-"} />
@@ -786,7 +779,6 @@ const WorkApprovalDetailsModal = ({
 
                   <DescriptionCard title="Work Description" value={safeWork.description || safeWork.workDescription || safeWork.details} />
                   {safeWork.checkedDescription ? <DescriptionCard title="Review Findings" value={safeWork.checkedDescription} tone="emerald" /> : null}
-                  {safeWork.recommendedDescription ? <DescriptionCard title="Recommendation Remarks" value={safeWork.recommendedDescription} tone="emerald" /> : null}
                   {safeWork.approvalDescription ? <DescriptionCard title="Approval Remarks" value={safeWork.approvalDescription} tone="emerald" /> : null}
                   {safeWork.partialCompletionReason ? <DescriptionCard title="Partial Completion Reason" value={safeWork.partialCompletionReason} tone="emerald" /> : null}
                   {safeWork.returnDescription ? <DescriptionCard title="Correction Reason" value={safeWork.returnDescription} tone="rose" /> : null}

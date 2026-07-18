@@ -109,11 +109,7 @@ const buildAssignedTasks = async (user = {}) => {
     checks.push(["pendingCheck", Promise.resolve(0)]);
   }
 
-  if (userCan(user, "recommend")) {
-    checks.push(["pendingRecommendation", WorkApproval.countDocuments({ workflowStage: "Pending Recommendation" })]);
-  } else {
-    checks.push(["pendingRecommendation", Promise.resolve(0)]);
-  }
+  checks.push(["pendingRecommendation", Promise.resolve(0)]);
 
   if (userCan(user, "approve")) {
     checks.push([
@@ -142,14 +138,6 @@ const buildAssignedTasks = async (user = {}) => {
       : Promise.resolve(0)
   ]);
 
-  if (userCan(user, "recommend")) {
-    itemQueries.push(
-      WorkApproval.find({ workflowStage: "Pending Recommendation" })
-        .select("title workType location workflowStage priority createdAt")
-        .sort({ createdAt: -1 })
-        .limit(5)
-    );
-  }
   if (userCan(user, "approve")) {
     itemQueries.push(
       WorkApproval.find({ workflowStage: { $in: ["Pending Approval", "Pending Final Approval"] } })
@@ -204,7 +192,6 @@ const buildAssignedTasks = async (user = {}) => {
     counts,
     total:
       counts.pendingCheck +
-      counts.pendingRecommendation +
       counts.pendingApproval +
       counts.returnedWork +
       counts.incompleteWork,

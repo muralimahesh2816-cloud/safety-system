@@ -262,11 +262,13 @@ workApprovalSchema.pre("validate", function normalizeChainageRange() {
     else if (this.status === "Approved") this.workflowStage = "Approved";
     else if (this.status === "Rejected") this.workflowStage = "Returned for Correction";
     else if (this.recommendedAt || this.recommendedBy) this.workflowStage = "Pending Final Approval";
-    else if (this.checkedAt || this.checkedBy) this.workflowStage = "Pending Recommendation";
+    else if (this.checkedAt || this.checkedBy) this.workflowStage = "Pending Final Approval";
     else this.workflowStage = "Pending Check";
   }
   if (this.workflowStage === "Pending Approval") this.workflowStage = "Pending Final Approval";
+  if (this.workflowStage === "Pending Recommendation") this.workflowStage = "Pending Final Approval";
   if (this.status === "Pending Approval") this.status = "Pending Final Approval";
+  if (this.status === "Pending Recommendation") this.status = "Pending Final Approval";
   if (!this.status || this.status === "Pending" || this.status === "Under Review") {
     this.status = this.workflowStage;
   }

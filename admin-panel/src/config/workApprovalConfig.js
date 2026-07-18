@@ -6,14 +6,6 @@ export const checkedByUsers = [
   "Maintenance Engineer"
 ];
 
-export const recommendedByUsers = [
-  "Project Manager",
-  "Construction Manager",
-  "Operations Manager",
-  "Maintenance Manager",
-  "Safety Manager"
-];
-
 export const workTypes = [
   "Road Work",
   "Lights Changing",

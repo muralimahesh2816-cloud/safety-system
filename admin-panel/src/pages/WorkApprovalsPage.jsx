@@ -25,14 +25,14 @@ import {
   matchesChainageSearch,
   validateChainageRange
 } from "../utils/chainage";
-import { checkedByUsers, recommendedByUsers, statusColors, workTypes } from "../config/workApprovalConfig";
+import { checkedByUsers, statusColors, workTypes } from "../config/workApprovalConfig";
 
 const WORK_FORM_COLLAPSED_KEY = "workFormCollapsed";
 const LEGACY_WORK_FORM_COLLAPSED_KEY = "workApprovalFormCollapsed";
-const WORK_FILTERS_VISIBLE_KEY = "workFiltersVisible";
+const WORK_FILTERS_COLLAPSED_KEY = "workFiltersCollapsed";
+const LEGACY_WORK_FILTERS_VISIBLE_KEY = "workFiltersVisible";
 const WORKFLOW_STAGES = [
   "Pending Check",
-  "Pending Recommendation",
   "Pending Final Approval",
   "Approved",
   "Partially Completed",
@@ -40,13 +40,11 @@ const WORKFLOW_STAGES = [
   "Returned for Correction"
 ];
 const CHECKING_ROLES = ["safety_officer", "safety_engineer", "site_engineer", "project_engineer", "maintenance_engineer"];
-const RECOMMENDING_ROLES = ["project_manager", "construction_manager", "operations_manager", "maintenance_manager", "safety_manager"];
 const APPROVAL_ROLES = ["maintenance_manager", "project_manager", "admin"];
 const QUEUE_FILTERS = [
   { value: "all", label: "All Work" },
   { value: "my_created", label: "My Created Works" },
   { value: "pending_check", label: "Pending My Check" },
-  { value: "pending_recommendation", label: "Pending My Recommendation" },
   { value: "pending_approval", label: "Pending My Approval" },
   { value: "approved", label: "Approved Work" },
   { value: "partially_completed", label: "Partially Completed" },
@@ -65,7 +63,6 @@ const hasStageRole = (user = {}, action) => {
   if (role === "super_admin") return true;
   const roleMap = {
     check: CHECKING_ROLES,
-    recommend: RECOMMENDING_ROLES,
     approve: APPROVAL_ROLES
   };
   return (roleMap[action] || []).includes(role);
@@ -73,7 +70,6 @@ const hasStageRole = (user = {}, action) => {
 const canActOnStage = (work = {}, user = {}) => {
   const stage = getWorkflowStage(work);
   if (stage === "Pending Check") return hasStageRole(user, "check");
-  if (stage === "Pending Recommendation") return hasStageRole(user, "recommend");
   if (stage === "Pending Final Approval") return hasStageRole(user, "approve");
   return false;
 };
@@ -81,22 +77,19 @@ const getDefaultQueueFilter = (user = {}) => {
   const role = normalizeRole(user?.role);
   if (role === "super_admin") return "pending_check";
   if (CHECKING_ROLES.includes(role)) return "pending_check";
-  if (["project_manager", "maintenance_manager"].includes(role)) return "pending_recommendation";
-  if (RECOMMENDING_ROLES.includes(role)) return "pending_recommendation";
   if (APPROVAL_ROLES.includes(role)) return "pending_approval";
   return "my_created";
 };
 const getWorkflowStage = (work = {}) => {
   const status = work.workflowStage || work.status || "";
   if (WORKFLOW_STAGES.includes(status)) return status;
-  if (status === "Pending Approval") return "Pending Final Approval";
+  if (status === "Pending Approval" || status === "Pending Recommendation") return "Pending Final Approval";
   if (status === "Pending" || status === "Under Review" || !status) return "Pending Check";
   if (status === "Rejected") return "Returned for Correction";
   return status;
 };
 const getRequiredAction = (work = {}) => ({
   "Pending Check": "Awaiting Check",
-  "Pending Recommendation": "Awaiting Recommendation",
   "Pending Final Approval": "Awaiting Final Approval",
   Approved: "Approved - Work in Progress",
   "Partially Completed": "Partially Completed",
@@ -209,7 +202,6 @@ const getWorkStatusSinceText = (work = {}) => {
 };
 const getStageBadgeClass = (stage = "Pending Check") => ({
   "Pending Check": "border-cyan-400/30 bg-cyan-500/10 text-cyan-100",
-  "Pending Recommendation": "border-violet-400/30 bg-violet-500/10 text-violet-100",
   "Pending Final Approval": "border-amber-400/30 bg-amber-500/10 text-amber-100",
   Approved: "border-sky-400/30 bg-sky-500/10 text-sky-100",
   "Partially Completed": "border-lime-400/30 bg-lime-500/10 text-lime-100",
@@ -223,7 +215,10 @@ const getInitialFormCollapsed = () =>
   typeof window !== "undefined" &&
   (localStorage.getItem(WORK_FORM_COLLAPSED_KEY) ?? localStorage.getItem(LEGACY_WORK_FORM_COLLAPSED_KEY)) === "true";
 const getInitialFiltersVisible = () =>
-  typeof window !== "undefined" && localStorage.getItem(WORK_FILTERS_VISIBLE_KEY) === "true";
+  typeof window !== "undefined" &&
+  (localStorage.getItem(WORK_FILTERS_COLLAPSED_KEY) !== null
+    ? localStorage.getItem(WORK_FILTERS_COLLAPSED_KEY) !== "true"
+    : localStorage.getItem(LEGACY_WORK_FILTERS_VISIBLE_KEY) === "true");
 const MEDIA_IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
 const MEDIA_VIDEO_LIMIT_BYTES = 100 * 1024 * 1024;
 const isVideoUpload = (file) => file?.type?.startsWith("video/");
@@ -282,7 +277,6 @@ const WorkApprovalsPage = ({ user }) => {
     createdBy: "",
     approvedBy: "",
     checkedBy: "",
-    recommendedBy: "",
     workType: "",
     location: "",
     chainage: ""
@@ -337,7 +331,7 @@ const WorkApprovalsPage = ({ user }) => {
   }, [formCollapsed]);
 
   useEffect(() => {
-    localStorage.setItem(WORK_FILTERS_VISIBLE_KEY, String(filtersVisible));
+    localStorage.setItem(WORK_FILTERS_COLLAPSED_KEY, String(!filtersVisible));
   }, [filtersVisible]);
 
   const submitWork = async (event) => {
@@ -428,16 +422,6 @@ const WorkApprovalsPage = ({ user }) => {
           overrideReason: options.overrideReason || ""
         }),
         success: "Work Checked Successfully"
-      },
-      recommend: {
-        label: "Recommend Work",
-        confirmText: "Confirm that the checked work details are satisfactory and recommended for final approval.",
-        service: () => workService.recommend(id, {
-          recommendationRemarks: cleanDescription,
-          description: cleanDescription,
-          overrideReason: options.overrideReason || ""
-        }),
-        success: "Work Recommended Successfully"
       },
       approve: {
         label: "Final Approval",
@@ -682,7 +666,6 @@ const WorkApprovalsPage = ({ user }) => {
     const createdByNeedle = listFilters.createdBy.trim().toLowerCase();
     const approvedByNeedle = listFilters.approvedBy.trim().toLowerCase();
     const checkedByNeedle = listFilters.checkedBy.trim().toLowerCase();
-    const recommendedByNeedle = listFilters.recommendedBy.trim().toLowerCase();
     const locationNeedle = listFilters.location.trim().toLowerCase();
     const fromDate = listFilters.dateFrom ? new Date(listFilters.dateFrom) : null;
     const toDate = listFilters.dateTo ? new Date(listFilters.dateTo) : null;
@@ -701,8 +684,6 @@ const WorkApprovalsPage = ({ user }) => {
         !approvedByNeedle || getApprovedByName(item).toLowerCase().includes(approvedByNeedle);
       const checkedByMatch =
         !checkedByNeedle || String(item.checkedBy || "").toLowerCase().includes(checkedByNeedle);
-      const recommendedByMatch =
-        !recommendedByNeedle || String(item.recommendedBy || "").toLowerCase().includes(recommendedByNeedle);
       const locationMatch =
         !locationNeedle || String(item.location || "").toLowerCase().includes(locationNeedle);
       const workTypeMatch = !listFilters.workType || (item.workType || item.title || "") === listFilters.workType;
@@ -711,7 +692,6 @@ const WorkApprovalsPage = ({ user }) => {
         all: true,
         my_created: isCreatorOfWork(item, user),
         pending_check: itemStage === "Pending Check" && canActOnStage(item, user),
-        pending_recommendation: itemStage === "Pending Recommendation" && canActOnStage(item, user),
         pending_approval: itemStage === "Pending Final Approval" && canActOnStage(item, user),
         approved: itemStage === "Approved",
         partially_completed: itemStage === "Partially Completed",
@@ -725,7 +705,6 @@ const WorkApprovalsPage = ({ user }) => {
         createdByMatch &&
         approvedByMatch &&
         checkedByMatch &&
-        recommendedByMatch &&
         locationMatch &&
         workTypeMatch &&
         chainageMatch
@@ -760,7 +739,6 @@ const WorkApprovalsPage = ({ user }) => {
     const stage = status || "Pending Check";
     const stageTone = {
       "Pending Check": "text-cyan-300",
-      "Pending Recommendation": "text-violet-300",
       "Pending Final Approval": "text-amber-300",
       Approved: "text-emerald-300",
       "Partially Completed": "text-lime-300",
@@ -774,12 +752,12 @@ const WorkApprovalsPage = ({ user }) => {
     <div className="safety-bg-overlay safety-bg-work space-y-5">
       <SectionHeader
         title="Work Approval Workflow"
-        subtitle="Role-based sequential checking, recommendation, final approval, and completion evidence"
+        subtitle="Role-based sequential checking, final approval, and completion evidence"
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-white/10 bg-slate-950/35 p-3 backdrop-blur-xl">
         <div className="flex flex-wrap gap-2">
-          {["Pending Check", "Pending Recommendation", "Pending Final Approval", "Approved", "Partially Completed"].map((stage) => (
+          {["Pending Check", "Pending Final Approval", "Approved", "Partially Completed"].map((stage) => (
             <span key={stage} className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-[11px] font-semibold text-slate-200">
               {stage}: <span className="text-cyan-200">{stageCounts[stage] || 0}</span>
             </span>
@@ -997,7 +975,6 @@ const WorkApprovalsPage = ({ user }) => {
                   createdBy: "",
                   approvedBy: "",
                   checkedBy: "",
-                  recommendedBy: "",
                   workType: "",
                   location: "",
                   chainage: ""
@@ -1140,21 +1117,6 @@ const WorkApprovalsPage = ({ user }) => {
             </label>
             <label>
               <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                Recommended By
-              </span>
-              <select
-                value={listFilters.recommendedBy}
-                onChange={(event) => setListFilters((prev) => ({ ...prev, recommendedBy: event.target.value }))}
-                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white"
-              >
-                <option value="" className="bg-slate-900 text-white">All</option>
-                {recommendedByUsers.map((item) => (
-                  <option key={item} value={item} className="bg-slate-900 text-white">{item}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                 Chainage
               </span>
               <input
@@ -1268,11 +1230,9 @@ const WorkApprovalsPage = ({ user }) => {
                             </p>
                           ) : null}
                           <p className="mt-1 text-xs text-slate-300">Created By: {getWorkReporterName(work) || "-"}</p>
-                          {work.checkedBy || work.recommendedBy ? (
+                          {work.checkedBy ? (
                             <p className="mt-1 text-xs text-slate-400">
-                              {work.checkedBy ? `Checked: ${work.checkedBy}` : ""}
-                              {work.checkedBy && work.recommendedBy ? " | " : ""}
-                              {work.recommendedBy ? `Recommended: ${work.recommendedBy}` : ""}
+                              Checked: {work.checkedBy}
                             </p>
                           ) : null}
                           {getApprovedByName(work) ? (
