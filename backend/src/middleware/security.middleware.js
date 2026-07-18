@@ -11,6 +11,14 @@ const sanitizeMiddleware = require("./sanitize.middleware");
 const ApiError = require("../utils/api-error");
 const logger = require("../utils/logger");
 
+const allowedRequestHeaders = [
+  "Accept",
+  "Content-Type",
+  "Authorization",
+  "X-CSRF-Token",
+  "Idempotency-Key"
+];
+
 const getOrigin = (value) => {
   try {
     return value ? new URL(value).origin : "";
@@ -46,7 +54,7 @@ const applySecurityMiddleware = (app) => {
       },
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization", "x-csrf-token"],
+      allowedHeaders: allowedRequestHeaders,
       optionsSuccessStatus: 204
     })
   );
@@ -100,3 +108,4 @@ const expressUrlEncodedLimit = () => {
 };
 
 module.exports = applySecurityMiddleware;
+module.exports.allowedRequestHeaders = allowedRequestHeaders;

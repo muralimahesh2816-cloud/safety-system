@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from "react";
 
 const ChartSkeleton = ({ height }) => (
   <div
@@ -12,6 +12,16 @@ const ChartSkeleton = ({ height }) => (
 const SafeChartContainer = ({ children, height = 320, className = "" }) => {
   const ref = useRef(null);
   const [ready, setReady] = useState(false);
+  const stableChart = useMemo(() => {
+    if (!isValidElement(children)) return children;
+
+    return cloneElement(children, {
+      initialDimension: { width: 320, height },
+      minWidth: 1,
+      minHeight: 1,
+      debounce: 40
+    });
+  }, [children, height]);
 
   useEffect(() => {
     const element = ref.current;
@@ -44,7 +54,7 @@ const SafeChartContainer = ({ children, height = 320, className = "" }) => {
       className={`chart-safe-container w-full min-w-0 ${className}`}
       style={{ height, minHeight: height }}
     >
-      {ready ? children : <ChartSkeleton height={height} />}
+      {ready ? stableChart : <ChartSkeleton height={height} />}
     </div>
   );
 };

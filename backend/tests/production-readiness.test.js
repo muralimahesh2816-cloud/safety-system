@@ -25,6 +25,14 @@ const {
   normalizeWorkStage,
   WORK_STAGES
 } = require("../src/constants/work-status");
+const { allowedRequestHeaders } = require("../src/middleware/security.middleware");
+
+test("CORS allows work submission idempotency and security headers", () => {
+  const normalizedHeaders = allowedRequestHeaders.map((header) => header.toLowerCase());
+  assert.equal(normalizedHeaders.includes("idempotency-key"), true);
+  assert.equal(normalizedHeaders.includes("x-csrf-token"), true);
+  assert.equal(normalizedHeaders.includes("authorization"), true);
+});
 
 test("pagination clamps page and limit values", () => {
   assert.deepEqual(getPagination({ page: "-4", limit: "999" }, { defaultLimit: 25, maxLimit: 100 }), {
