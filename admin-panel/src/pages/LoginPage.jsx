@@ -1,287 +1,131 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import gsap from "gsap";
-import { ArrowRight, BadgeCheck, HardHat, ShieldCheck, SkipForward } from "lucide-react";
-import SafetyLogo from "../components/brand/SafetyLogo";
-import AnimatedBackground from "../components/login/AnimatedBackground";
+import {
+  BellRing,
+  Check,
+  ClipboardCheck,
+  LockKeyhole,
+  ShieldCheck,
+  UsersRound
+} from "lucide-react";
 import LoginPanel from "../components/login/LoginPanel";
-import LoadingOverlay from "../components/login/LoadingOverlay";
-import { PPE_STEPS, getPpeProgress, isSafetyPassed } from "../components/login/ppeSequence";
+import brandMark from "../assets/topbarlogo.svg";
+import safetyIllustration from "../assets/branding/login-safety-illustration.svg";
+import {
+  APP_TITLE,
+  APP_VERSION,
+  ORGANIZATION_NAME,
+  PORTAL_BRAND_NAME
+} from "../config/appConfig";
+import "../styles/login.css";
 
-const HelmetScene = lazy(() => import("../components/login/HelmetScene"));
-
-const canUseWebGL = () => {
-  if (typeof window === "undefined") return false;
-  try {
-    const canvas = document.createElement("canvas");
-    return Boolean(canvas.getContext("webgl") || canvas.getContext("experimental-webgl"));
-  } catch (_error) {
-    return false;
+const benefits = [
+  {
+    icon: ClipboardCheck,
+    title: "Structured approvals",
+    description: "Keep work permits and safety actions moving through clear workflows."
+  },
+  {
+    icon: BellRing,
+    title: "Timely safety updates",
+    description: "Stay informed about hazards, near misses, and assigned actions."
+  },
+  {
+    icon: UsersRound,
+    title: "Role-based access",
+    description: "Give every team member the right level of operational visibility."
   }
-};
+];
 
-const useReducedMotion = () => {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(media.matches);
-    update();
-    media.addEventListener?.("change", update);
-    return () => media.removeEventListener?.("change", update);
-  }, []);
-  return reduced;
-};
+const BrandLockup = ({ compact = false }) => (
+  <div className={`login-brand-lockup${compact ? " login-brand-lockup--compact" : ""}`}>
+    <span className="login-brand-mark" aria-hidden="true">
+      <img src={brandMark} alt="" />
+    </span>
+    <span>
+      <strong>{PORTAL_BRAND_NAME}</strong>
+      <small>{ORGANIZATION_NAME}</small>
+    </span>
+  </div>
+);
 
-const LoginPage = ({ onLogin, onVerifyOtp, onResendOtp }) => {
-  const reduceMotion = useReducedMotion();
-  const ppeTimelineRef = useRef(null);
-  const [stage, setStage] = useState("intro");
-  const [ppeStep, setPpeStep] = useState(0);
-  const [scanLabel, setScanLabel] = useState("PPE readiness pending");
-  const [formVisible, setFormVisible] = useState(false);
-  const [authenticated, setAuthenticated] = useState(false);
-  const [webglReady, setWebglReady] = useState(false);
+const LoginPage = ({ onLogin, onVerifyOtp, onResendOtp }) => (
+  <main className="enterprise-login" aria-labelledby="login-page-title">
+    <div className="enterprise-login__backdrop" aria-hidden="true">
+      <span className="enterprise-login__orb enterprise-login__orb--blue" />
+      <span className="enterprise-login__orb enterprise-login__orb--orange" />
+      <span className="enterprise-login__grid" />
+    </div>
 
-  useEffect(() => {
-    const lowPower =
-      typeof navigator !== "undefined" &&
-      navigator.hardwareConcurrency &&
-      navigator.hardwareConcurrency <= 4;
-    const mobile = typeof window !== "undefined" && window.innerWidth < 768;
-    setWebglReady(canUseWebGL() && !reduceMotion && !lowPower && !mobile);
-  }, [reduceMotion]);
-
-  useEffect(
-    () => () => {
-      ppeTimelineRef.current?.kill();
-    },
-    []
-  );
-
-  const activated = stage !== "intro";
-  const showScene = webglReady;
-  const scanVisible = stage === "scanning";
-  const safetyPassed = isSafetyPassed(ppeStep);
-  const ppeProgress = useMemo(() => getPpeProgress(ppeStep), [ppeStep]);
-
-  const beginLogin = () => {
-    if (stage !== "intro") return;
-    ppeTimelineRef.current?.kill();
-    setStage("scanning");
-    setScanLabel("Starting PPE readiness check");
-    setPpeStep(0);
-    const timeline = gsap.timeline();
-    ppeTimelineRef.current = timeline;
-    timeline
-      .to({}, { duration: 0.35 })
-      .call(() => {
-        setPpeStep(1);
-        setScanLabel(PPE_STEPS[0].scanLabel);
-      })
-      .to({}, { duration: 0.82 })
-      .call(() => {
-        setPpeStep(2);
-        setScanLabel(PPE_STEPS[1].scanLabel);
-      })
-      .to({}, { duration: 0.82 })
-      .call(() => {
-        setPpeStep(3);
-        setScanLabel(PPE_STEPS[2].scanLabel);
-      })
-      .to({}, { duration: 0.55 })
-      .call(() => {
-        setScanLabel("Safety Check Passed");
-      })
-      .to({}, { duration: 0.45 })
-      .call(() => {
-        setFormVisible(true);
-        setStage("form");
-      });
-  };
-
-  const skipAnimation = () => {
-    ppeTimelineRef.current?.kill();
-    setPpeStep(PPE_STEPS.length);
-    setScanLabel("Safety Check Passed");
-    setStage("form");
-    setFormVisible(true);
-  };
-
-  const sceneLabel = useMemo(
-    () =>
-      showScene
-        ? "3D safety readiness scene"
-        : "Lightweight safety login background",
-    [showScene]
-  );
-
-  return (
-    <main className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100" aria-label={sceneLabel}>
-      <AnimatedBackground active={activated} />
-      {showScene ? (
-        <Suspense fallback={<LoadingOverlay visible label="Loading 3D safety scene" />}>
-          <HelmetScene activated={activated} authenticated={authenticated} ppeStep={ppeStep} />
-        </Suspense>
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center opacity-80">
-          <motion.div
-            animate={reduceMotion ? {} : { y: [0, -10, 0], rotate: [0, 1.5, 0] }}
-            transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
-            className="rounded-[3rem] border border-orange-300/20 bg-orange-400/10 p-16 text-orange-100 shadow-[0_0_80px_rgba(249,115,22,.16)]"
-          >
-            <HardHat size={120} strokeWidth={1.2} />
-          </motion.div>
+    <div className="enterprise-login__shell">
+      <section className="enterprise-login__auth" aria-label="Secure account sign in">
+        <div className="enterprise-login__mobile-brand">
+          <BrandLockup compact />
         </div>
-      )}
 
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(2,6,23,.94),rgba(2,6,23,.72)_44%,rgba(2,6,23,.36)_62%,rgba(2,6,23,.86))]" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-slate-950 to-transparent" />
+        <LoginPanel
+          onLogin={onLogin}
+          onVerifyOtp={onVerifyOtp}
+          onResendOtp={onResendOtp}
+        />
 
-      <section className="relative z-10 grid min-h-screen grid-cols-1 lg:grid-cols-[1.05fr_.95fr]">
-        <div className="flex min-h-[46vh] flex-col justify-between px-6 py-8 sm:px-10 lg:min-h-screen lg:px-14 lg:py-12">
-          <div className="flex items-center gap-3">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-2 shadow-[0_0_35px_rgba(20,184,166,.16)] backdrop-blur-xl">
-              <SafetyLogo compact />
-            </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.28em] text-cyan-200">Momentum Safety</p>
-              <p className="mt-1 text-sm text-slate-400">Udupi Tollway Pvt Ltd</p>
-            </div>
+        <p className="enterprise-login__legal">
+          <LockKeyhole size={14} aria-hidden="true" />
+          Authorized access only. Activity may be monitored for security and compliance.
+        </p>
+      </section>
+
+      <section className="enterprise-login__brand" aria-labelledby="login-page-title">
+        <header className="enterprise-login__brand-header">
+          <BrandLockup />
+          <div className="enterprise-login__secure-indicator">
+            <span aria-hidden="true" />
+            Secure portal
           </div>
+        </header>
 
-          <div className="max-w-3xl py-10 lg:py-0">
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-4 py-2 text-xs font-semibold text-emerald-100 shadow-[0_0_32px_rgba(16,185,129,.12)]"
-            >
-              <ShieldCheck size={15} />
-              Enterprise Safety Access
-            </motion.div>
-            <motion.h1
-              initial={{ opacity: 0, y: 22 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.08 }}
-              className="font-display text-4xl font-black leading-tight text-white sm:text-5xl xl:text-6xl"
-            >
-              Safety Management System
-            </motion.h1>
-            <motion.p
-              initial={{ opacity: 0, y: 22 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.16 }}
-              className="mt-5 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg"
-            >
-              Equip the worker with required PPE, pass the safety check, then access work approvals, hazards, training, and operational governance.
-            </motion.p>
+        <div className="enterprise-login__brand-copy">
+          <p className="enterprise-login__eyebrow">
+            <ShieldCheck size={16} aria-hidden="true" />
+            {APP_TITLE}
+          </p>
+          <h1 id="login-page-title">Building a Safer Workplace, Together</h1>
+          <p className="enterprise-login__intro">
+            Manage work approvals, hazard reporting, training records, and safety actions
+            through one secure enterprise platform.
+          </p>
 
-            {!formVisible ? (
-              <div className="mt-8 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={beginLogin}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-500 to-teal-500 px-5 py-3 text-sm font-semibold text-white shadow-[0_0_34px_rgba(20,184,166,.22)]"
-                >
-                  Begin Secure Login
-                  <ArrowRight size={16} />
-                </button>
-                <button
-                  type="button"
-                  onClick={skipAnimation}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-slate-100 backdrop-blur-xl"
-                >
-                  <SkipForward size={16} />
-                  Skip Animation
-                </button>
-              </div>
-            ) : null}
-            <AnimatePresence>
-              {stage !== "intro" ? (
-                <motion.div
-                  key={safetyPassed ? "safety-passed" : "safety-progress"}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className={`mt-6 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold backdrop-blur-xl ${
-                    safetyPassed
-                      ? "border-emerald-300/30 bg-emerald-400/12 text-emerald-100"
-                      : "border-cyan-300/25 bg-cyan-400/10 text-cyan-100"
-                  }`}
-                >
-                  <ShieldCheck size={16} />
-                  {safetyPassed ? "Safety Check Passed" : scanLabel}
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
-          </div>
-
-          <div className="grid max-w-2xl grid-cols-1 gap-3 text-xs text-slate-300 sm:grid-cols-3">
-            {ppeProgress.map((item) => (
-              <div
-                key={item.key}
-                className={`flex items-center gap-2 rounded-2xl border px-3 py-3 backdrop-blur-xl ${
-                  item.complete
-                    ? "border-emerald-300/25 bg-emerald-400/10 text-emerald-100"
-                    : "border-white/10 bg-white/[0.045]"
-                }`}
-              >
-                <BadgeCheck size={16} className={item.complete ? "text-emerald-300" : "text-cyan-300"} />
-                {item.label}
-              </div>
+          <div className="enterprise-login__benefits" aria-label="Portal benefits">
+            {benefits.map(({ icon: Icon, title, description }) => (
+              <article className="enterprise-login__benefit" key={title}>
+                <span className="enterprise-login__benefit-icon" aria-hidden="true">
+                  <Icon size={19} />
+                </span>
+                <span>
+                  <strong>{title}</strong>
+                  <small>{description}</small>
+                </span>
+                <Check className="enterprise-login__benefit-check" size={16} aria-hidden="true" />
+              </article>
             ))}
           </div>
         </div>
 
-        <div className="relative flex items-center justify-center px-5 py-8 sm:px-8 lg:min-h-screen">
-          <AnimatePresence mode="wait">
-            {formVisible ? (
-              <LoginPanel
-                key="login-panel"
-                onLogin={onLogin}
-                onVerifyOtp={onVerifyOtp}
-                onResendOtp={onResendOtp}
-                onAuthenticated={() => setAuthenticated(true)}
-              />
-            ) : (
-              <motion.div
-                key="prelogin-panel"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="w-full max-w-md rounded-[2rem] border border-white/15 bg-slate-950/48 p-8 text-center shadow-[0_35px_110px_rgba(0,0,0,.45)] backdrop-blur-2xl"
-              >
-                <HardHat className="mx-auto text-orange-200" size={54} />
-                <h2 className="mt-5 font-display text-2xl font-semibold text-white">Safety Readiness Check</h2>
-                <p className="mt-3 text-sm leading-6 text-slate-300">
-                  Begin the sequence to equip helmet, reflective vest, and safety shoes before authentication.
-                </p>
-                <div className="mt-5 space-y-2 text-left">
-                  {ppeProgress.map((item) => (
-                    <div key={item.key} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs">
-                      <span>{item.label}</span>
-                      <span className={item.complete ? "text-emerald-300" : "text-slate-500"}>
-                        {item.complete ? "Ready" : "Pending"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                {safetyPassed ? (
-                  <p className="mt-4 rounded-2xl border border-emerald-300/25 bg-emerald-400/10 px-3 py-2 text-sm font-semibold text-emerald-100">
-                    Safety Check Passed
-                  </p>
-                ) : null}
-              </motion.div>
-            )}
-          </AnimatePresence>
+        <div className="enterprise-login__visual" aria-hidden="true">
+          <img
+            src={safetyIllustration}
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
         </div>
-      </section>
 
-      <AnimatePresence>
-        {scanVisible ? <LoadingOverlay visible label={scanLabel} /> : null}
-      </AnimatePresence>
-    </main>
-  );
-};
+        <footer className="enterprise-login__brand-footer">
+          <span>Safety Management System</span>
+          <span className="enterprise-login__footer-divider" aria-hidden="true" />
+          <span>Portal v{APP_VERSION}</span>
+        </footer>
+      </section>
+    </div>
+  </main>
+);
 
 export default LoginPage;

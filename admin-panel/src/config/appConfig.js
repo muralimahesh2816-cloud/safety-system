@@ -9,7 +9,12 @@ const DEFAULT_API_BASE_URL =
 
 export const API_BASE_URL = process.env.REACT_APP_API_URL || DEFAULT_API_BASE_URL;
 
-export const APP_TITLE = "Enterprise Safety HSE Management";
+export const APP_TITLE = "Safety Management System";
+export const PORTAL_BRAND_NAME = process.env.REACT_APP_PORTAL_BRAND_NAME || "Momentum Safety";
+export const ORGANIZATION_NAME =
+  process.env.REACT_APP_ORGANIZATION_NAME || "Udupi Tollway Pvt. Ltd.";
+export const APP_VERSION = process.env.REACT_APP_APP_VERSION || "0.1.0";
+export const SUPPORT_EMAIL = process.env.REACT_APP_SUPPORT_EMAIL || "";
 
 export const NAV_MODULES = [
   { key: "dashboard", label: "Dashboard" },
