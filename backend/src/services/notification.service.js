@@ -16,14 +16,16 @@ const CHECKER_ROLES = [
   ROLES.MAINTENANCE_ENGINEER
 ];
 
+const RECOMMENDER_ROLES = [ROLES.SAFETY_MANAGER];
+
 const FINAL_APPROVER_ROLES = [
   ROLES.PROJECT_MANAGER,
-  ROLES.MAINTENANCE_MANAGER,
-  ROLES.ADMIN,
-  ROLES.SUPER_ADMIN
+  ROLES.MAINTENANCE_MANAGER
 ];
 
 const ADMIN_ROLES = [ROLES.ADMIN, ROLES.SUPER_ADMIN];
+const getFinalApproverRoles = () =>
+  env.workflowAdminOverrideEnabled ? [...FINAL_APPROVER_ROLES, ...ADMIN_ROLES] : FINAL_APPROVER_ROLES;
 
 const firstFrontendUrl = () =>
   String(env.frontendUrl || "")
@@ -115,7 +117,7 @@ const buildWorkEmailHtml = async ({ title, intro, work, actionLabel, actionUrl, 
   ];
   const progressItems = progress.length
     ? progress
-    : ["Created", "Pending Check", "Pending Final Approval", "Approved", "Completed"];
+    : ["Created", "Pending Check", "Pending Recommendation", "Pending Final Approval", "Approved", "Completed"];
 
   return `<!doctype html>
 <html>
@@ -373,17 +375,33 @@ const notifyWorkCreated = async ({ work, actorId }) => {
 };
 
 const notifyWorkChecked = async ({ work, actorId }) => {
-  const users = await getActiveUsersByRolesOrPermission({ roles: FINAL_APPROVER_ROLES, workPermission: "approve" });
+  const users = await getActiveUsersByRolesOrPermission({ roles: RECOMMENDER_ROLES });
+  return sendWorkStageNotification({
+    users,
+    work,
+    title: "Work Approval Ready for Recommendation",
+    intro: "A work approval has been checked and is ready for Safety Manager recommendation.",
+    message: `${work.workType || work.title || "Work approval"} is ready for recommendation.`,
+    actionLabel: "Review Recommendation",
+    priority: "high",
+    color: "purple",
+    progress: ["Created", "Checked", "Pending Recommendation"],
+    createdBy: actorId
+  });
+};
+
+const notifyWorkRecommended = async ({ work, actorId }) => {
+  const users = await getActiveUsersByRolesOrPermission({ roles: getFinalApproverRoles() });
   return sendWorkStageNotification({
     users,
     work,
     title: "Work Approval Ready for Final Approval",
-    intro: "A work approval has been checked and is ready for final approval.",
+    intro: "A work approval has been recommended by Safety Manager and is ready for final approval.",
     message: `${work.workType || work.title || "Work approval"} is ready for final approval.`,
     actionLabel: "Review Final Approval",
     priority: "urgent",
     color: "red",
-    progress: ["Created", "Checked", "Pending Final Approval"],
+    progress: ["Created", "Checked", "Recommended", "Pending Final Approval"],
     createdBy: actorId
   });
 };
@@ -393,13 +411,13 @@ const notifyWorkApproved = async ({ work, actorId }) => {
   return sendWorkStageNotification({
     users,
     work,
-    title: "Work Approved",
-    intro: "Your work approval has been approved. You may now proceed with execution and upload completion evidence.",
-    message: "Your work approval has been approved. You may now proceed with execution and upload completion evidence.",
+    title: "Work Final Approved",
+    intro: "Your work approval has received final approval. You may now proceed with execution and upload completion evidence.",
+    message: "Your work approval has received final approval. You may now proceed with execution and upload completion evidence.",
     actionLabel: "Open Work Approval",
     priority: "medium",
     color: "green",
-    progress: ["Created", "Checked", "Approved"],
+    progress: ["Created", "Checked", "Recommended", "Final Approved"],
     createdBy: actorId
   });
 };
@@ -482,12 +500,14 @@ const createNotification = async ({
 
 module.exports = {
   CHECKER_ROLES,
+  RECOMMENDER_ROLES,
   FINAL_APPROVER_ROLES,
   buildWorkUrl,
   createEnterpriseNotification,
   createNotification,
   notifyWorkCreated,
   notifyWorkChecked,
+  notifyWorkRecommended,
   notifyWorkApproved,
   notifyWorkReturned,
   notifyWorkCompleted

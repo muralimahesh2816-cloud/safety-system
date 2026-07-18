@@ -33,6 +33,7 @@ const env = {
   },
   sessionTimeoutMinutes: Number(process.env.SESSION_TIMEOUT_MINUTES || 30),
   enforceOtpAuth: process.env.ENFORCE_OTP_AUTH === "true",
+  workflowAdminOverrideEnabled: process.env.WORKFLOW_ADMIN_OVERRIDE_ENABLED === "true",
   allowLocalUploadsInProduction: process.env.ALLOW_LOCAL_UPLOADS_IN_PRODUCTION === "true",
   backup: {
     provider: process.env.BACKUP_PROVIDER || "manual",

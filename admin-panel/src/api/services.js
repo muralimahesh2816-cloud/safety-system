@@ -367,10 +367,10 @@ const mapWorkRecord = (item = {}) => {
   const approvedByName = item.approvedByName || item.approvedBy || item.approvedById?.name || "";
   const rawStatus = item.status || "";
   const rawWorkflowStage = item.workflowStage || rawStatus;
-  const workflowStage = ["Pending Approval", "Pending Recommendation"].includes(rawWorkflowStage)
+  const workflowStage = rawWorkflowStage === "Pending Approval"
     ? "Pending Final Approval"
     : rawWorkflowStage || "Pending Check";
-  const status = ["Pending Approval", "Pending Recommendation"].includes(rawStatus)
+  const status = rawStatus === "Pending Approval"
     ? "Pending Final Approval"
     : rawStatus || "Pending";
 
@@ -457,6 +457,20 @@ const mapHazardRecord = (item = {}) => {
       ? [{ url: toAbsoluteLegacyUpload(item.afterImage), legacyFilename: item.afterImage }]
       : [];
 
+  const evidenceVideos =
+    item.evidenceVideos && item.evidenceVideos.length > 0
+      ? item.evidenceVideos
+      : item.beforeVideo
+      ? [{ url: toAbsoluteLegacyUpload(item.beforeVideo), legacyFilename: item.beforeVideo }]
+      : [];
+
+  const closureVideos =
+    item.closureVideos && item.closureVideos.length > 0
+      ? item.closureVideos
+      : item.afterVideo
+      ? [{ url: toAbsoluteLegacyUpload(item.afterVideo), legacyFilename: item.afterVideo }]
+      : [];
+
   return {
     ...item,
     title: item.title || item.plaza || "Hazard",
@@ -472,8 +486,15 @@ const mapHazardRecord = (item = {}) => {
       typeof item.reportedBy === "object" ? item.reportedBy?.name || "" : item.reportedBy || "",
     evidenceImages,
     closureImages,
+    evidenceVideos,
+    closureVideos,
     beforeImage: item.beforeImage || evidenceImages?.[0]?.url || "",
-    afterImage: item.afterImage || closureImages?.[0]?.url || ""
+    afterImage: item.afterImage || closureImages?.[0]?.url || "",
+    beforeVideo: item.beforeVideo || evidenceVideos?.[0]?.url || "",
+    afterVideo: item.afterVideo || closureVideos?.[0]?.url || "",
+    mediaCount:
+      item.mediaCount ||
+      evidenceImages.length + closureImages.length + evidenceVideos.length + closureVideos.length
   };
 };
 
@@ -536,8 +557,13 @@ const normalizeReportRows = (rows = [], type = "work") =>
         "Risk Level": item.severity || "-",
         "Risk Score": item.riskScore ?? "-",
         "Action Team": item.action || item.actionTeam || "-",
-        "Action Taken": item.actionTaken || "-",
-        Status: item.status || "Open"
+        "Action Taken": item.closureNotes || item.actionTaken || "-",
+        Status: item.status || "Open",
+        "Evidence Image": item.beforeImage || item.evidenceImages || "",
+        "Closure Image": item.afterImage || item.closureImages || "",
+        "Evidence Video": item.beforeVideo || item.evidenceVideos || "",
+        "Closure Video": item.afterVideo || item.closureVideos || "",
+        "Media Count": item.mediaCount || 0
       };
     }
 
@@ -565,6 +591,10 @@ const normalizeReportRows = (rows = [], type = "work") =>
       "Checked Role": item.checkedByRole || "-",
       "Checked Date": item.checkedAt || "-",
       "Review Findings": item.checkedDescription || item.checked?.reviewFindings || "-",
+      "Recommended By": item.recommendedBy || "-",
+      "Recommended Role": item.recommendedByRole || "-",
+      "Recommended Date": item.recommendedAt || "-",
+      "Recommendation Remarks": item.recommendedDescription || item.recommended?.recommendationRemarks || "-",
       "Workflow Stage": item.workflowStage || item.status || "Pending Check",
       Status: item.status || item.workflowStage || "Pending Check",
       "Approved By": item.approvedByName || item.approvedBy || "-",
@@ -676,6 +706,10 @@ const buildLegacyReport = ({ type, fromDate, toDate, plaza, workData, hazardData
       "Checked Role": item.checkedByRole || "-",
       "Checked Date": item.checkedAt || "-",
       "Review Findings": item.checkedDescription || "-",
+      "Recommended By": item.recommendedBy || "-",
+      "Recommended Role": item.recommendedByRole || "-",
+      "Recommended Date": item.recommendedAt || "-",
+      "Recommendation Remarks": item.recommendedDescription || "-",
       "Approved By": item.approvedByName || item.approvedBy || "Admin",
       "Approved Role": item.approvedByRole || "-",
       "Approval Date": item.approvedAt || item.approvalDate || "-",
@@ -928,6 +962,11 @@ export const workService = {
     const res = await client.post(`/work-approvals/${id}/check`, body);
     return { success: true, work: mapWorkRecord(res.data.work) };
   },
+  recommend: async (id, payload) => {
+    const body = typeof payload === "string" ? { recommendationRemarks: payload, description: payload } : payload;
+    const res = await client.post(`/work-approvals/${id}/recommend`, body);
+    return { success: true, work: mapWorkRecord(res.data.work) };
+  },
   approve: async (id, payload) => {
     const body = typeof payload === "string" ? { approvalRemarks: payload, description: payload } : payload;
     const res = await client.post(`/work-approvals/${id}/approve`, body);
@@ -990,10 +1029,11 @@ export const hazardService = {
       async () => {
         const formData = new FormData();
         Object.entries(payload).forEach(([key, value]) => {
-          if (key === "evidenceImages") return;
+          if (["evidenceImages", "evidenceVideos"].includes(key)) return;
           if (value !== undefined && value !== null) formData.append(key, value);
         });
         (payload.evidenceImages || []).forEach((file) => formData.append("evidenceImages", file));
+        (payload.evidenceVideos || []).forEach((file) => formData.append("evidenceVideos", file));
         const res = await client.post("/hazards", formData);
         return { success: true, hazard: mapHazardRecord(res.data.hazard) };
       },
@@ -1038,6 +1078,7 @@ export const hazardService = {
         const formData = new FormData();
         formData.append("closureNotes", payload.closureNotes || "");
         (payload.closureImages || []).forEach((file) => formData.append("closureImages", file));
+        (payload.closureVideos || []).forEach((file) => formData.append("closureVideos", file));
         return (await client.patch(`/hazards/${id}/close`, formData)).data;
       },
       async () => {

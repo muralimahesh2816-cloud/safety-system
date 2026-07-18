@@ -53,13 +53,15 @@ export const ROLE_GROUPS = [
   },
   {
     label: "Recommending Roles",
-    roles: [
-      ROLES.PROJECT_MANAGER,
-      ROLES.CONSTRUCTION_MANAGER,
-      ROLES.OPERATIONS_MANAGER,
-      ROLES.MAINTENANCE_MANAGER,
-      ROLES.SAFETY_MANAGER
-    ]
+    roles: [ROLES.SAFETY_MANAGER]
+  },
+  {
+    label: "Final Approval Roles",
+    roles: [ROLES.PROJECT_MANAGER, ROLES.MAINTENANCE_MANAGER]
+  },
+  {
+    label: "Other Enterprise Roles",
+    roles: [ROLES.CONSTRUCTION_MANAGER, ROLES.OPERATIONS_MANAGER, ROLES.SUPERVISOR]
   }
 ];
 

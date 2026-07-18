@@ -67,9 +67,13 @@ const hazardSchema = new mongoose.Schema(
     reportedByName: { type: String, default: "" },
     correctiveActions: [correctiveActionSchema],
     evidenceImages: [assetSchema],
+    evidenceVideos: [assetSchema],
     closureImages: [assetSchema],
+    closureVideos: [assetSchema],
     beforeImage: { type: String, default: "" },
+    beforeVideo: { type: String, default: "" },
     afterImage: { type: String, default: "" },
+    afterVideo: { type: String, default: "" },
     closureNotes: String,
     timeline: [timelineSchema]
   },

@@ -86,6 +86,7 @@ const emptyWorkPermissions = () =>
     update: false,
     remove: false,
     check: false,
+    recommend: false,
     approve: false,
     complete: false,
     return: false
@@ -155,6 +156,14 @@ const checkerWork = () =>
     return: true
   });
 
+const recommenderWork = () =>
+  workPermissions({
+    create: true,
+    update: true,
+    recommend: true,
+    return: true
+  });
+
 const approverWork = (extra = {}) =>
   workPermissions({
     create: true,
@@ -172,6 +181,7 @@ const ROLE_DEFAULT_PERMISSIONS = {
       update: true,
       remove: true,
       check: true,
+      recommend: true,
       approve: true,
       complete: true,
       return: true
@@ -180,7 +190,7 @@ const ROLE_DEFAULT_PERMISSIONS = {
   }, {}),
   [ROLES.ADMIN]: basePermissions({
     users: manage(),
-    work: approverWork({ remove: true }),
+    work: workPermissions({ create: true, update: true, remove: true }),
     hazards: manage(),
     training: manage(),
     reports: readOnly(),
@@ -214,6 +224,7 @@ const ROLE_DEFAULT_PERMISSIONS = {
     work: approverWork()
   }),
   [ROLES.SAFETY_MANAGER]: basePermissions({
+    work: recommenderWork(),
     training: manage()
   }),
   [ROLES.SUPERVISOR]: basePermissions()

@@ -44,6 +44,54 @@ const legacyActionTeams = [
   "Housekeeping Team"
 ];
 
+const HAZARD_FORM_COLLAPSED_KEY = "hazardFormCollapsed";
+const HAZARD_FILTER_COLLAPSED_KEY = "hazardFilterCollapsed";
+const MEDIA_IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
+const MEDIA_VIDEO_LIMIT_BYTES = 100 * 1024 * 1024;
+const isVideoUpload = (file) => file?.type?.startsWith("video/");
+const isVideoUrl = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url);
+const normalizeRole = (role = "") => String(role || "").trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_");
+const getInitialHazardFormCollapsed = () =>
+  typeof window !== "undefined" && localStorage.getItem(HAZARD_FORM_COLLAPSED_KEY) === "true";
+const getInitialHazardFiltersVisible = () =>
+  typeof window === "undefined" ? true : localStorage.getItem(HAZARD_FILTER_COLLAPSED_KEY) !== "true";
+
+const splitHazardMediaSelection = (fileList = []) => {
+  const images = [];
+  const videos = [];
+  const errors = [];
+
+  Array.from(fileList).forEach((file) => {
+    if (isVideoUpload(file)) {
+      if (file.size > MEDIA_VIDEO_LIMIT_BYTES) errors.push(`${file.name} exceeds 100MB video limit`);
+      else if (videos.length < 6) videos.push(file);
+      return;
+    }
+
+    if (file.type?.startsWith("image/")) {
+      if (file.size > MEDIA_IMAGE_LIMIT_BYTES) errors.push(`${file.name} exceeds 10MB image limit`);
+      else if (images.length < 6) images.push(file);
+      return;
+    }
+
+    errors.push(`${file.name} is not a supported image/video file`);
+  });
+
+  if (Array.from(fileList).filter((file) => file.type?.startsWith("image/")).length > 6) {
+    errors.push("Maximum 6 images are allowed");
+  }
+  if (Array.from(fileList).filter((file) => file.type?.startsWith("video/")).length > 6) {
+    errors.push("Maximum 6 videos are allowed");
+  }
+
+  return { images, videos, errors };
+};
+
+const mediaItemsFrom = (items = [], fallback) =>
+  (items?.length ? items : fallback ? [fallback] : [])
+    .map((item) => ({ url: getMediaUrl(item) }))
+    .filter((item) => Boolean(item.url));
+
 const formatFileSize = (bytes = 0) => {
   if (!bytes) return "0 KB";
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -104,6 +152,7 @@ const HazardsPage = ({ user }) => {
   const [records, setRecords] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [images, setImages] = useState([]);
+  const [videos, setVideos] = useState([]);
   const [evidencePreview, setEvidencePreview] = useState("");
   const [closureMap, setClosureMap] = useState({});
   const [closurePreviewMap, setClosurePreviewMap] = useState({});
@@ -123,11 +172,13 @@ const HazardsPage = ({ user }) => {
   const [editingHazard, setEditingHazard] = useState(null);
   const [editForm, setEditForm] = useState(initialForm);
   const [editSaving, setEditSaving] = useState(false);
+  const [formCollapsed, setFormCollapsed] = useState(getInitialHazardFormCollapsed);
+  const [filtersVisible, setFiltersVisible] = useState(getInitialHazardFiltersVisible);
   const submitLockRef = useRef(false);
   const actionLockRef = useRef(false);
   const editLockRef = useRef(false);
 
-  const canDelete = ["super_admin", "admin"].includes(user?.role);
+  const canDelete = ["super_admin", "admin"].includes(normalizeRole(user?.role));
   const riskScore = useMemo(
     () => severityWeight[form.severity] * likelihoodWeight[form.likelihood],
     [form.severity, form.likelihood]
@@ -149,6 +200,14 @@ const HazardsPage = ({ user }) => {
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  useEffect(() => {
+    localStorage.setItem(HAZARD_FORM_COLLAPSED_KEY, String(formCollapsed));
+  }, [formCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem(HAZARD_FILTER_COLLAPSED_KEY, String(!filtersVisible));
+  }, [filtersVisible]);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -181,10 +240,12 @@ const HazardsPage = ({ user }) => {
         description:
           form.description || `${form.category} reported at ${form.location} by ${form.reportedBy}`,
         riskScore,
-        evidenceImages: images
+        evidenceImages: images,
+        evidenceVideos: videos
       });
       setForm(initialForm);
       setImages([]);
+      setVideos([]);
       if (evidencePreview?.startsWith("blob:")) URL.revokeObjectURL(evidencePreview);
       setEvidencePreview("");
       await showSuccessPopup("Hazard Submitted Successfully");
@@ -217,9 +278,10 @@ const HazardsPage = ({ user }) => {
     try {
       await hazardService.close(hazard._id, {
         closureNotes: closure.notes.trim(),
-        closureImages: closure.images || []
+        closureImages: closure.images || [],
+        closureVideos: closure.videos || []
       });
-      setClosureMap((prev) => ({ ...prev, [hazard._id]: { images: [], notes: "" } }));
+      setClosureMap((prev) => ({ ...prev, [hazard._id]: { images: [], videos: [], notes: "" } }));
       if (closurePreviewMap[hazard._id]?.startsWith("blob:")) {
         URL.revokeObjectURL(closurePreviewMap[hazard._id]);
       }
@@ -248,24 +310,14 @@ const HazardsPage = ({ user }) => {
   };
 
   const openGallery = (hazard, startAt = 0) => {
-    const evidence = (
-      hazard.evidenceImages?.length
-        ? hazard.evidenceImages
-        : hazard.beforeImage
-        ? [hazard.beforeImage]
-        : []
-    )
-      .map((item) => ({ url: getMediaUrl(item) }))
-      .filter((item) => Boolean(item.url));
-    const closure = (
-      hazard.closureImages?.length
-        ? hazard.closureImages
-        : hazard.afterImage
-        ? [hazard.afterImage]
-        : []
-    )
-      .map((item) => ({ url: getMediaUrl(item) }))
-      .filter((item) => Boolean(item.url));
+    const evidence = [
+      ...mediaItemsFrom(hazard.evidenceImages, hazard.beforeImage),
+      ...mediaItemsFrom(hazard.evidenceVideos, hazard.beforeVideo)
+    ];
+    const closure = [
+      ...mediaItemsFrom(hazard.closureImages, hazard.afterImage),
+      ...mediaItemsFrom(hazard.closureVideos, hazard.afterVideo)
+    ];
     const assets = [...evidence, ...closure];
     setModal({
       open: true,
@@ -399,7 +451,25 @@ const HazardsPage = ({ user }) => {
         subtitle="Legacy hazard fields and workflows restored with enterprise risk operations UX"
       />
 
-      <div className="grid grid-cols-1 gap-4 xl:h-[calc(100vh-120px)] xl:grid-cols-3">
+      <div className="flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => setFormCollapsed((prev) => !prev)}
+          className="rounded-2xl border border-cyan-300/25 bg-cyan-500/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-cyan-100 transition hover:bg-cyan-500/20"
+        >
+          {formCollapsed ? "Show Form" : "Hide Form"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setFiltersVisible((prev) => !prev)}
+          className="rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-100 transition hover:bg-white/15"
+        >
+          {filtersVisible ? "Hide Filters" : "Show Filters"}
+        </button>
+      </div>
+
+      <div className={`grid grid-cols-1 gap-4 xl:h-[calc(100vh-120px)] ${formCollapsed ? "xl:grid-cols-1" : "xl:grid-cols-3"}`}>
+        {!formCollapsed ? (
         <GlassCard className="module-sticky-card p-5 xl:col-span-1">
           <h3 className="mb-3 text-lg font-semibold text-white">Report Hazard</h3>
           <form className="space-y-3" onSubmit={submit}>
@@ -511,21 +581,38 @@ const HazardsPage = ({ user }) => {
             </div>
             <input
               type="file"
-              accept="image/*"
+              accept="image/*,video/mp4,video/quicktime,video/webm"
+              multiple
               onChange={(event) => {
-                const selected = event.target.files?.[0] || null;
-                setImages(selected ? [selected] : []);
+                const selection = splitHazardMediaSelection(event.target.files || []);
+                if (selection.errors.length) showValidationPopup(selection.errors.join(", "));
+                setImages(selection.images);
+                setVideos(selection.videos);
                 if (evidencePreview?.startsWith("blob:")) URL.revokeObjectURL(evidencePreview);
-                setEvidencePreview(selected ? URL.createObjectURL(selected) : "");
+                const previewFile = selection.images[0] || selection.videos[0] || null;
+                setEvidencePreview(previewFile ? URL.createObjectURL(previewFile) : "");
               }}
               className="w-full rounded-xl border border-dashed border-white/20 bg-white/5 px-3 py-2 text-xs text-slate-300"
             />
             {evidencePreview ? (
-              <img
-                src={evidencePreview}
-                alt="Evidence Preview"
-                className="h-28 w-full rounded-xl border border-white/10 object-contain"
-              />
+              videos.length && !images.length ? (
+                <video
+                  src={evidencePreview}
+                  controls
+                  className="h-28 w-full rounded-xl border border-white/10 object-contain"
+                />
+              ) : (
+                <img
+                  src={evidencePreview}
+                  alt="Evidence preview"
+                  className="h-28 w-full rounded-xl border border-white/10 object-contain"
+                />
+              )
+            ) : null}
+            {images.length || videos.length ? (
+              <p className="text-[11px] text-slate-400">
+                Selected {images.length} image(s), {videos.length} video(s). At least one image is required.
+              </p>
             ) : null}
             <button
               type="submit"
@@ -558,8 +645,9 @@ const HazardsPage = ({ user }) => {
           </div>
           {error ? <p className="mt-3 text-xs text-rose-300">{error}</p> : null}
         </GlassCard>
+        ) : null}
 
-        <GlassCard className="p-5 xl:col-span-2 xl:max-h-[calc(100vh-120px)] xl:overflow-hidden">
+        <GlassCard className={`p-5 xl:max-h-[calc(100vh-120px)] xl:overflow-hidden ${formCollapsed ? "xl:col-span-1" : "xl:col-span-2"}`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="text-lg font-semibold text-white">Hazard Log</h3>
@@ -578,6 +666,7 @@ const HazardsPage = ({ user }) => {
               Clear Filters
             </button>
           </div>
+          {filtersVisible ? (
           <div className="mb-4 grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-slate-950/35 p-3 md:grid-cols-2 xl:grid-cols-5">
             <label>
               <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
@@ -664,31 +753,22 @@ const HazardsPage = ({ user }) => {
               </select>
             </label>
           </div>
+          ) : null}
           {loading ? (
             <p className="text-sm text-slate-300">Loading hazards...</p>
           ) : (
-            <div className="module-list-scroll space-y-4 xl:max-h-[calc(100vh-270px)] xl:overflow-y-auto xl:pr-1">
+            <div className={`module-list-scroll space-y-4 xl:overflow-y-auto xl:pr-1 ${filtersVisible ? "xl:max-h-[calc(100vh-270px)]" : "xl:max-h-[calc(100vh-190px)]"}`}>
               {filteredRecords.map((hazard) => {
-                const evidenceItems = (
-                  hazard.evidenceImages?.length
-                    ? hazard.evidenceImages
-                    : hazard.beforeImage
-                    ? [hazard.beforeImage]
-                    : []
-                )
-                  .map((item) => ({ url: getMediaUrl(item) }))
-                  .filter((item) => Boolean(item.url));
-                const closureItems = (
-                  hazard.closureImages?.length
-                    ? hazard.closureImages
-                    : hazard.afterImage
-                    ? [hazard.afterImage]
-                    : []
-                )
-                  .map((item) => ({ url: getMediaUrl(item) }))
-                  .filter((item) => Boolean(item.url));
-                const evidencePreview = evidenceItems[0]?.url || "";
-                const closurePreview = closureItems[0]?.url || "";
+                const evidenceItems = mediaItemsFrom(hazard.evidenceImages, hazard.beforeImage);
+                const evidenceVideoItems = mediaItemsFrom(hazard.evidenceVideos, hazard.beforeVideo);
+                const closureItems = mediaItemsFrom(hazard.closureImages, hazard.afterImage);
+                const closureVideoItems = mediaItemsFrom(hazard.closureVideos, hazard.afterVideo);
+                const evidenceMediaItems = [...evidenceItems, ...evidenceVideoItems];
+                const closureMediaItems = [...closureItems, ...closureVideoItems];
+                const evidencePreview = evidenceMediaItems[0]?.url || "";
+                const closurePreview = closureMediaItems[0]?.url || "";
+                const evidenceIsVideo = isVideoUrl(evidencePreview);
+                const closureIsVideo = isVideoUrl(closurePreview);
                 const statusSinceText = getHazardStatusSinceText(hazard);
 
                 return (
@@ -720,9 +800,13 @@ const HazardsPage = ({ user }) => {
                         aria-label="Open hazard evidence"
                       >
                         {evidencePreview ? (
-                          <img src={evidencePreview} alt="Hazard evidence" loading="lazy" className="h-full w-full object-cover transition duration-300 hover:scale-105" />
+                          evidenceIsVideo ? (
+                            <video src={evidencePreview} muted playsInline className="h-full w-full object-cover transition duration-300 hover:scale-105" />
+                          ) : (
+                            <img src={evidencePreview} alt="Hazard evidence" loading="lazy" className="h-full w-full object-cover transition duration-300 hover:scale-105" />
+                          )
                         ) : (
-                          <span className="flex h-full items-center justify-center px-2 text-center text-[11px] text-slate-500">No Image Available</span>
+                          <span className="flex h-full items-center justify-center px-2 text-center text-[11px] text-slate-500">No Media Available</span>
                         )}
                       </button>
                       <div className="min-w-0">
@@ -789,7 +873,7 @@ const HazardsPage = ({ user }) => {
 
                     <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                       <div className="rounded-xl border border-white/10 bg-white/5 p-2">
-                        <p className="mb-2 text-xs font-semibold text-amber-200">Evidence Image</p>
+                        <p className="mb-2 text-xs font-semibold text-amber-200">Evidence Media</p>
                         {evidencePreview ? (
                           <button
                             type="button"
@@ -799,40 +883,58 @@ const HazardsPage = ({ user }) => {
                             }}
                             className="w-full overflow-hidden rounded-xl border border-white/10 bg-slate-900/60"
                           >
-                            <img
-                              src={evidencePreview}
-                              alt="Evidence"
-                              loading="lazy"
-                              className="h-36 w-full object-cover transition duration-300 hover:scale-105"
-                            />
+                            {evidenceIsVideo ? (
+                              <video
+                                src={evidencePreview}
+                                muted
+                                playsInline
+                                className="h-36 w-full object-cover transition duration-300 hover:scale-105"
+                              />
+                            ) : (
+                              <img
+                                src={evidencePreview}
+                                alt="Evidence"
+                                loading="lazy"
+                                className="h-36 w-full object-cover transition duration-300 hover:scale-105"
+                              />
+                            )}
                           </button>
                         ) : (
                           <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-white/15 bg-slate-900/50 text-xs text-slate-400">
-                            Evidence image not available
+                            Evidence media not available
                           </div>
                         )}
                       </div>
                       <div className="rounded-xl border border-white/10 bg-white/5 p-2">
-                        <p className="mb-2 text-xs font-semibold text-emerald-200">Closure Image</p>
+                        <p className="mb-2 text-xs font-semibold text-emerald-200">Closure Media</p>
                         {closurePreview ? (
                           <button
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              openGallery(hazard, Math.max(evidenceItems.length, 0));
+                              openGallery(hazard, Math.max(evidenceMediaItems.length, 0));
                             }}
                             className="w-full overflow-hidden rounded-xl border border-white/10 bg-slate-900/60"
                           >
-                            <img
-                              src={closurePreview}
-                              alt="Closure"
-                              loading="lazy"
-                              className="h-36 w-full object-cover transition duration-300 hover:scale-105"
-                            />
+                            {closureIsVideo ? (
+                              <video
+                                src={closurePreview}
+                                muted
+                                playsInline
+                                className="h-36 w-full object-cover transition duration-300 hover:scale-105"
+                              />
+                            ) : (
+                              <img
+                                src={closurePreview}
+                                alt="Closure"
+                                loading="lazy"
+                                className="h-36 w-full object-cover transition duration-300 hover:scale-105"
+                              />
+                            )}
                           </button>
                         ) : (
                           <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-white/15 bg-slate-900/50 text-xs text-slate-400">
-                            Closure image not uploaded
+                            Closure media not uploaded
                           </div>
                         )}
                       </div>
@@ -866,22 +968,26 @@ const HazardsPage = ({ user }) => {
                       </label>
                       <input
                         type="file"
-                        accept="image/*"
+                        accept="image/*,video/mp4,video/quicktime,video/webm"
+                        multiple
                         onChange={(event) => {
-                          const selected = event.target.files?.[0] || null;
+                          const selection = splitHazardMediaSelection(event.target.files || []);
+                          if (selection.errors.length) showValidationPopup(selection.errors.join(", "));
                           setClosureMap((prev) => ({
                             ...prev,
                             [hazard._id]: {
                               ...(prev[hazard._id] || {}),
-                              images: selected ? [selected] : []
+                              images: selection.images,
+                              videos: selection.videos
                             }
                           }));
                           if (closurePreviewMap[hazard._id]?.startsWith("blob:")) {
                             URL.revokeObjectURL(closurePreviewMap[hazard._id]);
                           }
+                          const previewFile = selection.images[0] || selection.videos[0] || null;
                           setClosurePreviewMap((prev) => ({
                             ...prev,
-                            [hazard._id]: selected ? URL.createObjectURL(selected) : ""
+                            [hazard._id]: previewFile ? URL.createObjectURL(previewFile) : ""
                           }));
                         }}
                         className="rounded-xl border border-dashed border-white/20 bg-slate-900/70 px-3 py-2 text-xs text-slate-300"
@@ -896,29 +1002,42 @@ const HazardsPage = ({ user }) => {
                       </button>
                       {closurePreviewMap[hazard._id] ? (
                         <div className="flex items-center gap-3 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.06] p-3 md:col-span-2">
-                          <img
-                            src={closurePreviewMap[hazard._id]}
-                            alt="Closure preview"
-                            className="h-20 w-28 shrink-0 rounded-lg border border-white/10 object-contain"
-                          />
+                          {closureMap[hazard._id]?.videos?.length && !closureMap[hazard._id]?.images?.length ? (
+                            <video
+                              src={closurePreviewMap[hazard._id]}
+                              controls
+                              className="h-20 w-28 shrink-0 rounded-lg border border-white/10 object-contain"
+                            />
+                          ) : (
+                            <img
+                              src={closurePreviewMap[hazard._id]}
+                              alt="Closure preview"
+                              className="h-20 w-28 shrink-0 rounded-lg border border-white/10 object-contain"
+                            />
+                          )}
                           <div className="min-w-0">
                             <p className="truncate text-xs font-semibold text-emerald-100">
-                              {closureMap[hazard._id]?.images?.[0]?.name || "Closure image selected"}
+                              {closureMap[hazard._id]?.images?.[0]?.name ||
+                                closureMap[hazard._id]?.videos?.[0]?.name ||
+                                "Closure media selected"}
                             </p>
                             <p className="mt-1 text-[11px] text-slate-400">
-                              {formatFileSize(closureMap[hazard._id]?.images?.[0]?.size)}
-                              {closureMap[hazard._id]?.images?.[0]?.type
-                                ? ` | ${closureMap[hazard._id].images[0].type}`
+                              {formatFileSize(
+                                closureMap[hazard._id]?.images?.[0]?.size ||
+                                  closureMap[hazard._id]?.videos?.[0]?.size
+                              )}
+                              {closureMap[hazard._id]?.images?.[0]?.type || closureMap[hazard._id]?.videos?.[0]?.type
+                                ? ` | ${closureMap[hazard._id]?.images?.[0]?.type || closureMap[hazard._id]?.videos?.[0]?.type}`
                                 : ""}
                             </p>
                             <p className="mt-1 text-[11px] font-medium text-emerald-300">
-                              Ready to upload as closure evidence
+                              Ready to upload {closureMap[hazard._id]?.images?.length || 0} image(s), {closureMap[hazard._id]?.videos?.length || 0} video(s)
                             </p>
                           </div>
                         </div>
                       ) : (
                         <p className="text-[11px] text-slate-500 md:col-span-2">
-                          Select a closure image to preview its upload details.
+                          Select a closure image and optional video to preview upload details.
                         </p>
                       )}
                     </div>

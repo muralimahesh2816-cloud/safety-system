@@ -374,14 +374,15 @@ const DashboardPage = ({ onModuleSelect }) => {
         <GlassCard className="p-6 xl:col-span-1">
           <SectionHeader
             title="Assigned To Me"
-            subtitle="Pending check, final approval, returned, and completion tasks"
+            subtitle="Pending check, recommendation, final approval, returned, and completion tasks"
           />
           <div className="grid grid-cols-2 gap-2">
             {[
               ["Pending Check", assignedTasks.counts?.pendingCheck || 0, "work"],
-              ["Final Approval", assignedTasks.counts?.pendingApproval || 0, "work"],
+              ["Pending Recommendation", assignedTasks.counts?.pendingRecommendation || 0, "work"],
+              ["Pending Final Approval", assignedTasks.counts?.pendingApproval || 0, "work"],
               ["Returned", assignedTasks.counts?.returnedWork || 0, "work"],
-              ["Incomplete", assignedTasks.counts?.incompleteWork || 0, "work"]
+              ["Work In Progress", assignedTasks.counts?.incompleteWork || 0, "work"]
             ].map(([label, value, module]) => (
               <button
                 key={label}

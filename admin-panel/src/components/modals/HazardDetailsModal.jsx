@@ -21,9 +21,11 @@ const valueOrDash = (value) => (value === undefined || value === null || value =
 const normalizeMedia = (items = [], fallback) => {
   const source = items?.length ? items : fallback ? [fallback] : [];
   return source
-    .map((item) => ({ url: getMediaUrl(item), title: item?.title || item?.name || "Hazard image" }))
+    .map((item) => ({ url: getMediaUrl(item), title: item?.title || item?.name || "Hazard media" }))
     .filter((item) => Boolean(item.url));
 };
+
+const isVideoUrl = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url);
 
 const riskTone = (hazard = {}) => {
   const score = Number(hazard.riskScore || 0);
@@ -64,10 +66,14 @@ const ImagePanel = ({ label, tone, item, onOpen }) => (
     </div>
     {item ? (
       <button type="button" onClick={onOpen} className="group flex h-56 w-full items-center justify-center overflow-hidden bg-slate-950/70 p-3 sm:h-64">
-        <img src={item.url} alt={label} loading="lazy" className="h-full w-full rounded-xl object-contain transition duration-300 group-hover:scale-[1.02]" />
+        {isVideoUrl(item.url) ? (
+          <video src={item.url} muted playsInline className="h-full w-full rounded-xl object-contain transition duration-300 group-hover:scale-[1.02]" />
+        ) : (
+          <img src={item.url} alt={label} loading="lazy" className="h-full w-full rounded-xl object-contain transition duration-300 group-hover:scale-[1.02]" />
+        )}
       </button>
     ) : (
-      <div className="flex h-56 items-center justify-center text-sm text-slate-500 sm:h-64">No Image Available</div>
+      <div className="flex h-56 items-center justify-center text-sm text-slate-500 sm:h-64">No Media Available</div>
     )}
   </div>
 );
@@ -78,11 +84,21 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
     () => normalizeMedia(hazard?.evidenceImages, hazard?.beforeImage),
     [hazard]
   );
+  const evidenceVideos = useMemo(
+    () => normalizeMedia(hazard?.evidenceVideos, hazard?.beforeVideo),
+    [hazard]
+  );
   const closure = useMemo(
     () => normalizeMedia(hazard?.closureImages, hazard?.afterImage),
     [hazard]
   );
-  const allMedia = useMemo(() => [...evidence, ...closure], [closure, evidence]);
+  const closureVideos = useMemo(
+    () => normalizeMedia(hazard?.closureVideos, hazard?.afterVideo),
+    [hazard]
+  );
+  const evidenceMedia = useMemo(() => [...evidence, ...evidenceVideos], [evidence, evidenceVideos]);
+  const closureMedia = useMemo(() => [...closure, ...closureVideos], [closure, closureVideos]);
+  const allMedia = useMemo(() => [...evidenceMedia, ...closureMedia], [closureMedia, evidenceMedia]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -221,8 +237,8 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
                 </div>
 
                 <div className="space-y-4">
-                  <ImagePanel label="Before / Evidence Image" tone="text-amber-300" item={evidence[0]} onOpen={() => openMedia(0)} />
-                  <ImagePanel label="After / Closure Image" tone="text-emerald-300" item={closure[0]} onOpen={() => openMedia(evidence.length)} />
+                  <ImagePanel label="Before / Evidence Media" tone="text-amber-300" item={evidenceMedia[0]} onOpen={() => openMedia(0)} />
+                  <ImagePanel label="After / Closure Media" tone="text-emerald-300" item={closureMedia[0]} onOpen={() => openMedia(evidenceMedia.length)} />
                 </div>
               </div>
             </div>

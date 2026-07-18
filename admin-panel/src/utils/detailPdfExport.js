@@ -255,6 +255,8 @@ const finalizePdf = async ({ reportTitle, fileName, detailRows, descriptionTitle
 export const exportHazardDetailsPdf = async (hazard = {}) => {
   const evidence = normalizeMedia(hazard.evidenceImages, hazard.beforeImage);
   const closure = normalizeMedia(hazard.closureImages, hazard.afterImage);
+  const evidenceVideos = normalizeMedia(hazard.evidenceVideos, hazard.beforeVideo);
+  const closureVideos = normalizeMedia(hazard.closureVideos, hazard.afterVideo);
   return finalizePdf({
     reportTitle: "Hazard Details Report",
     fileName: `hazard-details-${hazard._id || Date.now()}.pdf`,
@@ -267,7 +269,13 @@ export const exportHazardDetailsPdf = async (hazard = {}) => {
       ["Reported By", hazard.reportedBy || hazard.createdBy],
       ["Action Team", hazard.action || hazard.actionTeam],
       ["Action Taken", hazard.closureNotes || formatCorrectiveActions(hazard.correctiveActions || [])],
-      ["Status", hazard.status || "Open"]
+      ["Status", hazard.status || "Open"],
+      ["Evidence Images", evidence.length],
+      ["Evidence Videos", evidenceVideos.length],
+      ["Closure Images", closure.length],
+      ["Closure Videos", closureVideos.length],
+      ["Evidence Video URLs", evidenceVideos.join("\n")],
+      ["Closure Video URLs", closureVideos.join("\n")]
     ],
     descriptionTitle: "Hazard Description",
     description: hazard.description || hazard.details || hazard.observation || "No description entered.",
@@ -313,6 +321,10 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
       ["Checked Role", work.checkedByRole],
       ["Checked Date", formatDate(work.checkedAt)],
       ["Review Findings", work.checkedDescription],
+      ["Recommended By", work.recommendedBy],
+      ["Recommended Role", work.recommendedByRole],
+      ["Recommended Date", formatDate(work.recommendedAt)],
+      ["Recommendation Remarks", work.recommendedDescription],
       ["Created Date", formatDate(work.reportDate || work.startDate || work.createdAt)],
       ["Approved By", work.approvedByName || work.approvedBy],
       ["Approved Role", work.approvedByRole],
@@ -327,7 +339,9 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
       ["Before Images", before.length],
       ["Before Videos", beforeVideos.length],
       ["After Images", after.length],
-      ["After Videos", afterVideos.length]
+      ["After Videos", afterVideos.length],
+      ["Before Video URLs", beforeVideos.join("\n")],
+      ["After Video URLs", afterVideos.join("\n")]
     ],
     descriptionTitle: "Work Description",
     description: work.description || work.workDescription || work.details || "No description entered.",

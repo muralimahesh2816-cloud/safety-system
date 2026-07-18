@@ -85,7 +85,7 @@ const normalizePagePermissions = (permissions = {}, role = ROLES.USER) => {
 const toActionPermissions = (permissions = {}, role = ROLES.USER) => {
   const resolvedRole = normalizeRole(role);
   const legacyDefaults = ROLE_DEFAULT_PERMISSIONS[resolvedRole] || ROLE_DEFAULT_PERMISSIONS[ROLES.USER] || {};
-  const actionKeys = ["view", "create", "update", "delete", "check", "approve", "complete", "return"];
+  const actionKeys = ["view", "create", "update", "delete", "check", "recommend", "approve", "complete", "return"];
   const modules = {
     dashboard: "dashboard",
     work: "work",

@@ -7,6 +7,7 @@ const { authorizePermission, authorizeRoles } = require("../middleware/rbac.midd
 const validate = require("../middleware/validate.middleware");
 const audit = require("../middleware/audit.middleware");
 const logger = require("../utils/logger");
+const { env } = require("../config/env");
 const WorkApproval = require("../models/WorkApproval");
 const { ROLES } = require("../constants/roles");
 const {
@@ -25,6 +26,7 @@ const {
   createNotification,
   notifyWorkCreated,
   notifyWorkChecked,
+  notifyWorkRecommended,
   notifyWorkApproved,
   notifyWorkReturned,
   notifyWorkCompleted
@@ -66,6 +68,7 @@ const runWorkflowNotification = async (label, operation) => {
 
 const WORK_STAGES = {
   PENDING_CHECK: "Pending Check",
+  PENDING_RECOMMENDATION: "Pending Recommendation",
   PENDING_FINAL_APPROVAL: "Pending Final Approval",
   APPROVED: "Approved",
   PARTIALLY_COMPLETED: "Partially Completed",
@@ -75,6 +78,7 @@ const WORK_STAGES = {
 
 const WORK_STAGE_LABELS = {
   check: "Check Work",
+  recommend: "Recommend Work",
   approve: "Final Approval",
   return: "Return for Correction",
   complete: "Complete Work"
@@ -88,51 +92,55 @@ const STAGE_ROLE_FALLBACKS = {
     ROLES.PROJECT_ENGINEER,
     ROLES.MAINTENANCE_ENGINEER
   ],
+  recommend: [
+    ROLES.SAFETY_MANAGER
+  ],
   approve: [
     ROLES.MAINTENANCE_MANAGER,
-    ROLES.PROJECT_MANAGER,
-    ROLES.ADMIN
+    ROLES.PROJECT_MANAGER
   ]
 };
 
 const ACTION_PERMISSION_CODES = {
   check: "CHECK_PERMISSION_REQUIRED",
+  recommend: "RECOMMEND_PERMISSION_REQUIRED",
   approve: "APPROVAL_PERMISSION_REQUIRED"
 };
 
 const ACTION_REQUIRED_CODES = {
   check: "REVIEW_FINDINGS_REQUIRED",
+  recommend: "RECOMMENDATION_REMARKS_REQUIRED",
   approve: "APPROVAL_REMARKS_REQUIRED",
   return: "RETURN_REASON_REQUIRED"
 };
 
 const normalizeObjectId = (value) => (value ? String(value) : "");
 const sameUser = (left, right) => normalizeObjectId(left) && normalizeObjectId(left) === normalizeObjectId(right);
+const isAdminWorkflowOverrideEnabled = () => env.workflowAdminOverrideEnabled === true;
 
 const deriveWorkflowStage = (work = {}) => {
   if (work.workflowStage === "Pending Approval") return WORK_STAGES.PENDING_FINAL_APPROVAL;
-  if (work.workflowStage === "Pending Recommendation") return WORK_STAGES.PENDING_FINAL_APPROVAL;
   if (work.workflowStage) return work.workflowStage;
   if (work.status === "Pending Approval") return WORK_STAGES.PENDING_FINAL_APPROVAL;
-  if (work.status === "Pending Recommendation") return WORK_STAGES.PENDING_FINAL_APPROVAL;
+  if (work.status === "Pending Recommendation") return WORK_STAGES.PENDING_RECOMMENDATION;
   if (work.status === WORK_STAGES.PARTIALLY_COMPLETED) return WORK_STAGES.PARTIALLY_COMPLETED;
   if (work.status === "Completed") return WORK_STAGES.COMPLETED;
   if (work.status === "Approved") return WORK_STAGES.APPROVED;
   if (work.status === "Rejected" || work.status === "Returned for Correction") return WORK_STAGES.RETURNED;
   if (work.approvedAt || work.approvedBy) return WORK_STAGES.APPROVED;
   if (work.recommendedAt || work.recommendedBy) return WORK_STAGES.PENDING_FINAL_APPROVAL;
-  if (work.checkedAt || work.checkedBy) return WORK_STAGES.PENDING_FINAL_APPROVAL;
+  if (work.checkedAt || work.checkedBy) return WORK_STAGES.PENDING_RECOMMENDATION;
   return WORK_STAGES.PENDING_CHECK;
 };
 
 const assertStagePermission = (req, action) => {
   const role = req.user?.role;
-  if (role === ROLES.SUPER_ADMIN) return;
+  if ([ROLES.ADMIN, ROLES.SUPER_ADMIN].includes(role) && isAdminWorkflowOverrideEnabled()) return;
 
   const fallbackRoles = STAGE_ROLE_FALLBACKS[action] || [];
   const hasRole = fallbackRoles.includes(role);
-  const hasPermission = req.user?.permissions?.work?.[action] === true;
-  if (hasRole && hasPermission) return;
+  const permissionValue = req.user?.permissions?.work?.[action];
+  if (hasRole && permissionValue !== false) return;
 
   const code = ACTION_PERMISSION_CODES[action] || "PERMISSION_DENIED";
   logger.warn("Work stage permission denied", {
@@ -165,6 +173,7 @@ const validateStagePayload = (schema, body) => {
 const getRequiredActionDescription = (action, payload = {}) => {
   const value = {
     check: payload.reviewFindings || payload.description,
+    recommend: payload.recommendationRemarks || payload.description,
     approve: payload.approvalRemarks || payload.description,
     return: payload.correctionReason || payload.description
   }[action];
@@ -178,6 +187,7 @@ const getRequiredActionDescription = (action, payload = {}) => {
 const assertReturnPermissionForStage = (req, currentStage) => {
   const action = {
     [WORK_STAGES.PENDING_CHECK]: "check",
+    [WORK_STAGES.PENDING_RECOMMENDATION]: "recommend",
     [WORK_STAGES.PENDING_FINAL_APPROVAL]: "approve"
   }[currentStage];
   if (!action) {
@@ -204,9 +214,14 @@ const buildStageConflicts = (work, action, userId) => {
     check: [
       { field: "createdBy", label: "creator", code: "CREATOR_CANNOT_CHECK" }
     ],
-    approve: [
+    recommend: [
       { field: "createdBy", label: "creator", code: "SAME_USER_STAGE_CONFLICT" },
       { field: "checkedById", label: "checker", code: "SAME_USER_STAGE_CONFLICT" }
+    ],
+    approve: [
+      { field: "createdBy", label: "creator", code: "SAME_USER_STAGE_CONFLICT" },
+      { field: "checkedById", label: "checker", code: "SAME_USER_STAGE_CONFLICT" },
+      { field: "recommendedById", label: "recommender", code: "SAME_USER_STAGE_CONFLICT" }
     ]
   }[action] || [];
 
@@ -218,16 +233,11 @@ const assertStageSeparation = (req, work, action, overrideReason = "") => {
   if (!conflicts.length) return [];
 
   const first = conflicts[0];
-  if (action === "approve") {
-    throw new ApiError(
-      403,
-      `The ${first.label} cannot perform final approval for the same work approval`,
-      { conflicts: conflicts.map((item) => item.label) },
-      first.code
-    );
-  }
+  const canConfiguredAdminOverride =
+    [ROLES.ADMIN, ROLES.SUPER_ADMIN].includes(req.user?.role) &&
+    isAdminWorkflowOverrideEnabled();
 
-  if (req.user?.role !== ROLES.SUPER_ADMIN) {
+  if (!canConfiguredAdminOverride) {
     throw new ApiError(
       403,
       `The ${first.label} cannot perform this workflow stage for the same work approval`,
@@ -239,7 +249,7 @@ const assertStageSeparation = (req, work, action, overrideReason = "") => {
   if (!String(overrideReason || "").trim()) {
     throw new ApiError(
       400,
-      "Super Admin override reason is required when bypassing workflow separation",
+      "Admin override reason is required when bypassing workflow separation",
       { conflicts: conflicts.map((item) => item.label) },
       "SAME_USER_STAGE_CONFLICT"
     );
@@ -896,7 +906,7 @@ router.patch(
   authMiddleware,
   authorizePermission("work", "update"),
   asyncHandler(async (_req, _res) => {
-    throw new ApiError(410, "Multi-level workflow is disabled. Use sequential check and final approval endpoints.");
+    throw new ApiError(410, "Multi-level workflow is disabled. Use sequential check, recommendation, final approval, return, and complete endpoints.");
   })
 );
 
@@ -950,8 +960,8 @@ router.post(
 
     const actor = createStageActor(req, reviewFindings, { reviewFindings });
     updateStageActorFields(work, "checked", actor);
-    work.status = WORK_STAGES.PENDING_FINAL_APPROVAL;
-    work.workflowStage = WORK_STAGES.PENDING_FINAL_APPROVAL;
+    work.status = WORK_STAGES.PENDING_RECOMMENDATION;
+    work.workflowStage = WORK_STAGES.PENDING_RECOMMENDATION;
     work.approvalHistory.push({ action: "checked", by: req.user.id, comment: reviewFindings });
     addWorkflowTimeline(work, {
       label: "Checked",
@@ -984,13 +994,45 @@ router.post(
 router.post(
   "/:id/recommend",
   authMiddleware,
-  asyncHandler(async () => {
-    throw new ApiError(
-      410,
-      "Recommendation workflow is disabled. Checked work now moves directly to final approval.",
-      null,
-      "RECOMMENDATION_WORKFLOW_DISABLED"
+  asyncHandler(async (req, res) => {
+    assertStagePermission(req, "recommend");
+    const payload = validateStagePayload(stageActionSchema, req.body);
+    const recommendationRemarks = getRequiredActionDescription("recommend", payload);
+    const work = await WorkApproval.findById(req.params.id);
+    if (!work) throw new ApiError(404, "Work approval not found");
+    assertWorkflowStage(work, WORK_STAGES.PENDING_RECOMMENDATION);
+    const overrideConflicts = assertStageSeparation(req, work, "recommend", payload.overrideReason);
+
+    const actor = createStageActor(req, recommendationRemarks, { recommendationRemarks });
+    updateStageActorFields(work, "recommended", actor);
+    work.status = WORK_STAGES.PENDING_FINAL_APPROVAL;
+    work.workflowStage = WORK_STAGES.PENDING_FINAL_APPROVAL;
+    work.approvalHistory.push({ action: "recommended", by: req.user.id, comment: recommendationRemarks });
+    addWorkflowTimeline(work, {
+      label: "Recommended",
+      description: `${actor.name || "Safety Manager"} recommended work: ${recommendationRemarks}`,
+      userId: req.user.id
+    });
+
+    await work.save();
+    await audit(req, "work_recommend", "work", { recommendationRemarks }, work._id);
+    await runWorkflowNotification("work_recommended", () =>
+      notifyWorkRecommended({ work, actorId: req.user.id })
     );
+    if (overrideConflicts.length) {
+      await audit(
+        req,
+        "work_admin_override",
+        "work",
+        {
+          stage: "recommend",
+          reason: payload.overrideReason,
+          conflicts: overrideConflicts.map((item) => item.label)
+        },
+        work._id
+      );
+    }
+    res.json({ success: true, work: toLegacyWorkRecord(work) });
   })
 );
 
@@ -1057,7 +1099,7 @@ router.post(
     const work = await WorkApproval.findById(req.params.id);
     if (!work) throw new ApiError(404, "Work approval not found");
     const currentStage = deriveWorkflowStage(work);
-    if (![WORK_STAGES.PENDING_CHECK, WORK_STAGES.PENDING_FINAL_APPROVAL].includes(currentStage)) {
+    if (![WORK_STAGES.PENDING_CHECK, WORK_STAGES.PENDING_RECOMMENDATION, WORK_STAGES.PENDING_FINAL_APPROVAL].includes(currentStage)) {
       throw new ApiError(
         409,
         `This work approval cannot be returned while it is ${currentStage}`,
@@ -1147,7 +1189,7 @@ router.patch(
   asyncHandler(async (req, _res) => {
     const work = await WorkApproval.findById(req.params.id);
     if (!work) throw new ApiError(404, "Work approval not found");
-    throw new ApiError(410, "Direct status updates are disabled. Use sequential check, final approval, return, and complete endpoints.");
+    throw new ApiError(410, "Direct status updates are disabled. Use sequential check, recommendation, final approval, return, and complete endpoints.");
   })
 );
 
