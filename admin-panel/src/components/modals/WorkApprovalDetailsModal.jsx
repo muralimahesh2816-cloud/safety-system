@@ -171,7 +171,7 @@ const ImagePanel = ({ label, tone, item, onOpen }) => (
         onClick={onOpen}
         className="group flex h-56 w-full items-center justify-center overflow-hidden bg-slate-950/70 p-3 sm:h-64"
       >
-        {isVideoUrl(item.url) ? (
+        {item.mediaType === "video" || isVideoUrl(item.url) ? (
           <video src={item.url} muted playsInline className="h-full w-full rounded-xl object-contain transition duration-300 group-hover:scale-[1.02]" />
         ) : (
           <img src={item.url} alt={label} loading="lazy" className="h-full w-full rounded-xl object-contain transition duration-300 group-hover:scale-[1.02]" />

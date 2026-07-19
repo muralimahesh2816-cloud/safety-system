@@ -56,7 +56,7 @@ const getHealthStatus = async () => {
   return {
     success: healthy,
     status: healthy ? "ok" : "degraded",
-    service: "Safety HSE Enterprise API",
+    service: `${env.appName} API`,
     timestamp: now.toISOString(),
     uptimeSeconds: Math.round(process.uptime()),
     environment: env.nodeEnv,

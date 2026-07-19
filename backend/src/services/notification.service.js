@@ -95,13 +95,13 @@ const buildPlainText = ({ title, intro, work, actionLabel, actionUrl, extraLines
   "",
   `${actionLabel}: ${actionUrl}`,
   "",
-  `UTPL Safety Management System - Generated Automatically - Do not reply - ${new Date().getFullYear()}`
+  `${env.appName} - Generated Automatically - Do not reply - ${new Date().getFullYear()}`
 ].join("\n");
 
 const buildWorkEmailHtml = async ({ title, intro, work, actionLabel, actionUrl, progress = [], extraRows = [] }) => {
   const settings = await getCompanySettings();
   const logoUrl = settings?.logo?.url || "";
-  const companyName = settings?.companyName || "UTPL Safety Management System";
+  const companyName = settings?.companyName || env.appName;
   const rows = [
     ["Work Type", work.workType],
     ["Work ID", work.workId],

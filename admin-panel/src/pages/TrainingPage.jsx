@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { BookOpen, HardHat, PlayCircle, Trash2 } from "lucide-react";
 import GlassCard from "../components/common/GlassCard";
 import MediaStudioModal from "../components/common/MediaStudioModal";
-import SectionHeader from "../components/common/SectionHeader";
+import PageHeader from "../components/common/PageHeader";
 import { trainingService } from "../api/services";
 import {
   closeLoadingPopup,
@@ -305,7 +305,7 @@ const TrainingPage = ({ user }) => {
 
   return (
     <div className="safety-bg-overlay safety-bg-training space-y-5">
-      <SectionHeader
+      <PageHeader
         title="Training Streaming Portal"
         subtitle="Legacy training layout and workflows restored with enterprise visual experience"
       />

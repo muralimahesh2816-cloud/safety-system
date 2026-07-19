@@ -23,6 +23,23 @@ const fitCanvasSize = (width, height, maxDimension = 4096) => {
   return { width: Math.round(width * scale), height: Math.round(height * scale) };
 };
 
+const wrapCanvasText = (context, value, maxWidth) => {
+  const words = String(value || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = "";
+  words.forEach((word) => {
+    const candidate = current ? `${current} ${word}` : word;
+    if (current && context.measureText(candidate).width > maxWidth) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  });
+  if (current) lines.push(current);
+  return lines;
+};
+
 const drawStamp = (context, width, height, details = {}) => {
   const scale = Math.max(0.72, Math.min(1.45, width / 1600));
   const fontSize = Math.max(18, Math.round(28 * scale));
@@ -30,16 +47,22 @@ const drawStamp = (context, width, height, details = {}) => {
   const padding = Math.round(24 * scale);
   const location = details.location;
   const date = new Date(location?.capturedAt || details.capturedAt || Date.now());
+  const maxTextWidth = width - padding * 2;
+  context.font = `500 ${fontSize}px system-ui, -apple-system, sans-serif`;
+  const address = location?.formattedAddress && location.formattedAddress !== "Address unavailable"
+    ? location.formattedAddress
+    : "Address unavailable";
   const lines = [
-    "UTPL Safety Management System",
-    new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(date),
-    location
-      ? `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)} • Accuracy ±${Math.round(location.accuracyMeters)} m`
-      : "Location not attached",
-    [details.siteName, details.reference].filter(Boolean).join(" • "),
-    `Captured by: ${details.capturedBy || "Safety user"} • ${details.captureSource === "camera" ? "Camera" : "Gallery"}`
-  ].filter(Boolean);
-  const panelHeight = Math.min(Math.round(height * 0.34), padding * 2 + lines.length * lineHeight);
+    { text: "Safety Management System", bold: true },
+    ...(location ? wrapCanvasText(context, address, maxTextWidth).slice(0, 2).map((text) => ({ text })) : []),
+    { text: location
+      ? `${Number(location.latitude).toFixed(6)}, ${Number(location.longitude).toFixed(6)} • Accuracy ±${Math.round(Number(location.accuracyMeters || 0))} m`
+      : "Location not attached" },
+    { text: new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(date) },
+    { text: `Captured by: ${details.capturedBy || "Safety user"}` },
+    { text: [details.siteName, details.reference].filter(Boolean).join(" • ") }
+  ].filter((line) => line.text);
+  const panelHeight = Math.min(Math.round(height * 0.42), padding * 2 + lines.length * lineHeight);
   const top = height - panelHeight;
 
   context.save();
@@ -50,10 +73,9 @@ const drawStamp = (context, width, height, details = {}) => {
   context.fillStyle = "#ffffff";
   context.textBaseline = "top";
   lines.forEach((line, index) => {
-    context.font = `${index === 0 ? 700 : 500} ${fontSize}px system-ui, -apple-system, sans-serif`;
-    const availableWidth = width - padding * 2;
-    let rendered = line;
-    while (context.measureText(rendered).width > availableWidth && rendered.length > 12) {
+    context.font = `${line.bold ? 700 : 500} ${fontSize}px system-ui, -apple-system, sans-serif`;
+    let rendered = line.text;
+    while (context.measureText(rendered).width > maxTextWidth && rendered.length > 12) {
       rendered = `${rendered.slice(0, -2)}…`;
     }
     context.fillText(rendered, padding, top + padding + index * lineHeight);

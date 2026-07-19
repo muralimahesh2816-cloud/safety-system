@@ -7,7 +7,7 @@ const startServer = async () => {
   try {
     await connectDb();
     app.listen(env.port, () => {
-      logger.info(`Safety HSE API running on port ${env.port}`);
+      logger.info(`${env.appName} API running on port ${env.port}`);
     });
   } catch (error) {
     logger.error("Failed to start server", {

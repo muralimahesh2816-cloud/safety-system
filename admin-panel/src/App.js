@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { Menu } from "lucide-react";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { useAuth } from "./hooks/useAuth";
@@ -22,19 +23,18 @@ import { settingsService } from "./api/services";
 import { IMAGE_PLACEHOLDER_URL } from "./utils/media";
 import { canAccessModule } from "./utils/permissions";
 import useSidebarPreference from "./hooks/useSidebarPreference";
+import { APP_NAME } from "./config/appConfig";
 
 const moduleTitles = {
-  dashboard: "Executive Dashboard",
-  work: "Work Approval Center",
-  hazards: "Hazard Control Hub",
-  training: "Training Streaming Portal",
-  users: "User Governance",
-  reports: "Enterprise Reporting",
+  dashboard: "Dashboard",
+  work: "Work Approvals",
+  hazards: "Hazards",
+  training: "Training",
+  users: "Users",
+  reports: "Reports",
   health: "System Health",
-  settings: "System Configuration"
+  settings: "Settings"
 };
-
-const DESKTOP_BREAKPOINT = 768;
 
 const ModuleGuard = ({ user, moduleKey, children }) => {
   const canView = canAccessModule(user, moduleKey);
@@ -59,11 +59,6 @@ const AppContent = () => {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
   const [countdown, setCountdown] = useState(60);
-  const [topbarVisible, setTopbarVisible] = useState(true);
-  const pageContentRef = useRef(null);
-  const lastScrollTopRef = useRef(0);
-  const scrollStopTimerRef = useRef(null);
-  const shouldHideTopbarForModule = false;
 
   const page = useMemo(() => {
     switch (activeModule) {
@@ -86,6 +81,10 @@ const AppContent = () => {
         return <DashboardPage onModuleSelect={setActiveModule} />;
     }
   }, [activeModule, user]);
+
+  useEffect(() => {
+    document.title = `${isAuthenticated ? moduleTitles[activeModule] : "Login"} | ${APP_NAME}`;
+  }, [activeModule, isAuthenticated]);
 
   useEffect(() => {
     const fetchTimeout = async () => {
@@ -121,25 +120,6 @@ const AppContent = () => {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [mobileSidebarOpen]);
-
-  useEffect(() => {
-    if (scrollStopTimerRef.current) {
-      clearTimeout(scrollStopTimerRef.current);
-      scrollStopTimerRef.current = null;
-    }
-    lastScrollTopRef.current = 0;
-    setTopbarVisible(!shouldHideTopbarForModule);
-    if (pageContentRef.current) {
-      pageContentRef.current.scrollTop = 0;
-    }
-  }, [activeModule, shouldHideTopbarForModule]);
-
-  useEffect(
-    () => () => {
-      if (scrollStopTimerRef.current) clearTimeout(scrollStopTimerRef.current);
-    },
-    []
-  );
 
   useEffect(() => {
     const handleUploadImageError = (event) => {
@@ -199,39 +179,12 @@ const AppContent = () => {
   }, [logout, sessionTimeoutMinutes]);
 
   const handleSidebarToggle = () => {
-    if (typeof window !== "undefined" && window.innerWidth < DESKTOP_BREAKPOINT) {
-      setMobileSidebarOpen((prev) => !prev);
-      return;
-    }
-    setSidebarLocked((previous) => !previous);
+    setMobileSidebarOpen((previous) => !previous);
   };
 
   const handleModuleSelect = (moduleKey) => {
     setActiveModule(moduleKey);
     setMobileSidebarOpen(false);
-  };
-
-  const handlePageScroll = (event) => {
-    if (shouldHideTopbarForModule) {
-      setTopbarVisible(false);
-      return;
-    }
-
-    const nextScrollTop = Math.max(0, event.currentTarget.scrollTop);
-    const delta = nextScrollTop - lastScrollTopRef.current;
-
-    if (delta > 4 && nextScrollTop > 20) {
-      setTopbarVisible(false);
-    } else if (delta < -4) {
-      setTopbarVisible(true);
-    }
-
-    lastScrollTopRef.current = nextScrollTop;
-
-    if (scrollStopTimerRef.current) clearTimeout(scrollStopTimerRef.current);
-    scrollStopTimerRef.current = setTimeout(() => {
-      setTopbarVisible(true);
-    }, 650);
   };
 
   if (loading) {
@@ -252,6 +205,7 @@ const AppContent = () => {
 
   const sidebarExpanded = sidebarLocked || (hoverCapable && sidebarHoverExpanded);
   const sidebarCollapsed = !sidebarExpanded;
+  const showDashboardTopbar = activeModule === "dashboard";
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-50">
@@ -275,7 +229,6 @@ const AppContent = () => {
             activeModule={activeModule}
             locked={sidebarLocked}
             onLockChange={setSidebarLocked}
-            onToggleCollapse={() => setSidebarLocked((previous) => !previous)}
             onSelectModule={handleModuleSelect}
           />
         </motion.aside>
@@ -315,7 +268,7 @@ const AppContent = () => {
 
         <main className="main-content">
           <AnimatePresence initial={false}>
-            {!shouldHideTopbarForModule && topbarVisible ? (
+            {showDashboardTopbar ? (
               <motion.div
                 key="enterprise-topbar"
                 initial={{ opacity: 0, y: -18, height: 0 }}
@@ -337,12 +290,20 @@ const AppContent = () => {
             ) : null}
           </AnimatePresence>
           <div
-            ref={pageContentRef}
-            className={`page-content ${
-              shouldHideTopbarForModule ? "page-content-fullscreen" : "page-content-with-floating-topbar"
-            }`}
-            onScroll={handlePageScroll}
+            className={`page-content ${showDashboardTopbar ? "page-content-with-floating-topbar" : "page-content-fullscreen"}`}
           >
+            {!showDashboardTopbar ? (
+              <button
+                type="button"
+                onClick={handleSidebarToggle}
+                className="mb-3 inline-flex items-center gap-2 rounded-xl border border-white/15 bg-slate-950/65 px-3 py-2 text-xs font-semibold text-white md:hidden"
+                aria-label="Open navigation menu"
+                aria-expanded={mobileSidebarOpen}
+                aria-controls="mobile-primary-navigation"
+              >
+                <Menu size={16} /> Menu
+              </button>
+            ) : null}
             <ModuleGuard user={user} moduleKey={activeModule}>
               <AnimatePresence mode="wait">
                 <motion.div

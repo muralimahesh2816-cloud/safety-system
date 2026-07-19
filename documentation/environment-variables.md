@@ -2,6 +2,19 @@
 
 This deployment remains React frontend, Node/Express backend, MongoDB Atlas, Render, and Cloudinary or local upload fallback.
 
+## Branding And Location
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `APP_NAME` | `Safety Management System` | Canonical backend, email, notification, and health-service product name. |
+| `REACT_APP_APP_NAME` | `Safety Management System` | Canonical frontend product name compiled into the React build. |
+| `REVERSE_GEOCODING_PROVIDER` | `generic` | Response adapter: `generic`, `google`, `mapbox`, or `nominatim`. |
+| `REVERSE_GEOCODING_API_URL` | unset | HTTPS reverse-geocoding endpoint. `{lat}`, `{lng}`, and `{key}` placeholders are supported; without placeholders the backend sends a JSON POST. |
+| `REVERSE_GEOCODING_API_KEY` | unset | Server-only provider credential. Never expose it through a `REACT_APP_` variable. |
+| `REVERSE_GEOCODING_TIMEOUT_MS` | `8000` | Provider request timeout in milliseconds. |
+
+When no reverse-geocoding URL is configured, media capture still retains validated latitude, longitude, accuracy, and capture time and displays `Address unavailable`. For production, review the selected provider's usage, attribution, privacy, and data-retention terms before enabling it.
+
 ## Required
 
 | Variable | Purpose |

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight, Download, MapPin, Minus, Plus, RotateCw, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Minus, Plus, RotateCw, X } from "lucide-react";
 import { getMediaUrl } from "../../utils/media";
 import { formatDateTime } from "../../utils/format";
+import MediaLocationCard from "../media/MediaLocationCard";
 
 const isVideo = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url);
 
@@ -159,13 +160,11 @@ const MediaStudioModal = ({
                 </button>
               ) : null}
               {(activeItem?.capturedAt || activeItem?.captureSource || location) ? (
-                <div className="absolute bottom-4 left-4 max-w-[calc(100%-2rem)] rounded-2xl border border-orange-300/30 bg-slate-950/85 p-3 text-[11px] text-slate-200 shadow-xl backdrop-blur-xl">
-                  <p className="font-bold text-white">UTPL Safety Management System</p>
+                <div className="absolute bottom-4 left-4 max-h-[48%] max-w-[min(28rem,calc(100%-2rem))] overflow-auto rounded-2xl border border-orange-300/30 bg-slate-950/90 p-3 text-[11px] text-slate-200 shadow-xl backdrop-blur-xl">
+                  <p className="font-bold text-white">Safety Management System</p>
                   <p className="mt-1 capitalize">{activeItem.stage || "Evidence"} • {activeItem.captureSource || "file"}</p>
                   <p>{formatDateTime(activeItem.capturedAt || location?.capturedAt || activeItem.uploadedAt)}</p>
-                  {location?.latitude !== undefined && location?.longitude !== undefined ? (
-                    <p className="mt-1 text-emerald-200"><MapPin size={12} className="mr-1 inline" />{Number(location.latitude).toFixed(6)}, {Number(location.longitude).toFixed(6)} • ±{Math.round(Number(location.accuracyMeters || 0))} m</p>
-                  ) : location?.recorded ? <p className="mt-1 text-slate-300"><MapPin size={12} className="mr-1 inline" />Location recorded</p> : null}
+                  <div className="mt-2"><MediaLocationCard location={location} compact /></div>
                   {activeItem.watermark?.processingStatus ? <p className="mt-1 capitalize text-slate-400">Watermark: {activeItem.watermark.processingStatus.replace(/_/g, " ")}</p> : null}
                 </div>
               ) : null}

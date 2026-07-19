@@ -6,6 +6,7 @@ import ThemeToggle from "../common/ThemeToggle";
 import topbarLogo from "../../assets/topbarlogo.svg";
 import vertisVideo from "../../assets/vertis-video.mp4";
 import { getMediaUrl } from "../../utils/media";
+import { APP_NAME } from "../../config/appConfig";
 
 const formatClock = (date) => ({
   date: new Intl.DateTimeFormat("en-GB", {
@@ -131,7 +132,7 @@ const Topbar = ({ user, onLogout, title, onSelectModule, onToggleSidebar, sideba
             >
               <img
                 src={topbarLogo}
-                alt="Momentum Safety logo"
+                alt={`${APP_NAME} logo`}
                 className="h-12 w-12 object-contain drop-shadow-[0_0_22px_rgba(45,212,191,0.42)]"
               />
             </motion.div>
@@ -164,7 +165,7 @@ const Topbar = ({ user, onLogout, title, onSelectModule, onToggleSidebar, sideba
         </div>
         <div>
           <p className="text-[10px] uppercase tracking-[0.18em] text-slate-300">Udupi Tollway Pvt Ltd</p>
-          <h2 className="font-display text-base font-semibold text-white md:text-lg">Safety HSE Enterprise System</h2>
+          <h2 className="font-display text-base font-semibold text-white md:text-lg">{APP_NAME}</h2>
           <p className="text-xs text-teal-200">{title}</p>
         </div>
       </div>

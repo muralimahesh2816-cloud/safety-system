@@ -9,16 +9,30 @@ const locationSchema = new mongoose.Schema(
     longitude: Number,
     accuracyMeters: Number,
     altitude: Number,
+    altitudeMeters: Number,
     heading: Number,
     capturedAt: Date,
     permissionStatus: { type: String, default: "not_requested" },
     locationSource: { type: String, default: "browser_geolocation" },
     isVerified: { type: Boolean, default: false },
     formattedAddress: String,
+    addressLine1: String,
+    addressLine2: String,
+    locality: String,
+    subLocality: String,
+    city: String,
     plaza: String,
     district: String,
     state: String,
-    country: String
+    postalCode: String,
+    country: String,
+    reverseGeocodeProvider: String,
+    reverseGeocodeStatus: {
+      type: String,
+      enum: ["pending", "completed", "failed", "unavailable"],
+      default: "unavailable"
+    },
+    reverseGeocodedAt: Date
   },
   { _id: false }
 );
@@ -87,6 +101,9 @@ const optionalFinite = (value) => value === null || value === undefined || value
   ? undefined
   : Number(value);
 
+const safeLocationText = (value, maxLength = 240) =>
+  String(value || "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, maxLength);
+
 const normalizeLocation = (raw = {}, captureSource) => {
   const permissionStatus = String(raw.permissionStatus || "not_requested").slice(0, 40);
   const latitude = optionalFinite(raw.latitude);
@@ -121,17 +138,31 @@ const normalizeLocation = (raw = {}, captureSource) => {
   return {
     ...(hasCoordinates ? { latitude, longitude } : {}),
     ...(accuracyMeters !== undefined ? { accuracyMeters } : {}),
-    altitude: optionalFinite(raw.altitude),
+    altitude: optionalFinite(raw.altitudeMeters ?? raw.altitude),
+    altitudeMeters: optionalFinite(raw.altitudeMeters ?? raw.altitude),
     heading: optionalFinite(raw.heading),
     capturedAt,
     permissionStatus,
     locationSource: "browser_geolocation",
     isVerified: false,
-    formattedAddress: String(raw.formattedAddress || "").slice(0, 500),
-    plaza: String(raw.plaza || "").slice(0, 160),
-    district: String(raw.district || "").slice(0, 160),
-    state: String(raw.state || "").slice(0, 160),
-    country: String(raw.country || "").slice(0, 160)
+    formattedAddress: safeLocationText(raw.formattedAddress, 500),
+    addressLine1: safeLocationText(raw.addressLine1),
+    addressLine2: safeLocationText(raw.addressLine2),
+    locality: safeLocationText(raw.locality, 160),
+    subLocality: safeLocationText(raw.subLocality, 160),
+    city: safeLocationText(raw.city, 160),
+    plaza: safeLocationText(raw.plaza, 160),
+    district: safeLocationText(raw.district, 160),
+    state: safeLocationText(raw.state, 160),
+    postalCode: safeLocationText(raw.postalCode, 32),
+    country: safeLocationText(raw.country, 160),
+    reverseGeocodeProvider: safeLocationText(raw.reverseGeocodeProvider, 80),
+    reverseGeocodeStatus: ["pending", "completed", "failed", "unavailable"].includes(raw.reverseGeocodeStatus)
+      ? raw.reverseGeocodeStatus
+      : "unavailable",
+    reverseGeocodedAt: raw.reverseGeocodedAt && !Number.isNaN(new Date(raw.reverseGeocodedAt).getTime())
+      ? new Date(raw.reverseGeocodedAt)
+      : undefined
   };
 };
 
@@ -222,7 +253,25 @@ const canViewExactLocation = (user, record = {}) => {
 
 const redactAssetLocation = (asset) => {
   if (!asset?.location) return asset;
-  const { latitude, longitude, altitude, heading, ...limited } = asset.location;
+  const {
+    latitude,
+    longitude,
+    altitude,
+    altitudeMeters,
+    heading,
+    formattedAddress,
+    addressLine1,
+    addressLine2,
+    locality,
+    subLocality,
+    city,
+    plaza,
+    district,
+    state,
+    postalCode,
+    country,
+    ...limited
+  } = asset.location;
   return { ...asset, location: { ...limited, recorded: Boolean(latitude !== undefined && longitude !== undefined) } };
 };
 

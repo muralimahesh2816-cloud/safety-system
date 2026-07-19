@@ -537,6 +537,13 @@ const completeWorkWithMedia = async (req, res) => {
   });
 
   await work.save();
+  logger.info("Media location metadata saved", {
+    recordId: String(work._id),
+    module: "work_approval",
+    stage: "completion",
+    mediaCount: uploads.length + videoUploads.length,
+    locationCount: [...uploads, ...videoUploads].filter((item) => item.location?.latitude !== undefined).length
+  });
   await audit(
     req,
     completionChainage.isFullCompletion ? "work_complete" : "work_partial_complete",
@@ -856,6 +863,13 @@ router.post(
           user: req.user.id
         }
       ]
+    });
+    logger.info("Media location metadata saved", {
+      recordId: String(work._id),
+      module: "work_approval",
+      stage: "before",
+      mediaCount: beforeImages.length + beforeVideos.length,
+      locationCount: [...beforeImages, ...beforeVideos].filter((item) => item.location?.latitude !== undefined).length
     });
 
     await audit(req, "create", "work", { title: work.title }, work._id);

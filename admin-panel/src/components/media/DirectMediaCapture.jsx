@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Film, ImagePlus, LocateFixed, RefreshCw, Trash2 } from "lucide-react";
+import { Camera, Film, ImagePlus, Trash2 } from "lucide-react";
 import useDeviceLocation, { getLocationMessage, LOCATION_STATUS } from "../../hooks/useDeviceLocation";
 import { createVideoPoster, stampImageFile } from "../../utils/GpsImageStamp";
+import { locationService } from "../../api/services";
+import MediaLocationCard from "./MediaLocationCard";
 
 const IMAGE_LIMIT = 10 * 1024 * 1024;
 const VIDEO_LIMIT = 100 * 1024 * 1024;
@@ -45,6 +47,26 @@ const DirectMediaCapture = ({
   const accuracyWarningMeters = Number(process.env.REACT_APP_MAX_ACCEPTABLE_GPS_ACCURACY_METERS || 100);
   const { status, captureLocation } = useDeviceLocation({ accuracyWarningMeters });
 
+  const resolveAddress = async (rawLocation) => {
+    if (!rawLocation) return null;
+    try {
+      const response = await locationService.reverseGeocode(rawLocation);
+      return { ...rawLocation, ...(response?.data || {}) };
+    } catch (_error) {
+      return {
+        ...rawLocation,
+        formattedAddress: "Address unavailable",
+        reverseGeocodeStatus: "failed"
+      };
+    }
+  };
+
+  const captureEvidenceLocation = async () => {
+    const result = await captureLocation();
+    if (!result.location) return result;
+    return { ...result, location: await resolveAddress(result.location) };
+  };
+
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
@@ -78,7 +100,7 @@ const DirectMediaCapture = ({
   const buildItem = async (originalFile, captureSource, forcedLocation) => {
     const mediaType = originalFile.type.startsWith("video/") ? "video" : "image";
     const locationResult = forcedLocation || (includeLocation
-      ? await captureLocation()
+      ? await captureEvidenceLocation()
       : { status: "not_requested", location: null });
     const capturedAt = locationResult.location?.capturedAt || new Date().toISOString();
     const details = { location: locationResult.location, capturedAt, captureSource, reference, siteName, capturedBy };
@@ -152,7 +174,7 @@ const DirectMediaCapture = ({
     }
     if (!accepted.length) return;
     setProcessing(true);
-    const sharedLocation = includeLocation ? await captureLocation() : { status: "not_requested", location: null };
+    const sharedLocation = includeLocation ? await captureEvidenceLocation() : { status: "not_requested", location: null };
     const prepared = [];
     for (const file of accepted) prepared.push(await buildItem(file, captureSource, sharedLocation));
     setItems((previous) => [...previous, ...prepared]);
@@ -169,7 +191,7 @@ const DirectMediaCapture = ({
 
   const retryLocation = async (item) => {
     setProcessing(true);
-    const nextLocation = await captureLocation();
+    const nextLocation = await captureEvidenceLocation();
     if (nextLocation.location) {
       const replacement = await buildItem(item.originalFile, item.captureSource, nextLocation);
       URL.revokeObjectURL(replacement.previewUrl);
@@ -182,6 +204,40 @@ const DirectMediaCapture = ({
         return replacement;
       }));
     }
+    setProcessing(false);
+  };
+
+  const refreshAddress = async (item) => {
+    if (item.metadata.location?.latitude == null) return;
+    setProcessing(true);
+    const resolved = await resolveAddress(item.metadata.location);
+    const replacement = await buildItem(item.originalFile, item.captureSource, {
+      status: LOCATION_STATUS.CAPTURED,
+      location: resolved
+    });
+    replacement.id = item.id;
+    setItems((previous) => previous.map((entry) => {
+      if (entry.id !== item.id) return entry;
+      URL.revokeObjectURL(entry.previewUrl);
+      if (entry.posterPreviewUrl) URL.revokeObjectURL(entry.posterPreviewUrl);
+      return replacement;
+    }));
+    setProcessing(false);
+  };
+
+  const removeLocation = async (item) => {
+    setProcessing(true);
+    const replacement = await buildItem(item.originalFile, item.captureSource, {
+      status: "not_requested",
+      location: null
+    });
+    replacement.id = item.id;
+    setItems((previous) => previous.map((entry) => {
+      if (entry.id !== item.id) return entry;
+      URL.revokeObjectURL(entry.previewUrl);
+      if (entry.posterPreviewUrl) URL.revokeObjectURL(entry.posterPreviewUrl);
+      return replacement;
+    }));
     setProcessing(false);
   };
 
@@ -227,10 +283,16 @@ const DirectMediaCapture = ({
                 <div className="space-y-1.5 p-3 text-[11px] text-slate-300">
                   <div className="flex items-center justify-between gap-2"><span className="truncate font-semibold text-white">{item.metadata.originalFileName}</span><span className="rounded-full bg-white/10 px-2 py-0.5 capitalize">{item.captureSource}</span></div>
                   <p>{item.mediaType} • {formatSize(item.file.size)} • Ready to upload</p>
-                  <p className={location?.lowAccuracy ? "text-amber-200" : location ? "text-emerald-200" : "text-slate-400"}><LocateFixed size={12} className="mr-1 inline" />{location ? `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)} • ±${Math.round(location.accuracyMeters)} m` : getLocationMessage(gpsStatus)}</p>
-                  {location?.lowAccuracy ? <p className="text-amber-200">Location accuracy is approximately {Math.round(location.accuracyMeters)} metres. Move to an open area and retry.</p> : null}
+                  <MediaLocationCard
+                    compact
+                    location={location}
+                    status={gpsStatus}
+                    onRetryGps={() => retryLocation(item)}
+                    onRefreshAddress={location ? () => refreshAddress(item) : undefined}
+                    onRemove={location ? () => removeLocation(item) : undefined}
+                    canRemove
+                  />
                   <div className="flex gap-2 pt-1">
-                    <button type="button" onClick={() => retryLocation(item)} disabled={processing} className="inline-flex items-center gap-1 rounded-lg border border-white/15 px-2 py-1 text-slate-200"><RefreshCw size={12} /> Retry GPS</button>
                     <button type="button" onClick={() => removeItem(item.id)} className="inline-flex items-center gap-1 rounded-lg border border-rose-300/20 px-2 py-1 text-rose-200"><Trash2 size={12} /> Remove</button>
                   </div>
                 </div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import GlassCard from "../components/common/GlassCard";
-import SectionHeader from "../components/common/SectionHeader";
+import PageHeader from "../components/common/PageHeader";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import SafeChartContainer from "../components/common/SafeChartContainer";
 import HazardDetailsModal from "../components/modals/HazardDetailsModal";
@@ -415,7 +415,7 @@ const HazardsPage = ({ user }) => {
 
   return (
     <div className="safety-bg-overlay safety-bg-hazard space-y-5">
-      <SectionHeader
+      <PageHeader
         title="Hazard & Risk Management"
         subtitle="Legacy hazard fields and workflows restored with enterprise risk operations UX"
       />

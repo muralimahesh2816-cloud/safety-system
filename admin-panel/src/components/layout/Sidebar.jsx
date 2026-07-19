@@ -5,13 +5,13 @@ import {
   Flame,
   GraduationCap,
   HeartPulse,
-  Menu,
-  PanelLeftClose,
   Settings,
+  ShieldCheck,
   ShieldAlert,
-  Users
+  Users,
+  X
 } from "lucide-react";
-import { NAV_MODULES } from "../../config/appConfig";
+import { APP_NAME, NAV_MODULES } from "../../config/appConfig";
 import { classNames } from "../../utils/format";
 import { canAccessModule } from "../../utils/permissions";
 
@@ -47,15 +47,16 @@ const Sidebar = ({
         mobile ? "border-r-0" : ""
       )}
     >
-      <div className={classNames("mb-4 flex", compact ? "justify-center" : "justify-start")}>
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          className="rounded-xl border border-white/15 bg-white/10 p-2 text-white"
-          aria-label={compact ? "Expand Sidebar" : "Collapse Sidebar"}
-        >
-          {compact ? <Menu size={15} /> : <PanelLeftClose size={15} />}
-        </button>
+      <div className={classNames("mb-4 flex items-center", compact ? "justify-center" : "justify-between gap-3")}>
+        <div className={classNames("flex min-w-0 items-center", compact ? "justify-center" : "gap-2")} title={compact ? APP_NAME : undefined}>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500/15 text-orange-100"><ShieldCheck size={18} /></span>
+          {!compact ? <span className="text-sm font-semibold leading-tight text-white">{APP_NAME}</span> : null}
+        </div>
+        {mobile ? (
+          <button type="button" onClick={onToggleCollapse} className="rounded-xl border border-white/15 bg-white/10 p-2 text-white" aria-label="Close navigation menu">
+            <X size={16} />
+          </button>
+        ) : null}
       </div>
 
       <nav className="space-y-2" aria-label="Application modules">

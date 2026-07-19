@@ -10,6 +10,7 @@ const Training = require("../models/Training");
 const { filterByPeriod, buildCsv } = require("../utils/reporting");
 const { getChainageFrom, getChainageTo } = require("../utils/chainage");
 const { canViewExactLocation, redactRecordLocations } = require("../utils/media-metadata");
+const logger = require("../utils/logger");
 
 const router = express.Router();
 
@@ -195,7 +196,7 @@ const toMediaExportRows = (record, moduleName, user) => {
     latitude: exactLocationAllowed ? media.location?.latitude ?? "" : "",
     longitude: exactLocationAllowed ? media.location?.longitude ?? "" : "",
     accuracyMeters: exactLocationAllowed ? media.location?.accuracyMeters ?? "" : "",
-    formattedAddress: media.location?.formattedAddress || media.location?.plaza || "",
+    formattedAddress: exactLocationAllowed ? media.location?.formattedAddress || media.location?.plaza || "" : "",
     uploadedBy: media.uploadedBy || "",
     uploadedAt: media.uploadedAt || "",
     mediaUrl: media.secureUrl || media.url || "",
@@ -322,6 +323,7 @@ router.get(
   authMiddleware,
   authorizePermission("reports", "view"),
   asyncHandler(async (req, res) => {
+    const startedAt = Date.now();
     const format = req.query.format || "csv";
     const period = req.query.period || "monthly";
 
@@ -347,6 +349,12 @@ router.get(
       format,
       period,
       rows: rows.length
+    });
+    logger.info("Report export generated", {
+      requestId: req.requestId,
+      format,
+      rows: rows.length,
+      durationMs: Date.now() - startedAt
     });
 
     if (format === "csv") {

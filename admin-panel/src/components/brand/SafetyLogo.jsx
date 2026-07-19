@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { APP_NAME } from "../../config/appConfig";
 
 const SafetyLogo = ({ compact = false, className = "" }) => (
   <div className={`relative inline-flex items-center gap-3 ${className}`}>
@@ -8,7 +9,7 @@ const SafetyLogo = ({ compact = false, className = "" }) => (
       viewBox="0 0 72 72"
       fill="none"
       role="img"
-      aria-label="UTPL Safety HSE"
+      aria-label={APP_NAME}
       className="drop-shadow-[0_0_22px_rgba(45,212,191,0.42)]"
     >
       <defs>
@@ -44,8 +45,8 @@ const SafetyLogo = ({ compact = false, className = "" }) => (
     </motion.svg>
     {!compact ? (
       <div>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-teal-200">UTPL</p>
-        <p className="font-display text-lg font-semibold leading-tight text-white">Safety HSE</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-teal-200">Enterprise Portal</p>
+        <p className="font-display text-lg font-semibold leading-tight text-white">{APP_NAME}</p>
       </div>
     ) : null}
   </div>

@@ -189,7 +189,7 @@ app.get("/api/v1/health", healthHandler);
 app.get("/version", (_req, res) => {
   res.json({
     success: true,
-    service: "Safety HSE Enterprise API",
+    service: `${env.appName} API`,
     environment: env.nodeEnv,
     buildVersion: process.env.RENDER_GIT_COMMIT || process.env.BUILD_VERSION || "local"
   });

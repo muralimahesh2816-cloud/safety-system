@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import LoginPanel from "../components/login/LoginPanel";
 import brandMark from "../assets/topbarlogo.svg";
-import safetyIllustration from "../assets/branding/login-safety-illustration.svg";
+import LiveRoadScene from "../components/visuals/LiveRoadScene";
 import {
   APP_TITLE,
   APP_VERSION,
@@ -16,6 +16,7 @@ import {
   PORTAL_BRAND_NAME
 } from "../config/appConfig";
 import "../styles/login.css";
+import "../styles/login/login.scss";
 
 const benefits = [
   {
@@ -50,6 +51,7 @@ const BrandLockup = ({ compact = false }) => (
 const LoginPage = ({ onLogin, onVerifyOtp, onResendOtp }) => (
   <main className="enterprise-login" aria-labelledby="login-page-title">
     <div className="enterprise-login__backdrop" aria-hidden="true">
+      <LiveRoadScene />
       <span className="enterprise-login__orb enterprise-login__orb--blue" />
       <span className="enterprise-login__orb enterprise-login__orb--orange" />
       <span className="enterprise-login__grid" />
@@ -107,15 +109,6 @@ const LoginPage = ({ onLogin, onVerifyOtp, onResendOtp }) => (
               </article>
             ))}
           </div>
-        </div>
-
-        <div className="enterprise-login__visual" aria-hidden="true">
-          <img
-            src={safetyIllustration}
-            alt=""
-            loading="lazy"
-            decoding="async"
-          />
         </div>
 
         <footer className="enterprise-login__brand-footer">

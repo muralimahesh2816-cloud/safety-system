@@ -130,19 +130,19 @@ const sendOtpEmail = async ({ to, name, otp }) => {
       error.statusCode = 500;
       throw error;
     }
-    logger.info(`Development OTP for ${to}: ${otp}`);
+    logger.warn("Development OTP email skipped because SMTP is not configured", { recipientConfigured: Boolean(to) });
     return { skipped: true };
   }
 
   const mailOptions = {
     from: env.smtp.from,
     to,
-    subject: "Your Safety HSE login OTP",
-    text: `Your Safety HSE login OTP is ${otp}. It expires in 5 minutes.`,
+    subject: `Your ${env.appName} login OTP`,
+    text: `Your ${env.appName} login OTP is ${otp}. It expires in 5 minutes.`,
     html: `
       <div style="font-family:Arial,sans-serif;background:#020617;color:#e2e8f0;padding:28px">
         <div style="max-width:520px;margin:auto;border:1px solid rgba(255,255,255,.16);border-radius:18px;padding:24px;background:rgba(15,23,42,.88)">
-          <p style="color:#5eead4;text-transform:uppercase;letter-spacing:.16em;font-size:12px">Safety HSE Secure Login</p>
+          <p style="color:#5eead4;text-transform:uppercase;letter-spacing:.16em;font-size:12px">${env.appName} Secure Login</p>
           <h2 style="margin:8px 0 14px;color:#fff">Hello ${name || "there"},</h2>
           <p>Use this 6 digit OTP to complete your login. It expires in 5 minutes.</p>
           <div style="font-size:32px;font-weight:700;letter-spacing:10px;color:#67e8f9;margin:24px 0">${otp}</div>

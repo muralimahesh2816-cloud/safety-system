@@ -55,6 +55,7 @@ export default function useDeviceLocation({ accuracyWarningMeters = 100 } = {}) 
             longitude: position.coords.longitude,
             accuracyMeters: position.coords.accuracy,
             altitude: Number.isFinite(position.coords.altitude) ? position.coords.altitude : null,
+            altitudeMeters: Number.isFinite(position.coords.altitude) ? position.coords.altitude : null,
             heading: Number.isFinite(position.coords.heading) ? position.coords.heading : null,
             capturedAt,
             permissionStatus: "granted",
@@ -72,7 +73,7 @@ export default function useDeviceLocation({ accuracyWarningMeters = 100 } = {}) 
           setLocation(null);
           resolve({ status: nextStatus, location: null });
         },
-        { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 15000 }
       );
     });
   }, [accuracyWarningMeters]);

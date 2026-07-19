@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import GlassCard from "../components/common/GlassCard";
-import SectionHeader from "../components/common/SectionHeader";
+import PageHeader from "../components/common/PageHeader";
 import AccessControlPanel from "../components/settings/AccessControlPanel";
 import { settingsService } from "../api/services";
 import { setSession } from "../api/client";
@@ -195,7 +195,7 @@ const SettingsPage = ({ user }) => {
 
   return (
     <div className="space-y-5">
-      <SectionHeader
+      <PageHeader
         title="Enterprise Settings"
         subtitle="Access Control, Security, Notification, and Theme management"
       />

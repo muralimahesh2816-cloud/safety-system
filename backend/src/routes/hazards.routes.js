@@ -21,6 +21,7 @@ const {
   mergeMediaMetadata,
   redactRecordLocations
 } = require("../utils/media-metadata");
+const logger = require("../utils/logger");
 const { createNotification } = require("../services/notifications.service");
 const {
   escapeRegex,
@@ -229,6 +230,13 @@ router.post(
           user: req.user.id
         }
       ]
+    });
+    logger.info("Media location metadata saved", {
+      recordId: String(hazard._id),
+      module: "hazard",
+      stage: "before",
+      mediaCount: evidenceImages.length + evidenceVideos.length,
+      locationCount: [...evidenceImages, ...evidenceVideos].filter((item) => item.location?.latitude !== undefined).length
     });
 
     if (hazard.assignedTo) {
@@ -460,6 +468,13 @@ router.patch(
       user: req.user.id
     });
     await hazard.save();
+    logger.info("Media location metadata saved", {
+      recordId: String(hazard._id),
+      module: "hazard",
+      stage: "after",
+      mediaCount: closureImages.length + closureVideos.length,
+      locationCount: [...closureImages, ...closureVideos].filter((item) => item.location?.latitude !== undefined).length
+    });
 
     await audit(
       req,

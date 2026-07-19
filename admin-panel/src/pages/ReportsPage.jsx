@@ -15,11 +15,12 @@ import {
 } from "recharts";
 import GlassCard from "../components/common/GlassCard";
 import SafeChartContainer from "../components/common/SafeChartContainer";
-import SectionHeader from "../components/common/SectionHeader";
+import PageHeader from "../components/common/PageHeader";
 import { reportService, trainingService } from "../api/services";
 import { closeLoadingPopup, showLoadingPopup, showSuccessPopup } from "../utils/alerts";
 import { exportReportPdf, normalizeReportRowsByType } from "../utils/pdfExport";
 import companyLogo from "../assets/vertis-logo.svg";
+import { APP_NAME } from "../config/appConfig";
 
 const periods = ["daily", "weekly", "monthly", "yearly"];
 const reportTypes = [
@@ -174,7 +175,7 @@ const ReportsPage = () => {
       const rows = normalized.map((row) => headers.map((header) => row[header] ?? "-"));
       const metadataRows = [
         [companyName],
-        ["Safety HSE Enterprise System"],
+        [APP_NAME],
         [reportTitleMap[type] || "Report"],
         [`Generated: ${generatedDate}`],
         [],
@@ -219,7 +220,7 @@ const ReportsPage = () => {
       const rows = normalized.map((row) => headers.map((header) => row[header] ?? "-"));
       const ws = XLSX.utils.aoa_to_sheet([
         [companyName],
-        ["Safety HSE Enterprise System"],
+        [APP_NAME],
         [reportTitleMap[type] || "Report"],
         [`Generated: ${generatedDate}`],
         [],
@@ -271,7 +272,7 @@ const ReportsPage = () => {
 
   return (
     <div className="space-y-5">
-      <SectionHeader
+      <PageHeader
         title="Enterprise Reporting & Analytics"
         subtitle="Legacy report workflows restored with enterprise analytics and export controls"
         actions={
@@ -378,7 +379,7 @@ const ReportsPage = () => {
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-rose-300">Udupi Tollway Pvt Ltd</p>
                 <h3 className="mt-1 text-lg font-semibold text-white">{reportTitleMap[type] || "Report"}</h3>
-                <p className="mt-0.5 text-xs text-slate-400">Safety HSE Enterprise System</p>
+                <p className="mt-0.5 text-xs text-slate-400">{APP_NAME}</p>
               </div>
             </div>
             <div className="rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-left sm:text-right">

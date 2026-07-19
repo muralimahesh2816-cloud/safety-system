@@ -8,3 +8,6 @@ import { TextDecoder, TextEncoder } from 'util';
 // jsPDF's PNG decoder expects the browser text codecs in the Jest environment.
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder;
+
+// Framer Motion measures scroll position; JSDOM intentionally omits this browser API.
+window.scrollTo = jest.fn();

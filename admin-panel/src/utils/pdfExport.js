@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { APP_NAME } from "../config/appConfig";
 import { getChainageFrom } from "./chainage";
 
 const reportColumns = {
@@ -314,7 +315,7 @@ const addHeader = (doc, { companyName, reportTitle, generatedBy, generatedDateTe
   doc.text(companyName, 14, 13);
   doc.setFontSize(9);
   doc.setTextColor(71, 85, 105);
-  doc.text("Safety HSE Enterprise System", 14, 19);
+  doc.text(APP_NAME, 14, 19);
   doc.setFontSize(12);
   doc.setTextColor(180, 35, 24);
   doc.text(reportTitle, 14, 28);

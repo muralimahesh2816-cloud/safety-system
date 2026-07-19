@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, Database, HardDrive, Mail, RefreshCw, Server, ShieldCheck, UploadCloud } from "lucide-react";
 import GlassCard from "../components/common/GlassCard";
-import SectionHeader from "../components/common/SectionHeader";
+import PageHeader from "../components/common/PageHeader";
 import { healthService } from "../api/services";
 
 const checkLabels = {
@@ -102,7 +102,7 @@ const SystemHealthPage = () => {
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <SectionHeader
+        <PageHeader
           title="System Health"
           subtitle="Backend, database, upload, email, storage, session, and backup status"
         />
@@ -127,7 +127,7 @@ const SystemHealthPage = () => {
             </span>
             <div>
               <h3 className="text-base font-semibold text-white">API Runtime</h3>
-              <p className="text-xs text-slate-400">{health?.service || "Safety HSE Enterprise API"}</p>
+              <p className="text-xs text-slate-400">{health?.service || "Safety Management System API"}</p>
             </div>
           </div>
           <StatusPill value={health?.status || (loading ? "loading" : "unavailable")} />

@@ -363,7 +363,7 @@ const LoginPanel = ({ onLogin, onVerifyOtp, onResendOtp, onAuthenticated }) => {
           )}
           {recoveryAcknowledged ? (
             <p className="auth-status auth-status--info" role="status">
-              Please contact your authorized system administrator and ask for Safety Portal account assistance.
+              Please contact your authorized system administrator and ask for Safety Management System account assistance.
             </p>
           ) : null}
           <button type="button" className="auth-text-button auth-text-button--back" onClick={returnToLogin}>

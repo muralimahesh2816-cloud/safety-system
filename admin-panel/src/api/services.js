@@ -1450,6 +1450,11 @@ export const settingsService = {
   }
 };
 
+export const locationService = {
+  reverseGeocode: async ({ latitude, longitude }) =>
+    (await client.post("/location/reverse-geocode", { latitude, longitude })).data
+};
+
 export const healthService = {
   get: async () => (await client.get("/health")).data,
   backupReadiness: async () => (await client.get("/backup/readiness")).data

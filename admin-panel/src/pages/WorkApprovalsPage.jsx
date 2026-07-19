@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Clock3, Eye, ImagePlus, Pencil, RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import GlassCard from "../components/common/GlassCard";
-import SectionHeader from "../components/common/SectionHeader";
+import PageHeader from "../components/common/PageHeader";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import SafeChartContainer from "../components/common/SafeChartContainer";
 import ErrorBoundary from "../components/common/ErrorBoundary";
@@ -754,7 +754,7 @@ const WorkApprovalsPage = ({ user }) => {
 
   return (
     <div className="safety-bg-overlay safety-bg-work space-y-5">
-      <SectionHeader
+      <PageHeader
         title="Work Approval Workflow"
         subtitle="Role-based sequential checking, Safety Manager recommendation, final approval, and completion evidence"
       />

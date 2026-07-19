@@ -7,6 +7,8 @@ process.env.FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 process.env.BACKEND_PUBLIC_URL = process.env.BACKEND_PUBLIC_URL || "http://localhost:5000";
 process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || "test-access-secret-with-enough-length";
 process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "test-refresh-secret-with-enough-length";
+process.env.REVERSE_GEOCODING_PROVIDER = "none";
+process.env.REVERSE_GEOCODING_API_URL = "";
 
 const {
   escapeRegex,
@@ -31,6 +33,11 @@ const {
   mergeMediaMetadata,
   redactRecordLocations
 } = require("../src/utils/media-metadata");
+const {
+  normalizeProviderResponse,
+  reverseGeocode,
+  validateCoordinates
+} = require("../src/services/location.service");
 
 test("CORS allows work submission idempotency and security headers", () => {
   const normalizedHeaders = allowedRequestHeaders.map((header) => header.toLowerCase());
@@ -142,12 +149,42 @@ test("media metadata rejects invalid GPS ranges", () => {
 test("exact coordinates are redacted for unrelated roles", () => {
   const record = {
     createdBy: "507f1f77bcf86cd799439012",
-    beforeImages: [{ location: { latitude: 13.34, longitude: 74.7, accuracyMeters: 20 } }]
+    beforeImages: [{ location: { latitude: 13.34, longitude: 74.7, accuracyMeters: 20, formattedAddress: "Restricted site address" } }]
   };
   const redacted = redactRecordLocations(record, {
     id: "507f1f77bcf86cd799439013",
     role: "viewer"
   }, ["beforeImages"]);
   assert.equal(redacted.beforeImages[0].location.latitude, undefined);
+  assert.equal(redacted.beforeImages[0].location.formattedAddress, undefined);
   assert.equal(redacted.beforeImages[0].location.recorded, true);
+});
+
+test("reverse geocoding normalizes a complete provider address", () => {
+  const normalized = normalizeProviderResponse({
+    data: {
+      formattedAddress: "Karkada Badaholi and Mooduholi, Saligrama, Karnataka 576225",
+      addressLine1: "Karkada Badaholi and Mooduholi",
+      locality: "Saligrama",
+      district: "Udupi",
+      state: "Karnataka",
+      postalCode: "576225",
+      country: "India"
+    }
+  }, "generic", { latitude: 13.494759, longitude: 74.719246 });
+  assert.equal(normalized.formattedAddress, "Karkada Badaholi and Mooduholi, Saligrama, Karnataka 576225");
+  assert.equal(normalized.postalCode, "576225");
+  assert.equal(normalized.latitude, 13.494759);
+});
+
+test("location service rejects invalid longitude", () => {
+  assert.throws(() => validateCoordinates(13, 181), /Longitude must be a number between -180 and 180/);
+});
+
+test("location service preserves coordinates when no provider is configured", async () => {
+  const result = await reverseGeocode(13.494759, 74.719246, { requestId: "test-request" });
+  assert.equal(result.latitude, 13.494759);
+  assert.equal(result.longitude, 74.719246);
+  assert.equal(result.formattedAddress, "Address unavailable");
+  assert.equal(result.reverseGeocodeStatus, "unavailable");
 });

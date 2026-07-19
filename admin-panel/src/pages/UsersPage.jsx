@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { KeyRound, Lock, Shield, Unlock } from "lucide-react";
 import GlassCard from "../components/common/GlassCard";
 import ImageStudioModal from "../components/common/ImageStudioModal";
-import SectionHeader from "../components/common/SectionHeader";
+import PageHeader from "../components/common/PageHeader";
 import { userService } from "../api/services";
 import { ROLE_GROUPS, ROLE_LABELS, ROLES } from "../constants/roles";
 import { closeLoadingPopup, showLoadingPopup, showSuccessPopup, showValidationPopup } from "../utils/alerts";
@@ -198,7 +198,7 @@ const UsersPage = ({ currentUser }) => {
 
   return (
     <div className="space-y-5">
-      <SectionHeader
+      <PageHeader
         title="User Administration"
         subtitle="Create, update, block, activate, reset credentials, and audit login behavior"
       />

@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import companyLogoUrl from "../assets/vertis-logo.svg";
+import { APP_NAME } from "../config/appConfig";
 import { getMediaUrl } from "./media";
 import {
   calculateCompletionPercentage,
@@ -13,7 +14,7 @@ import {
 } from "./chainage";
 
 const COMPANY_NAME = "Udupi Tollway Pvt Ltd";
-const SYSTEM_NAME = "Safety HSE Enterprise System";
+const SYSTEM_NAME = APP_NAME;
 
 const safe = (value) => {
   if (value === undefined || value === null || value === "") return "-";
@@ -35,8 +36,17 @@ const formatDate = (value) => {
 
 const normalizeMedia = (items = [], fallback) => {
   const source = items?.length ? items : fallback ? [fallback] : [];
-  return source.map(getMediaUrl).filter(Boolean);
+  return source.map((item) => ({
+    ...((item && typeof item === "object") ? item : {}),
+    url: getMediaUrl(item?.url || item)
+  })).filter((item) => Boolean(item.url));
 };
+
+const mediaLocation = (item = {}) => item.location || {};
+const formatCoordinates = (location = {}) =>
+  Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude))
+    ? `${Number(location.latitude).toFixed(6)}, ${Number(location.longitude).toFixed(6)}`
+    : "";
 
 const formatCorrectiveActions = (actions = []) => {
   if (!actions.length) return "No corrective action recorded.";
@@ -204,41 +214,63 @@ const addTimeline = (doc, timeline = [], startY) => {
   return doc.lastAutoTable.finalY;
 };
 
-const addImagePage = async (doc, { label, url }) => {
+const addImagePage = async (doc, { label, item, mediaType = "image" }) => {
   doc.addPage();
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
   doc.text(label, 14, 43);
 
+  const location = mediaLocation(item);
+  const address = location.formattedAddress && location.formattedAddress !== "Address unavailable"
+    ? location.formattedAddress
+    : (location.recorded ? "Exact location restricted" : "Location not recorded");
+  const coordinates = formatCoordinates(location);
+  const mediaUrl = mediaType === "video" ? getMediaUrl(item.thumbnailUrl || item.url) : item.url;
+  const maxWidth = 182;
+  const maxHeight = 182;
+  const frameY = 48;
+
   try {
-    const dataUrl = await toDataUrl(url);
+    const dataUrl = await toDataUrl(mediaUrl);
     const properties = doc.getImageProperties(dataUrl);
-    const maxWidth = 182;
-    const maxHeight = 215;
     const ratio = Math.min(maxWidth / properties.width, maxHeight / properties.height);
     const drawWidth = properties.width * ratio;
     const drawHeight = properties.height * ratio;
     const x = (doc.internal.pageSize.getWidth() - drawWidth) / 2;
-    const y = 50 + (maxHeight - drawHeight) / 2;
+    const y = frameY + 2 + (maxHeight - drawHeight) / 2;
     doc.setFillColor(248, 250, 252);
-    doc.roundedRect(14, 48, 182, 219, 3, 3, "F");
+    doc.roundedRect(14, frameY, maxWidth, maxHeight + 4, 3, 3, "F");
     doc.addImage(dataUrl, undefined, x, y, drawWidth, drawHeight);
   } catch (_error) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor(190, 24, 93);
-    doc.text("Image could not be embedded. Open the source link below:", 14, 58);
+    doc.text(`${mediaType === "video" ? "Video thumbnail" : "Image"} could not be embedded.`, 14, 58);
     doc.setTextColor(37, 99, 235);
-    doc.textWithLink("Open source image", 14, 68, { url });
+    doc.textWithLink(`Open secure ${mediaType}`, 14, 68, { url: item.url });
   }
+
+  const captionY = frameY + maxHeight + 11;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text("Evidence location", 14, captionY);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(51, 65, 85);
+  const addressLines = doc.splitTextToSize(address, maxWidth);
+  doc.text(addressLines, 14, captionY + 6);
+  const coordinateY = captionY + 6 + addressLines.length * 4.2;
+  if (coordinates) doc.text(`${coordinates}${location.accuracyMeters ? ` | Accuracy ±${Math.round(Number(location.accuracyMeters))} m` : ""}`, 14, coordinateY);
+  if (location.capturedAt) doc.text(`Captured: ${formatDate(location.capturedAt)}`, 14, coordinateY + (coordinates ? 5 : 0));
 };
 
-const finalizePdf = async ({ reportTitle, fileName, detailRows, descriptionTitle, description, timeline, images }) => {
+const finalizePdf = async ({ reportTitle, fileName, detailRows, descriptionTitle, description, timeline, images, save = true }) => {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const logoData = await loadLogo();
   const generatedAt = new Date().toLocaleString("en-IN");
-  const generatedBy = localStorage.getItem("name") || localStorage.getItem("userName") || "Safety HSE User";
+  const generatedBy = localStorage.getItem("name") || localStorage.getItem("userName") || "Safety user";
 
   const officialRows = detailRows.filter(([, value]) => value !== undefined && value !== null && value !== "" && value !== "-");
   let y = addDetailsTable(doc, officialRows);
@@ -255,8 +287,8 @@ const finalizePdf = async ({ reportTitle, fileName, detailRows, descriptionTitle
     addPageHeader(doc, reportTitle, logoData);
   }
   addPageFooters(doc, generatedAt, generatedBy);
-  doc.save(fileName);
-  return true;
+  if (save) doc.save(fileName);
+  return doc;
 };
 
 export const exportHazardDetailsPdf = async (hazard = {}) => {
@@ -286,13 +318,15 @@ export const exportHazardDetailsPdf = async (hazard = {}) => {
     description: hazard.description || hazard.details || hazard.observation || "No description entered.",
     timeline: hazard.timeline || hazard.approvalHistory || [],
     images: [
-      ...evidence.map((url, index) => ({ label: `Evidence Image ${index + 1}`, url })),
-      ...closure.map((url, index) => ({ label: `Closure Image ${index + 1}`, url }))
+      ...evidence.map((item, index) => ({ label: `Evidence Image ${index + 1}`, item, mediaType: "image" })),
+      ...evidenceVideos.map((item, index) => ({ label: `Evidence Video ${index + 1}`, item, mediaType: "video" })),
+      ...closure.map((item, index) => ({ label: `Closure Image ${index + 1}`, item, mediaType: "image" })),
+      ...closureVideos.map((item, index) => ({ label: `Closure Video ${index + 1}`, item, mediaType: "video" }))
     ]
   });
 };
 
-export const exportWorkApprovalDetailsPdf = async (work = {}) => {
+export const exportWorkApprovalDetailsPdf = async (work = {}, { save = true } = {}) => {
   const before = normalizeMedia(work.beforeImages, work.beforeImage);
   const after = normalizeMedia(work.afterImages, work.afterImage);
   const beforeVideos = normalizeMedia(work.beforeVideos, work.beforeVideo);
@@ -303,9 +337,12 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
   const completionDate = ["Completed", "Partially Completed"].includes(status)
     ? work.completedAt || work.completionDate || work.updatedAt
     : work.completionDate;
+  const allMedia = [...before, ...beforeVideos, ...after, ...afterVideos];
+  const primaryLocation = allMedia.map(mediaLocation).find((location) => location?.latitude != null || location?.recorded);
   return finalizePdf({
-    reportTitle: "Work Approval Details Report",
+    reportTitle: "Work Approval Report",
     fileName: `work-approval-details-${work._id || work.id || Date.now()}.pdf`,
+    save,
     detailRows: [
       ["Approval Number", work.approvalNumber],
       ["Work Type", work.workType || work.title],
@@ -339,6 +376,8 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
       ["Completed By", work.completedBy],
       ["Completion Date", formatDate(completionDate)],
       ["Completion Description", work.completionDescription],
+      ["GPS Address", primaryLocation?.formattedAddress],
+      ["GPS Coordinates", formatCoordinates(primaryLocation)],
       ["Before Images", before.length],
       ["Before Videos", beforeVideos.length],
       ["After Images", after.length],
@@ -348,8 +387,10 @@ export const exportWorkApprovalDetailsPdf = async (work = {}) => {
     description: work.description || work.workDescription || work.details || "No description entered.",
     timeline: work.timeline || work.approvalHistory || [],
     images: [
-      ...before.map((url, index) => ({ label: `Before Work Image ${index + 1}`, url })),
-      ...after.map((url, index) => ({ label: `After Work Image ${index + 1}`, url }))
+      ...before.map((item, index) => ({ label: `Before Work Image ${index + 1}`, item, mediaType: "image" })),
+      ...beforeVideos.map((item, index) => ({ label: `Before Work Video ${index + 1}`, item, mediaType: "video" })),
+      ...after.map((item, index) => ({ label: `Completion Image ${index + 1}`, item, mediaType: "image" })),
+      ...afterVideos.map((item, index) => ({ label: `Completion Video ${index + 1}`, item, mediaType: "video" }))
     ]
   });
 };
