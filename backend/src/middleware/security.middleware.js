@@ -77,6 +77,10 @@ const applySecurityMiddleware = (app) => {
       }
     })
   );
+  app.use((_req, res, next) => {
+    res.setHeader("Permissions-Policy", "camera=(self), geolocation=(self)");
+    next();
+  });
   app.use(compression());
   app.use(cookieParser());
   app.use(expressJsonLimit());

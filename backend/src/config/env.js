@@ -35,6 +35,15 @@ const env = {
   enforceOtpAuth: process.env.ENFORCE_OTP_AUTH === "true",
   workflowAdminOverrideEnabled: process.env.WORKFLOW_ADMIN_OVERRIDE_ENABLED === "true",
   allowLocalUploadsInProduction: process.env.ALLOW_LOCAL_UPLOADS_IN_PRODUCTION === "true",
+  media: {
+    gpsPolicy: ["optional", "required", "required_camera"].includes(process.env.GPS_EVIDENCE_POLICY)
+      ? process.env.GPS_EVIDENCE_POLICY
+      : "optional",
+    accuracyWarningMeters: Number(process.env.MAX_ACCEPTABLE_GPS_ACCURACY_METERS || 100),
+    locationRetentionDays: Number(process.env.MEDIA_LOCATION_RETENTION_DAYS || 0),
+    mapProvider: process.env.MAP_PROVIDER || "none",
+    reverseGeocodingProvider: process.env.REVERSE_GEOCODING_PROVIDER || "none"
+  },
   backup: {
     provider: process.env.BACKUP_PROVIDER || "manual",
     storageUriConfigured: Boolean(process.env.BACKUP_STORAGE_URI),

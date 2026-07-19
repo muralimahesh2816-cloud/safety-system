@@ -1,17 +1,5 @@
 const mongoose = require("mongoose");
-
-const assetSchema = new mongoose.Schema(
-  {
-    url: String,
-    publicId: String,
-    storage: String,
-    originalName: String,
-    mimeType: String,
-    size: Number,
-    fileHash: String
-  },
-  { _id: false }
-);
+const { assetSchema } = require("../utils/media-metadata");
 
 const correctiveActionSchema = new mongoose.Schema(
   {

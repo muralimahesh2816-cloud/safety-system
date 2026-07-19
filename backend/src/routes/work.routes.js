@@ -28,6 +28,11 @@ const {
 const { uploadManyAssets } = require("../utils/uploads");
 const { createMemoryUpload, IMAGE_MIME_TYPES, VIDEO_MIME_TYPES } = require("../utils/multer");
 const {
+  parseMediaMetadata,
+  mergeMediaMetadata,
+  redactRecordLocations
+} = require("../utils/media-metadata");
+const {
   createNotification,
   notifyWorkCreated,
   notifyWorkChecked,
@@ -58,7 +63,7 @@ const WORK_MEDIA_MAX_COUNT = 10;
 const upload = createMemoryUpload({
   allowedMimeTypes: [...IMAGE_MIME_TYPES, ...VIDEO_MIME_TYPES],
   maxFileSizeMb: WORK_VIDEO_LIMIT_MB,
-  maxFiles: 22
+  maxFiles: 32
 });
 
 const runWorkflowNotification = (label, operation) => {
