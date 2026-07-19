@@ -167,12 +167,18 @@ const parseMediaMetadata = (raw, options) => {
   return values.map((value) => normalizeMetadata(value, options));
 };
 
-const mergeMediaMetadata = (assets, metadata, { userId, thumbnails = [] } = {}) =>
+const mergeMediaMetadata = (assets, metadata, {
+  userId,
+  thumbnails = [],
+  module = "work_approval",
+  stage = "before",
+  mediaType = "image"
+} = {}) =>
   (assets || []).map((asset, index) => {
     const details = metadata[index] || normalizeMetadata({}, {
-      module: asset.module || "work_approval",
-      stage: asset.stage || "before",
-      mediaType: asset.mediaType || "image"
+      module: asset.module || module,
+      stage: asset.stage || stage,
+      mediaType: asset.mediaType || mediaType
     });
     const thumbnail = details.thumbnailUploadIndex >= 0 ? thumbnails[details.thumbnailUploadIndex] : null;
     return {

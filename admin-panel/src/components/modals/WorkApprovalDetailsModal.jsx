@@ -27,6 +27,7 @@ import {
   getChainageDisplay
 } from "../../utils/chainage";
 import WorkCompletionSummaryCard from "../work/WorkCompletionSummaryCard";
+import DirectMediaCapture from "../media/DirectMediaCapture";
 
 const WORKFLOW_STAGES = [
   "Pending Check",
@@ -87,7 +88,11 @@ const hasWorkAction = (user = {}, action) => {
 const normalizeMedia = (items = [], fallback) => {
   const source = items?.length ? items : fallback ? [fallback] : [];
   return source
-    .map((item) => ({ url: getMediaUrl(item), title: item?.title || item?.name || "Work media" }))
+    .map((item) => ({
+      ...((item && typeof item === "object") ? item : {}),
+      url: getMediaUrl(item),
+      title: item?.title || item?.name || item?.originalFileName || "Work media"
+    }))
     .filter((item) => Boolean(item.url));
 };
 
@@ -218,7 +223,6 @@ const ActionPanel = ({
   user,
   stage,
   busy,
-  completionPreview,
   completionFiles,
   onCompletionFiles,
   onStageAction,
@@ -385,23 +389,20 @@ const ActionPanel = ({
             />
           </label>
         ) : null}
-        <input
-          type="file"
-          accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/webm"
-          multiple
-          onChange={onCompletionFiles}
-          className="mt-3 w-full rounded-2xl border border-dashed border-white/20 bg-slate-950/70 px-4 py-3 text-xs text-slate-300"
-        />
-        {completionPreview ? (
-          (completionFiles[0]?.type?.startsWith("video/") || isVideoUrl(completionPreview)) ? (
-            <video src={completionPreview} controls className="mt-3 max-h-52 w-full rounded-2xl border border-white/10 object-contain" />
-          ) : (
-            <img src={completionPreview} alt="Completion preview" className="mt-3 max-h-52 w-full rounded-2xl border border-white/10 object-contain" />
-          )
-        ) : null}
-        {completionFiles.length ? (
-          <p className="mt-2 text-xs text-slate-400">Selected {completionFiles.length} completion file(s)</p>
-        ) : null}
+        <div className="mt-4">
+          <DirectMediaCapture
+            label="Completion Evidence"
+            module="work_approval"
+            stage="completion"
+            reference={safeWork.approvalNumber || safeWork.title || "Work Approval"}
+            siteName={safeWork.location || safeWork.plaza}
+            capturedBy={user?.name}
+            maxImages={10}
+            maxVideos={10}
+            resetKey={`${safeWork._id || safeWork.id || "work"}-${stage}`}
+            onChange={onCompletionFiles}
+          />
+        </div>
         {canComplete ? (
           <button
             type="button"
@@ -571,7 +572,6 @@ const WorkApprovalDetailsModal = ({
   const [completedChainageTo, setCompletedChainageTo] = useState("");
   const [partialCompletionReason, setPartialCompletionReason] = useState("");
   const [completionFiles, setCompletionFiles] = useState([]);
-  const [completionPreview, setCompletionPreview] = useState("");
   const before = useMemo(() => normalizeMedia(safeWork?.beforeImages, safeWork?.beforeImage), [safeWork]);
   const after = useMemo(() => normalizeMedia(safeWork?.afterImages, safeWork?.afterImage), [safeWork]);
   const beforeVideos = useMemo(() => normalizeMedia(safeWork?.beforeVideos, safeWork?.beforeVideo), [safeWork]);
@@ -668,30 +668,11 @@ const WorkApprovalDetailsModal = ({
     setCompletedChainageTo(defaultCompletedTo || "");
     setPartialCompletionReason("");
     setCompletionFiles([]);
-    setCompletionPreview((prev) => {
-      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-      return "";
-    });
   }, [safeWork, stage]);
-
-  useEffect(
-    () => () => {
-      if (completionPreview?.startsWith("blob:")) URL.revokeObjectURL(completionPreview);
-    },
-    [completionPreview]
-  );
 
   const openMedia = (index) => onOpenMedia?.(allMedia, index);
 
-  const onCompletionFiles = (event) => {
-    const files = Array.from(event.target.files || []);
-    setCompletionFiles(files);
-    const selected = files[0] || null;
-    setCompletionPreview((prev) => {
-      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-      return selected ? URL.createObjectURL(selected) : "";
-    });
-  };
+  const onCompletionFiles = (files) => setCompletionFiles(files || []);
 
   const downloadPdf = async () => {
     if (exporting || !safeWork) return;
@@ -826,7 +807,6 @@ const WorkApprovalDetailsModal = ({
                     user={user}
                     stage={stage}
                     busy={busy}
-                    completionPreview={completionPreview}
                     completionFiles={completionFiles}
                     onCompletionFiles={onCompletionFiles}
                     onStageAction={onStageAction}

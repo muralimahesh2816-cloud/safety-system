@@ -443,15 +443,39 @@ const completeWorkWithMedia = async (req, res) => {
 
   const afterFiles = [...(req.files?.afterImages || []), ...(req.files?.afterImage || [])];
   const afterVideoFiles = [...(req.files?.afterVideos || []), ...(req.files?.afterVideo || [])];
+  const afterVideoThumbnailFiles = req.files?.afterVideoThumbnails || [];
   validateWorkMedia({ images: afterFiles, videos: afterVideoFiles, label: "After media" });
   if (!afterFiles.length && !afterVideoFiles.length) {
     throw new ApiError(400, "At least one completion image or video is required");
   }
 
-  const [uploads, videoUploads] = await Promise.all([
+  const imageMetadata = parseMediaMetadata(req.body.afterImageMetadata, {
+    module: "work_approval",
+    stage: "completion",
+    mediaType: "image",
+    maxCount: WORK_MEDIA_MAX_COUNT
+  });
+  const videoMetadata = parseMediaMetadata(req.body.afterVideoMetadata, {
+    module: "work_approval",
+    stage: "completion",
+    mediaType: "video",
+    maxCount: WORK_MEDIA_MAX_COUNT
+  });
+  const [rawUploads, rawVideoUploads, thumbnailUploads] = await Promise.all([
     uploadManyAssets(afterFiles, "safety-hse/work/after", "image"),
-    uploadManyAssets(afterVideoFiles, "safety-hse/work/after-videos", "video")
+    uploadManyAssets(afterVideoFiles, "safety-hse/work/after-videos", "video"),
+    uploadManyAssets(afterVideoThumbnailFiles, "safety-hse/work/video-thumbnails", "image")
   ]);
+  const uploads = mergeMediaMetadata(rawUploads, imageMetadata, {
+    userId: req.user.id, module: "work_approval", stage: "completion", mediaType: "image"
+  });
+  const videoUploads = mergeMediaMetadata(rawVideoUploads, videoMetadata, {
+    userId: req.user.id,
+    thumbnails: thumbnailUploads,
+    module: "work_approval",
+    stage: "completion",
+    mediaType: "video"
+  });
   const actor = createStageActor(req, payload.description);
   const storedCompletedFrom = completionChainage.closesRemainingChainage
     ? completionChainage.approved.from
@@ -520,6 +544,7 @@ const completeWorkWithMedia = async (req, res) => {
     {
       images: uploads.length,
       videos: videoUploads.length,
+      locationAvailability: [...uploads, ...videoUploads].some((item) => item.location?.latitude !== undefined),
       completedChainageFrom: completionChainage.completedFrom,
       completedChainageTo: completionChainage.completedTo,
       partialCompletionReason: completionChainage.partialCompletionReason
@@ -529,11 +554,11 @@ const completeWorkWithMedia = async (req, res) => {
   await runWorkflowNotification("work_completed", () =>
     notifyWorkCompleted({ work, actorId: req.user.id })
   );
-  res.json({ success: true, work: toLegacyWorkRecord(work) });
+  res.json({ success: true, work: toLegacyWorkRecord(work, req.user) });
 };
 
 const parseDate = (value) => (value ? new Date(value) : null);
-const toLegacyWorkRecord = (record) => {
+const toLegacyWorkRecord = (record, user) => {
   const plain = typeof record.toObject === "function" ? record.toObject() : record;
   const beforeImage = plain.beforeImages?.[0]?.url || plain.beforeImage || "";
   const afterImage = plain.afterImages?.[0]?.url || plain.afterImage || "";
@@ -567,7 +592,7 @@ const toLegacyWorkRecord = (record) => {
   const createdByName = plain.createdByName || plain.createdBy?.name || "";
   const createdByRole = plain.createdByRole || plain.createdBy?.role || "";
   const approvedBy = plain.approvedBy || plain.approvedById?.name || "";
-  return {
+  const serialized = {
     ...plain,
     approvalNumber: plain.approvalNumber || (plain._id ? `WA-${String(plain._id).slice(-8).toUpperCase()}` : ""),
     description: plain.description || plain.workDescription || "",
@@ -631,6 +656,11 @@ const toLegacyWorkRecord = (record) => {
     returnedHistory: plain.returnedHistory || [],
     chainageAuditHistory: plain.chainageAuditHistory || []
   };
+  return redactRecordLocations(
+    serialized,
+    user,
+    ["beforeImages", "afterImages", "beforeVideos", "afterVideos"]
+  );
 };
 
 const buildWorkQuery = (query = {}) => {
@@ -715,7 +745,7 @@ router.get(
     ]);
     res.json({
       success: true,
-      records: records.map(toLegacyWorkRecord),
+      records: records.map((record) => toLegacyWorkRecord(record, req.user)),
       pagination: shouldPaginate
         ? buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total })
         : { total, unpaginated: true }
@@ -731,7 +761,8 @@ router.post(
     { name: "beforeImages", maxCount: 10 },
     { name: "beforeImage", maxCount: 1 },
     { name: "beforeVideos", maxCount: 10 },
-    { name: "beforeVideo", maxCount: 1 }
+    { name: "beforeVideo", maxCount: 1 },
+    { name: "beforeVideoThumbnails", maxCount: 10 }
   ]),
   asyncHandler(async (req, res) => {
     const idempotencyKey = String(req.get("Idempotency-Key") || "").trim().slice(0, 120);
@@ -741,8 +772,8 @@ router.post(
         return res.status(200).json({
           success: true,
           message: "Work approval already submitted",
-          work: toLegacyWorkRecord(existingWork),
-          data: toLegacyWorkRecord(existingWork),
+          work: toLegacyWorkRecord(existingWork, req.user),
+          data: toLegacyWorkRecord(existingWork, req.user),
           duplicate: true
         });
       }
@@ -759,14 +790,38 @@ router.post(
 
     const beforeFiles = [...(req.files?.beforeImages || []), ...(req.files?.beforeImage || [])];
     const beforeVideoFiles = [...(req.files?.beforeVideos || []), ...(req.files?.beforeVideo || [])];
+    const beforeVideoThumbnailFiles = req.files?.beforeVideoThumbnails || [];
     validateWorkMedia({ images: beforeFiles, videos: beforeVideoFiles, label: "Before media" });
     if (!beforeFiles.length) {
       throw new ApiError(400, "Before image is required");
     }
-    const [beforeImages, beforeVideos] = await Promise.all([
+    const imageMetadata = parseMediaMetadata(req.body.beforeImageMetadata, {
+      module: "work_approval",
+      stage: "before",
+      mediaType: "image",
+      maxCount: WORK_MEDIA_MAX_COUNT
+    });
+    const videoMetadata = parseMediaMetadata(req.body.beforeVideoMetadata, {
+      module: "work_approval",
+      stage: "before",
+      mediaType: "video",
+      maxCount: WORK_MEDIA_MAX_COUNT
+    });
+    const [rawBeforeImages, rawBeforeVideos, thumbnailUploads] = await Promise.all([
       uploadManyAssets(beforeFiles, "safety-hse/work/before", "image"),
-      uploadManyAssets(beforeVideoFiles, "safety-hse/work/before-videos", "video")
+      uploadManyAssets(beforeVideoFiles, "safety-hse/work/before-videos", "video"),
+      uploadManyAssets(beforeVideoThumbnailFiles, "safety-hse/work/video-thumbnails", "image")
     ]);
+    const beforeImages = mergeMediaMetadata(rawBeforeImages, imageMetadata, {
+      userId: req.user.id, module: "work_approval", stage: "before", mediaType: "image"
+    });
+    const beforeVideos = mergeMediaMetadata(rawBeforeVideos, videoMetadata, {
+      userId: req.user.id,
+      thumbnails: thumbnailUploads,
+      module: "work_approval",
+      stage: "before",
+      mediaType: "video"
+    });
 
     const payload = parsed.data;
     const normalizedChainage = normalizeChainagePayload(payload);
@@ -804,6 +859,15 @@ router.post(
     });
 
     await audit(req, "create", "work", { title: work.title }, work._id);
+    await audit(
+      req,
+      [...beforeImages, ...beforeVideos].some((item) => item.location?.latitude !== undefined)
+        ? "location_attached"
+        : "location_missing",
+      "work",
+      { mediaCount: beforeImages.length + beforeVideos.length },
+      work._id
+    );
     if (work.assignedTo) {
       runWorkflowNotification("work_assigned", () =>
         createNotification({
@@ -818,7 +882,7 @@ router.post(
     runWorkflowNotification("work_created", () =>
       notifyWorkCreated({ work, actorId: req.user.id })
     );
-    const responseWork = toLegacyWorkRecord(work);
+    const responseWork = toLegacyWorkRecord(work, req.user);
     res.status(201).json({
       success: true,
       message: "Work approval submitted successfully",
@@ -839,7 +903,7 @@ router.get(
       .populate("comments.user", "name role")
       .populate("digitalSignatures.signedBy", "name role");
     if (!work) throw new ApiError(404, "Work approval not found");
-    res.json({ success: true, work: toLegacyWorkRecord(work) });
+    res.json({ success: true, work: toLegacyWorkRecord(work, req.user) });
   })
 );
 
@@ -1211,7 +1275,8 @@ router.post(
     { name: "afterImages", maxCount: 10 },
     { name: "afterImage", maxCount: 1 },
     { name: "afterVideos", maxCount: 10 },
-    { name: "afterVideo", maxCount: 1 }
+    { name: "afterVideo", maxCount: 1 },
+    { name: "afterVideoThumbnails", maxCount: 10 }
   ]),
   asyncHandler(completeWorkWithMedia)
 );
@@ -1223,7 +1288,8 @@ router.post(
     { name: "afterImages", maxCount: 10 },
     { name: "afterImage", maxCount: 1 },
     { name: "afterVideos", maxCount: 10 },
-    { name: "afterVideo", maxCount: 1 }
+    { name: "afterVideo", maxCount: 1 },
+    { name: "afterVideoThumbnails", maxCount: 10 }
   ]),
   asyncHandler(completeWorkWithMedia)
 );
@@ -1298,7 +1364,8 @@ router.post(
     { name: "afterImages", maxCount: 10 },
     { name: "afterImage", maxCount: 1 },
     { name: "afterVideos", maxCount: 10 },
-    { name: "afterVideo", maxCount: 1 }
+    { name: "afterVideo", maxCount: 1 },
+    { name: "afterVideoThumbnails", maxCount: 10 }
   ]),
   asyncHandler(completeWorkWithMedia)
 );

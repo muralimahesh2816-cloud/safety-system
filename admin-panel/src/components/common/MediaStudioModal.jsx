@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight, Download, Minus, Plus, RotateCw, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, MapPin, Minus, Plus, RotateCw, X } from "lucide-react";
 import { getMediaUrl } from "../../utils/media";
+import { formatDateTime } from "../../utils/format";
 
 const isVideo = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url);
 
@@ -35,6 +36,8 @@ const MediaStudioModal = ({
   const activeItem = galleryItems[safeIndex];
   const url = activeItem?.url || "";
   const displayTitle = activeItem?.title || activeItem?.name || title;
+  const location = activeItem?.location;
+  const activeIsVideo = activeItem?.mediaType === "video" || isVideo(url);
   const hasMultipleItems = galleryItems.length > 1;
 
   useEffect(() => {
@@ -99,6 +102,9 @@ const MediaStudioModal = ({
           onClick={onClose}
         >
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label={displayTitle}
             className="relative flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-white/15 bg-slate-950/95 shadow-[0_30px_90px_rgba(0,0,0,.58)]"
             initial={{ y: 18, scale: 0.98 }}
             animate={{ y: 0, scale: 1 }}
@@ -115,7 +121,7 @@ const MediaStudioModal = ({
                 ) : null}
               </div>
               <div className="flex items-center gap-2">
-                {!isVideo(url) ? (
+                {!activeIsVideo ? (
                   <>
                     <button className="rounded-xl bg-white/10 p-2 text-white" onClick={() => setZoom((v) => Math.max(0.5, v - 0.25))} type="button"><Minus size={16} /></button>
                     <button className="rounded-xl bg-white/10 p-2 text-white" onClick={() => setZoom((v) => Math.min(3, v + 0.25))} type="button"><Plus size={16} /></button>
@@ -137,8 +143,8 @@ const MediaStudioModal = ({
                   <ChevronLeft size={20} />
                 </button>
               ) : null}
-              {isVideo(url) ? (
-                <video src={url} controls autoPlay className="max-h-[78vh] w-full object-contain" />
+              {activeIsVideo ? (
+                <video src={url} controls autoPlay poster={activeItem?.thumbnailUrl || undefined} className="max-h-[78vh] w-full object-contain" />
               ) : (
                 <img src={url} alt={displayTitle} className="max-h-[78vh] max-w-full object-contain transition-transform" style={{ transform: `scale(${zoom}) rotate(${rotation}deg)` }} />
               )}
@@ -151,6 +157,17 @@ const MediaStudioModal = ({
                 >
                   <ChevronRight size={20} />
                 </button>
+              ) : null}
+              {(activeItem?.capturedAt || activeItem?.captureSource || location) ? (
+                <div className="absolute bottom-4 left-4 max-w-[calc(100%-2rem)] rounded-2xl border border-orange-300/30 bg-slate-950/85 p-3 text-[11px] text-slate-200 shadow-xl backdrop-blur-xl">
+                  <p className="font-bold text-white">UTPL Safety Management System</p>
+                  <p className="mt-1 capitalize">{activeItem.stage || "Evidence"} • {activeItem.captureSource || "file"}</p>
+                  <p>{formatDateTime(activeItem.capturedAt || location?.capturedAt || activeItem.uploadedAt)}</p>
+                  {location?.latitude !== undefined && location?.longitude !== undefined ? (
+                    <p className="mt-1 text-emerald-200"><MapPin size={12} className="mr-1 inline" />{Number(location.latitude).toFixed(6)}, {Number(location.longitude).toFixed(6)} • ±{Math.round(Number(location.accuracyMeters || 0))} m</p>
+                  ) : location?.recorded ? <p className="mt-1 text-slate-300"><MapPin size={12} className="mr-1 inline" />Location recorded</p> : null}
+                  {activeItem.watermark?.processingStatus ? <p className="mt-1 capitalize text-slate-400">Watermark: {activeItem.watermark.processingStatus.replace(/_/g, " ")}</p> : null}
+                </div>
               ) : null}
             </div>
             {hasMultipleItems ? (
@@ -165,7 +182,7 @@ const MediaStudioModal = ({
                     }`}
                     aria-label={`Open media ${index + 1}`}
                   >
-                    {isVideo(item.url) ? (
+                    {item.mediaType === "video" || isVideo(item.url) ? (
                       <video src={item.url} muted className="h-full w-full object-cover" />
                     ) : (
                       <img src={item.url} alt={item.title || `Media ${index + 1}`} loading="lazy" className="h-full w-full object-cover" />

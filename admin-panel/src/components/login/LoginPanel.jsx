@@ -372,7 +372,12 @@ const LoginPanel = ({ onLogin, onVerifyOtp, onResendOtp, onAuthenticated }) => {
           </button>
         </div>
       ) : (
-        <form className="auth-form" onSubmit={handleSubmit} noValidate>
+        <form
+          className="auth-form"
+          onSubmit={handleSubmit}
+          noValidate
+          aria-label={isOtpStep ? "Verification form" : "Sign in form"}
+        >
           {isLoginStep ? (
             <>
               <div className="auth-field">

@@ -77,7 +77,7 @@ test("form submission disables the action and prevents duplicate requests", asyn
   );
   renderPanel({ onLogin });
   completeLoginFields();
-  const form = screen.getByRole("button", { name: /sign in securely/i }).closest("form");
+  const form = screen.getByRole("form", { name: /sign in form/i });
 
   fireEvent.submit(form);
   fireEvent.submit(form);
@@ -107,7 +107,7 @@ test("transitions to OTP, accepts a pasted six-digit value, and verifies", async
   const otpInput = screen.getByLabelText(/six-digit verification code/i);
   fireEvent.change(otpInput, { target: { value: "123456" } });
   expect(otpInput).toHaveValue("123456");
-  fireEvent.submit(screen.getByRole("button", { name: /verify & continue/i }).closest("form"));
+  fireEvent.submit(screen.getByRole("form", { name: /verification form/i }));
 
   await waitFor(() => expect(onVerifyOtp).toHaveBeenCalledWith("safety@company.com", "123456"));
 });

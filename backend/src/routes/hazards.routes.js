@@ -16,6 +16,11 @@ const {
 } = require("../validators/hazard.validators");
 const { uploadManyAssets } = require("../utils/uploads");
 const { IMAGE_MIME_TYPES, VIDEO_MIME_TYPES, createMemoryUpload } = require("../utils/multer");
+const {
+  parseMediaMetadata,
+  mergeMediaMetadata,
+  redactRecordLocations
+} = require("../utils/media-metadata");
 const { createNotification } = require("../services/notifications.service");
 const {
   escapeRegex,
@@ -32,7 +37,7 @@ const HAZARD_MEDIA_MAX_COUNT = 6;
 const upload = createMemoryUpload({
   allowedMimeTypes: [...IMAGE_MIME_TYPES, ...VIDEO_MIME_TYPES],
   maxFileSizeMb: HAZARD_VIDEO_LIMIT_MB,
-  maxFiles: 14
+  maxFiles: 20
 });
 const severityWeight = {
   Low: 1,
@@ -74,9 +79,9 @@ const validateHazardMedia = ({ images = [], videos = [], label = "Hazard media" 
   });
 };
 
-const toLegacyHazardRecord = (record) => {
+const toLegacyHazardRecord = (record, user) => {
   const plain = typeof record.toObject === "function" ? record.toObject() : record;
-  return {
+  const serialized = {
     ...plain,
     status: plain.status === "Closed" ? "Closed" : "Open",
     date: plain.date || plain.createdAt,
@@ -94,6 +99,11 @@ const toLegacyHazardRecord = (record) => {
         ? plain.reportedBy?.name || plain.reportedByName || ""
         : plain.reportedByName || plain.reportedBy || ""
   };
+  return redactRecordLocations(
+    serialized,
+    user,
+    ["evidenceImages", "closureImages", "evidenceVideos", "closureVideos"]
+  );
 };
 
 router.get(
@@ -130,7 +140,7 @@ router.get(
     ]);
     res.json({
       success: true,
-      records: records.map(toLegacyHazardRecord),
+      records: records.map((record) => toLegacyHazardRecord(record, req.user)),
       pagination: shouldPaginate
         ? buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total })
         : { total, unpaginated: true }
@@ -146,7 +156,8 @@ router.post(
     { name: "evidenceImages", maxCount: 6 },
     { name: "beforeImage", maxCount: 1 },
     { name: "evidenceVideos", maxCount: 6 },
-    { name: "beforeVideo", maxCount: 1 }
+    { name: "beforeVideo", maxCount: 1 },
+    { name: "evidenceVideoThumbnails", maxCount: 6 }
   ]),
   asyncHandler(async (req, res) => {
     const parsed = createHazardSchema.safeParse(req.body);
@@ -156,14 +167,38 @@ router.post(
 
     const evidenceFiles = [...(req.files?.evidenceImages || []), ...(req.files?.beforeImage || [])];
     const evidenceVideoFiles = [...(req.files?.evidenceVideos || []), ...(req.files?.beforeVideo || [])];
+    const evidenceVideoThumbnailFiles = req.files?.evidenceVideoThumbnails || [];
     validateHazardMedia({ images: evidenceFiles, videos: evidenceVideoFiles, label: "Evidence media" });
     if (!evidenceFiles.length) {
       throw new ApiError(400, "Before image is required");
     }
-    const [evidenceImages, evidenceVideos] = await Promise.all([
+    const imageMetadata = parseMediaMetadata(req.body.evidenceImageMetadata, {
+      module: "hazard",
+      stage: "before",
+      mediaType: "image",
+      maxCount: HAZARD_MEDIA_MAX_COUNT
+    });
+    const videoMetadata = parseMediaMetadata(req.body.evidenceVideoMetadata, {
+      module: "hazard",
+      stage: "before",
+      mediaType: "video",
+      maxCount: HAZARD_MEDIA_MAX_COUNT
+    });
+    const [rawEvidenceImages, rawEvidenceVideos, thumbnailUploads] = await Promise.all([
       uploadManyAssets(evidenceFiles, "safety-hse/hazards/evidence", "image"),
-      uploadManyAssets(evidenceVideoFiles, "safety-hse/hazards/evidence-videos", "video")
+      uploadManyAssets(evidenceVideoFiles, "safety-hse/hazards/evidence-videos", "video"),
+      uploadManyAssets(evidenceVideoThumbnailFiles, "safety-hse/hazards/video-thumbnails", "image")
     ]);
+    const evidenceImages = mergeMediaMetadata(rawEvidenceImages, imageMetadata, {
+      userId: req.user.id, module: "hazard", stage: "before", mediaType: "image"
+    });
+    const evidenceVideos = mergeMediaMetadata(rawEvidenceVideos, videoMetadata, {
+      userId: req.user.id,
+      thumbnails: thumbnailUploads,
+      module: "hazard",
+      stage: "before",
+      mediaType: "video"
+    });
 
     const payload = parsed.data;
     const normalizedTitle =
@@ -208,7 +243,16 @@ router.post(
     }
 
     await audit(req, "create", "hazards", { title: hazard.title }, hazard._id);
-    res.status(201).json({ success: true, hazard: toLegacyHazardRecord(hazard) });
+    await audit(
+      req,
+      [...evidenceImages, ...evidenceVideos].some((item) => item.location?.latitude !== undefined)
+        ? "location_attached"
+        : "location_missing",
+      "hazards",
+      { mediaCount: evidenceImages.length + evidenceVideos.length },
+      hazard._id
+    );
+    res.status(201).json({ success: true, hazard: toLegacyHazardRecord(hazard, req.user) });
   })
 );
 
@@ -222,7 +266,7 @@ router.get(
       .populate("assignedTo", "name role")
       .populate("correctiveActions.owner", "name role");
     if (!hazard) throw new ApiError(404, "Hazard not found");
-    res.json({ success: true, hazard: toLegacyHazardRecord(hazard) });
+    res.json({ success: true, hazard: toLegacyHazardRecord(hazard, req.user) });
   })
 );
 
@@ -354,7 +398,8 @@ router.patch(
     { name: "closureImages", maxCount: 6 },
     { name: "afterImage", maxCount: 1 },
     { name: "closureVideos", maxCount: 6 },
-    { name: "afterVideo", maxCount: 1 }
+    { name: "afterVideo", maxCount: 1 },
+    { name: "closureVideoThumbnails", maxCount: 6 }
   ]),
   asyncHandler(async (req, res) => {
     const parsed = closeHazardSchema.safeParse(req.body);
@@ -370,14 +415,38 @@ router.patch(
 
     const closureFiles = [...(req.files?.closureImages || []), ...(req.files?.afterImage || [])];
     const closureVideoFiles = [...(req.files?.closureVideos || []), ...(req.files?.afterVideo || [])];
+    const closureVideoThumbnailFiles = req.files?.closureVideoThumbnails || [];
     validateHazardMedia({ images: closureFiles, videos: closureVideoFiles, label: "Closure media" });
     if (!closureFiles.length) {
       throw new ApiError(400, "After image is required to close hazard");
     }
-    const [closureImages, closureVideos] = await Promise.all([
+    const imageMetadata = parseMediaMetadata(req.body.closureImageMetadata, {
+      module: "hazard",
+      stage: "after",
+      mediaType: "image",
+      maxCount: HAZARD_MEDIA_MAX_COUNT
+    });
+    const videoMetadata = parseMediaMetadata(req.body.closureVideoMetadata, {
+      module: "hazard",
+      stage: "after",
+      mediaType: "video",
+      maxCount: HAZARD_MEDIA_MAX_COUNT
+    });
+    const [rawClosureImages, rawClosureVideos, thumbnailUploads] = await Promise.all([
       uploadManyAssets(closureFiles, "safety-hse/hazards/closure", "image"),
-      uploadManyAssets(closureVideoFiles, "safety-hse/hazards/closure-videos", "video")
+      uploadManyAssets(closureVideoFiles, "safety-hse/hazards/closure-videos", "video"),
+      uploadManyAssets(closureVideoThumbnailFiles, "safety-hse/hazards/video-thumbnails", "image")
     ]);
+    const closureImages = mergeMediaMetadata(rawClosureImages, imageMetadata, {
+      userId: req.user.id, module: "hazard", stage: "after", mediaType: "image"
+    });
+    const closureVideos = mergeMediaMetadata(rawClosureVideos, videoMetadata, {
+      userId: req.user.id,
+      thumbnails: thumbnailUploads,
+      module: "hazard",
+      stage: "after",
+      mediaType: "video"
+    });
 
     hazard.status = "Closed";
     hazard.closureNotes = parsed.data.closureNotes;
@@ -396,10 +465,15 @@ router.patch(
       req,
       "close",
       "hazards",
-      { closureImages: closureImages.length, closureVideos: closureVideos.length },
+      {
+        closureImages: closureImages.length,
+        closureVideos: closureVideos.length,
+        locationAvailability: [...closureImages, ...closureVideos]
+          .some((item) => item.location?.latitude !== undefined)
+      },
       hazard._id
     );
-    res.json({ success: true, hazard: toLegacyHazardRecord(hazard) });
+    res.json({ success: true, hazard: toLegacyHazardRecord(hazard, req.user) });
   })
 );
 

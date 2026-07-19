@@ -37,6 +37,7 @@ const DirectMediaCapture = ({
   const videoRef = useRef(null);
   const galleryRef = useRef(null);
   const itemsRef = useRef([]);
+  const onChangeRef = useRef(onChange);
   const [items, setItems] = useState([]);
   const [includeLocation, setIncludeLocation] = useState(true);
   const [processing, setProcessing] = useState(false);
@@ -45,18 +46,28 @@ const DirectMediaCapture = ({
   const { status, captureLocation } = useDeviceLocation({ accuracyWarningMeters });
 
   useEffect(() => {
-    itemsRef.current = items;
-    onChange?.(items.map((item) => item.file));
-  }, [items, onChange]);
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   useEffect(() => {
-    itemsRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+    itemsRef.current = items;
+    onChangeRef.current?.(items.map((item) => item.file));
+  }, [items]);
+
+  useEffect(() => {
+    itemsRef.current.forEach((item) => {
+      URL.revokeObjectURL(item.previewUrl);
+      if (item.posterPreviewUrl) URL.revokeObjectURL(item.posterPreviewUrl);
+    });
     itemsRef.current = [];
     setItems([]);
   }, [resetKey]);
 
   useEffect(() => () => {
-    itemsRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+    itemsRef.current.forEach((item) => {
+      URL.revokeObjectURL(item.previewUrl);
+      if (item.posterPreviewUrl) URL.revokeObjectURL(item.posterPreviewUrl);
+    });
   }, []);
 
   const counts = useMemo(() => items.reduce((acc, item) => {
@@ -110,7 +121,8 @@ const DirectMediaCapture = ({
       metadata,
       mediaType,
       captureSource,
-      posterFile
+      posterFile,
+      posterPreviewUrl: posterFile ? URL.createObjectURL(posterFile) : ""
     };
   };
 
@@ -148,7 +160,10 @@ const DirectMediaCapture = ({
   };
 
   const removeItem = (id) => setItems((previous) => previous.filter((item) => {
-    if (item.id === id) URL.revokeObjectURL(item.previewUrl);
+    if (item.id === id) {
+      URL.revokeObjectURL(item.previewUrl);
+      if (item.posterPreviewUrl) URL.revokeObjectURL(item.posterPreviewUrl);
+    }
     return item.id !== id;
   }));
 
@@ -163,6 +178,7 @@ const DirectMediaCapture = ({
       setItems((previous) => previous.map((entry) => {
         if (entry.id !== item.id) return entry;
         URL.revokeObjectURL(entry.previewUrl);
+        if (entry.posterPreviewUrl) URL.revokeObjectURL(entry.posterPreviewUrl);
         return replacement;
       }));
     }
@@ -207,7 +223,7 @@ const DirectMediaCapture = ({
             const gpsStatus = locationStatusFor(item.metadata.location?.permissionStatus, location);
             return (
               <article key={item.id} className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
-                {item.mediaType === "video" ? <video src={item.previewUrl} controls preload="metadata" poster={item.posterFile ? URL.createObjectURL(item.posterFile) : undefined} className="h-32 w-full bg-black object-contain" /> : <img src={item.previewUrl} alt={`${label} preview`} className="h-32 w-full object-contain" />}
+                {item.mediaType === "video" ? <video src={item.previewUrl} controls preload="metadata" poster={item.posterPreviewUrl || undefined} className="h-32 w-full bg-black object-contain" /> : <img src={item.previewUrl} alt={`${label} preview`} className="h-32 w-full object-contain" />}
                 <div className="space-y-1.5 p-3 text-[11px] text-slate-300">
                   <div className="flex items-center justify-between gap-2"><span className="truncate font-semibold text-white">{item.metadata.originalFileName}</span><span className="rounded-full bg-white/10 px-2 py-0.5 capitalize">{item.captureSource}</span></div>
                   <p>{item.mediaType} • {formatSize(item.file.size)} • Ready to upload</p>

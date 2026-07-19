@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { LogOut } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import NotificationCenter from "../common/NotificationCenter";
 import ThemeToggle from "../common/ThemeToggle";
 import topbarLogo from "../../assets/topbarlogo.svg";
@@ -56,7 +56,7 @@ const toInitials = (name = "User") =>
     .map((part) => part[0]?.toUpperCase() || "")
     .join("") || "U";
 
-const Topbar = ({ user, onLogout, title, onSelectModule }) => {
+const Topbar = ({ user, onLogout, title, onSelectModule, onToggleSidebar, sidebarCollapsed, navigationOpen }) => {
   const [logoHovered, setLogoHovered] = useState(false);
   const [userHovered, setUserHovered] = useState(false);
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
@@ -83,6 +83,16 @@ const Topbar = ({ user, onLogout, title, onSelectModule }) => {
   return (
     <header className="relative z-[80] mb-5 flex items-center justify-between overflow-visible rounded-2xl border border-white/10 bg-slate-950/65 px-3 py-3 backdrop-blur-2xl md:px-5">
       <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onToggleSidebar}
+          className="rounded-xl border border-white/15 bg-white/10 p-2 text-white md:hidden"
+          aria-label="Open navigation menu"
+          aria-expanded={navigationOpen ?? !sidebarCollapsed}
+          aria-controls="mobile-primary-navigation"
+        >
+          <Menu size={18} />
+        </button>
         <div
           className="relative hidden sm:block"
           onMouseEnter={() => setLogoHovered(true)}

@@ -26,6 +26,11 @@ const {
   WORK_STAGES
 } = require("../src/constants/work-status");
 const { allowedRequestHeaders } = require("../src/middleware/security.middleware");
+const {
+  parseMediaMetadata,
+  mergeMediaMetadata,
+  redactRecordLocations
+} = require("../src/utils/media-metadata");
 
 test("CORS allows work submission idempotency and security headers", () => {
   const normalizedHeaders = allowedRequestHeaders.map((header) => header.toLowerCase());
@@ -95,4 +100,54 @@ test("workflow status normalization keeps full and partial completion separate",
   assert.equal(normalizeWorkStage("Partially Completed"), WORK_STAGES.PARTIALLY_COMPLETED);
   assert.equal(isPostApprovalStage("Pending Final Approval"), false);
   assert.equal(isPostApprovalStage("Approved"), true);
+});
+
+test("media metadata accepts device evidence and never marks it cryptographically verified", () => {
+  const [metadata] = parseMediaMetadata(JSON.stringify([{
+    captureSource: "camera",
+    originalFileName: "site.jpg",
+    location: {
+      latitude: 13.340512,
+      longitude: 74.702315,
+      accuracyMeters: 18,
+      capturedAt: new Date().toISOString(),
+      permissionStatus: "granted",
+      isVerified: true
+    },
+    watermark: { applied: true, processingStatus: "completed" }
+  }]), { module: "work_approval", stage: "before", mediaType: "image", maxCount: 10 });
+  const [asset] = mergeMediaMetadata([
+    { url: "https://media.example/site.jpg", originalName: "site-stamped.jpg", size: 1200 }
+  ], [metadata], {
+    userId: "507f1f77bcf86cd799439011",
+    module: "work_approval",
+    stage: "before",
+    mediaType: "image"
+  });
+  assert.equal(asset.captureSource, "camera");
+  assert.equal(asset.location.isVerified, false);
+  assert.equal(asset.watermarkedUrl, asset.url);
+});
+
+test("media metadata rejects invalid GPS ranges", () => {
+  assert.throws(
+    () => parseMediaMetadata(JSON.stringify([{
+      captureSource: "camera",
+      location: { latitude: 91, longitude: 74, accuracyMeters: 10 }
+    }]), { module: "hazard", stage: "before", mediaType: "image", maxCount: 6 }),
+    /latitude must be between -90 and 90/
+  );
+});
+
+test("exact coordinates are redacted for unrelated roles", () => {
+  const record = {
+    createdBy: "507f1f77bcf86cd799439012",
+    beforeImages: [{ location: { latitude: 13.34, longitude: 74.7, accuracyMeters: 20 } }]
+  };
+  const redacted = redactRecordLocations(record, {
+    id: "507f1f77bcf86cd799439013",
+    role: "viewer"
+  }, ["beforeImages"]);
+  assert.equal(redacted.beforeImages[0].location.latitude, undefined);
+  assert.equal(redacted.beforeImages[0].location.recorded, true);
 });

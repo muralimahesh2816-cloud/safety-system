@@ -5,6 +5,7 @@ import SectionHeader from "../components/common/SectionHeader";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import SafeChartContainer from "../components/common/SafeChartContainer";
 import HazardDetailsModal from "../components/modals/HazardDetailsModal";
+import DirectMediaCapture from "../components/media/DirectMediaCapture";
 import { hazardService } from "../api/services";
 import {
   closeLoadingPopup,
@@ -46,9 +47,6 @@ const legacyActionTeams = [
 
 const HAZARD_FORM_COLLAPSED_KEY = "hazardFormCollapsed";
 const HAZARD_FILTER_COLLAPSED_KEY = "hazardFilterCollapsed";
-const MEDIA_IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
-const MEDIA_VIDEO_LIMIT_BYTES = 100 * 1024 * 1024;
-const isVideoUpload = (file) => file?.type?.startsWith("video/");
 const isVideoUrl = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url);
 const normalizeRole = (role = "") => String(role || "").trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_");
 const getInitialHazardFormCollapsed = () =>
@@ -56,40 +54,12 @@ const getInitialHazardFormCollapsed = () =>
 const getInitialHazardFiltersVisible = () =>
   typeof window === "undefined" ? true : localStorage.getItem(HAZARD_FILTER_COLLAPSED_KEY) !== "true";
 
-const splitHazardMediaSelection = (fileList = []) => {
-  const images = [];
-  const videos = [];
-  const errors = [];
-
-  Array.from(fileList).forEach((file) => {
-    if (isVideoUpload(file)) {
-      if (file.size > MEDIA_VIDEO_LIMIT_BYTES) errors.push(`${file.name} exceeds 100MB video limit`);
-      else if (videos.length < 6) videos.push(file);
-      return;
-    }
-
-    if (file.type?.startsWith("image/")) {
-      if (file.size > MEDIA_IMAGE_LIMIT_BYTES) errors.push(`${file.name} exceeds 10MB image limit`);
-      else if (images.length < 6) images.push(file);
-      return;
-    }
-
-    errors.push(`${file.name} is not a supported image/video file`);
-  });
-
-  if (Array.from(fileList).filter((file) => file.type?.startsWith("image/")).length > 6) {
-    errors.push("Maximum 6 images are allowed");
-  }
-  if (Array.from(fileList).filter((file) => file.type?.startsWith("video/")).length > 6) {
-    errors.push("Maximum 6 videos are allowed");
-  }
-
-  return { images, videos, errors };
-};
-
 const mediaItemsFrom = (items = [], fallback) =>
   (items?.length ? items : fallback ? [fallback] : [])
-    .map((item) => ({ url: getMediaUrl(item) }))
+    .map((item) => ({
+      ...((item && typeof item === "object") ? item : {}),
+      url: getMediaUrl(item)
+    }))
     .filter((item) => Boolean(item.url));
 
 const formatFileSize = (bytes = 0) => {
@@ -153,7 +123,7 @@ const HazardsPage = ({ user }) => {
   const [form, setForm] = useState(initialForm);
   const [images, setImages] = useState([]);
   const [videos, setVideos] = useState([]);
-  const [evidencePreview, setEvidencePreview] = useState("");
+  const [mediaResetKey, setMediaResetKey] = useState(0);
   const [closureMap, setClosureMap] = useState({});
   const [closurePreviewMap, setClosurePreviewMap] = useState({});
   const [error, setError] = useState("");
@@ -246,8 +216,7 @@ const HazardsPage = ({ user }) => {
       setForm(initialForm);
       setImages([]);
       setVideos([]);
-      if (evidencePreview?.startsWith("blob:")) URL.revokeObjectURL(evidencePreview);
-      setEvidencePreview("");
+      setMediaResetKey((value) => value + 1);
       await showSuccessPopup("Hazard Submitted Successfully");
       fetchAll();
     } catch (submitError) {
@@ -579,41 +548,21 @@ const HazardsPage = ({ user }) => {
             <div className="rounded-xl border border-white/10 bg-white/5 p-2 text-xs text-slate-300">
               Risk Matrix Score: <span className="font-semibold text-teal-300">{riskScore}</span>
             </div>
-            <input
-              type="file"
-              accept="image/*,video/mp4,video/quicktime,video/webm"
-              multiple
-              onChange={(event) => {
-                const selection = splitHazardMediaSelection(event.target.files || []);
-                if (selection.errors.length) showValidationPopup(selection.errors.join(", "));
-                setImages(selection.images);
-                setVideos(selection.videos);
-                if (evidencePreview?.startsWith("blob:")) URL.revokeObjectURL(evidencePreview);
-                const previewFile = selection.images[0] || selection.videos[0] || null;
-                setEvidencePreview(previewFile ? URL.createObjectURL(previewFile) : "");
+            <DirectMediaCapture
+              label="Before / Initial Condition"
+              module="hazard"
+              stage="before"
+              reference={form.title || `${form.category || "Hazard"} - ${form.plaza || "Site"}`}
+              siteName={form.plaza || form.location}
+              capturedBy={user?.name || form.reportedBy}
+              maxImages={6}
+              maxVideos={6}
+              resetKey={mediaResetKey}
+              onChange={(files) => {
+                setImages(files.filter((file) => file.type.startsWith("image/")));
+                setVideos(files.filter((file) => file.type.startsWith("video/")));
               }}
-              className="w-full rounded-xl border border-dashed border-white/20 bg-white/5 px-3 py-2 text-xs text-slate-300"
             />
-            {evidencePreview ? (
-              videos.length && !images.length ? (
-                <video
-                  src={evidencePreview}
-                  controls
-                  className="h-28 w-full rounded-xl border border-white/10 object-contain"
-                />
-              ) : (
-                <img
-                  src={evidencePreview}
-                  alt="Evidence preview"
-                  className="h-28 w-full rounded-xl border border-white/10 object-contain"
-                />
-              )
-            ) : null}
-            {images.length || videos.length ? (
-              <p className="text-[11px] text-slate-400">
-                Selected {images.length} image(s), {videos.length} video(s). At least one image is required.
-              </p>
-            ) : null}
             <button
               type="submit"
               disabled={submitting}
@@ -966,32 +915,28 @@ const HazardsPage = ({ user }) => {
                           {(closureMap[hazard._id]?.notes || "").length}/1000
                         </span>
                       </label>
-                      <input
-                        type="file"
-                        accept="image/*,video/mp4,video/quicktime,video/webm"
-                        multiple
-                        onChange={(event) => {
-                          const selection = splitHazardMediaSelection(event.target.files || []);
-                          if (selection.errors.length) showValidationPopup(selection.errors.join(", "));
-                          setClosureMap((prev) => ({
+                      <div className="md:col-span-2">
+                        <DirectMediaCapture
+                          label="After / Corrective Action"
+                          module="hazard"
+                          stage="after"
+                          reference={hazard.title || `Hazard ${hazard._id}`}
+                          siteName={hazard.plaza || hazard.location}
+                          capturedBy={user?.name}
+                          maxImages={6}
+                          maxVideos={6}
+                          resetKey={`${hazard._id}-${hazard.status}`}
+                          compact
+                          onChange={(files) => setClosureMap((prev) => ({
                             ...prev,
                             [hazard._id]: {
                               ...(prev[hazard._id] || {}),
-                              images: selection.images,
-                              videos: selection.videos
+                              images: files.filter((file) => file.type.startsWith("image/")),
+                              videos: files.filter((file) => file.type.startsWith("video/"))
                             }
-                          }));
-                          if (closurePreviewMap[hazard._id]?.startsWith("blob:")) {
-                            URL.revokeObjectURL(closurePreviewMap[hazard._id]);
-                          }
-                          const previewFile = selection.images[0] || selection.videos[0] || null;
-                          setClosurePreviewMap((prev) => ({
-                            ...prev,
-                            [hazard._id]: previewFile ? URL.createObjectURL(previewFile) : ""
-                          }));
-                        }}
-                        className="rounded-xl border border-dashed border-white/20 bg-slate-900/70 px-3 py-2 text-xs text-slate-300"
-                      />
+                          }))}
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={() => closeHazard(hazard)}

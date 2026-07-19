@@ -32,13 +32,16 @@ const Sidebar = ({
   onToggleCollapse,
   mobile = false,
   user,
-  collapsed = false
+  collapsed = false,
+  locked = false,
+  onLockChange
 }) => {
   const modules = NAV_MODULES.filter((module) => canAccessModule(user, module.key));
   const compact = collapsed && !mobile;
 
   return (
     <aside
+      aria-label="Primary navigation"
       className={classNames(
         "flex h-full w-full flex-col border-r border-white/10 bg-slate-950/80 p-4 backdrop-blur-2xl",
         mobile ? "border-r-0" : ""
@@ -55,7 +58,7 @@ const Sidebar = ({
         </button>
       </div>
 
-      <nav className="space-y-2">
+      <nav className="space-y-2" aria-label="Application modules">
         {modules.map((module, index) => {
           const Icon = icons[module.key] || ChartNoAxesCombined;
           const active = activeModule === module.key;
@@ -75,6 +78,7 @@ const Sidebar = ({
                   : "bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
               )}
               title={compact ? module.label : undefined}
+              aria-current={active ? "page" : undefined}
             >
               <Icon size={16} />
               {!compact ? <span className="text-sm font-medium">{module.label}</span> : null}
@@ -90,6 +94,21 @@ const Sidebar = ({
           );
         })}
       </nav>
+      {!compact && !mobile ? (
+        <label className="mt-auto flex cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs text-slate-200">
+          <input
+            type="checkbox"
+            checked={locked}
+            onChange={(event) => onLockChange?.(event.target.checked)}
+            aria-label="Keep sidebar expanded"
+            className="h-4 w-4 accent-cyan-500"
+          />
+          <span>
+            <span className="block font-semibold">Keep sidebar expanded</span>
+            <span className="mt-0.5 block text-[10px] text-slate-400">{locked ? "Pinned" : "Auto-expand on hover"}</span>
+          </span>
+        </label>
+      ) : null}
     </aside>
   );
 };

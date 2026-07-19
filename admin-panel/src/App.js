@@ -21,6 +21,7 @@ import SettingsPage from "./pages/SettingsPage";
 import { settingsService } from "./api/services";
 import { IMAGE_PLACEHOLDER_URL } from "./utils/media";
 import { canAccessModule } from "./utils/permissions";
+import useSidebarPreference from "./hooks/useSidebarPreference";
 
 const moduleTitles = {
   dashboard: "Executive Dashboard",
@@ -33,13 +34,7 @@ const moduleTitles = {
   settings: "System Configuration"
 };
 
-const SIDEBAR_STORAGE_KEY = "sidebarCollapsed";
 const DESKTOP_BREAKPOINT = 768;
-
-const getInitialSidebarCollapsed = () => {
-  if (typeof window === "undefined") return false;
-  return localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
-};
 
 const ModuleGuard = ({ user, moduleKey, children }) => {
   const canView = canAccessModule(user, moduleKey);
@@ -58,7 +53,9 @@ const AppContent = () => {
   const { user, loading, isAuthenticated, login, verifyOtp, resendOtp, logout } = useAuth();
   const [activeModule, setActiveModule] = useState("dashboard");
   const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(30);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsed);
+  const { sidebarLocked, setSidebarLocked } = useSidebarPreference();
+  const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false);
+  const [hoverCapable, setHoverCapable] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
   const [countdown, setCountdown] = useState(60);
@@ -66,7 +63,7 @@ const AppContent = () => {
   const pageContentRef = useRef(null);
   const lastScrollTopRef = useRef(0);
   const scrollStopTimerRef = useRef(null);
-  const shouldHideTopbarForModule = ["work", "hazards", "training"].includes(activeModule);
+  const shouldHideTopbarForModule = false;
 
   const page = useMemo(() => {
     switch (activeModule) {
@@ -105,9 +102,25 @@ const AppContent = () => {
   }, [user]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarCollapsed));
-  }, [sidebarCollapsed]);
+    if (typeof window.matchMedia !== "function") {
+      setHoverCapable(false);
+      return undefined;
+    }
+    const query = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const update = () => setHoverCapable(query.matches);
+    update();
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (!mobileSidebarOpen) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setMobileSidebarOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mobileSidebarOpen]);
 
   useEffect(() => {
     if (scrollStopTimerRef.current) {
@@ -190,7 +203,7 @@ const AppContent = () => {
       setMobileSidebarOpen((prev) => !prev);
       return;
     }
-    setSidebarCollapsed((prev) => !prev);
+    setSidebarLocked((previous) => !previous);
   };
 
   const handleModuleSelect = (moduleKey) => {
@@ -237,6 +250,9 @@ const AppContent = () => {
     return <LoginPage onLogin={login} onVerifyOtp={verifyOtp} onResendOtp={resendOtp} />;
   }
 
+  const sidebarExpanded = sidebarLocked || (hoverCapable && sidebarHoverExpanded);
+  const sidebarCollapsed = !sidebarExpanded;
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-50">
       <ParticleBackground />
@@ -244,14 +260,22 @@ const AppContent = () => {
       <div className="relative z-10 app-layout">
         <motion.aside
           animate={{ width: sidebarCollapsed ? 80 : 280 }}
-          transition={{ duration: 0.25, ease: "easeInOut" }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
           className="hidden h-full shrink-0 overflow-hidden md:block"
+          onMouseEnter={() => hoverCapable && setSidebarHoverExpanded(true)}
+          onMouseLeave={() => setSidebarHoverExpanded(false)}
+          onFocusCapture={() => setSidebarHoverExpanded(true)}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setSidebarHoverExpanded(false);
+          }}
         >
           <Sidebar
             user={user}
             collapsed={sidebarCollapsed}
             activeModule={activeModule}
-            onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+            locked={sidebarLocked}
+            onLockChange={setSidebarLocked}
+            onToggleCollapse={() => setSidebarLocked((previous) => !previous)}
             onSelectModule={handleModuleSelect}
           />
         </motion.aside>
@@ -266,6 +290,10 @@ const AppContent = () => {
               onClick={() => setMobileSidebarOpen(false)}
             >
               <motion.aside
+                id="mobile-primary-navigation"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Navigation menu"
                 initial={{ x: -320 }}
                 animate={{ x: 0 }}
                 exit={{ x: -320 }}
@@ -301,6 +329,7 @@ const AppContent = () => {
                   onLogout={logout}
                   onToggleSidebar={handleSidebarToggle}
                   sidebarCollapsed={sidebarCollapsed}
+                  navigationOpen={mobileSidebarOpen}
                   title={moduleTitles[activeModule]}
                   onSelectModule={handleModuleSelect}
                 />

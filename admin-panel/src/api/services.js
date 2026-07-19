@@ -28,6 +28,21 @@ const localLegacyClient = axios.create({
 const SETTINGS_CACHE_KEY = "hse_settings_cache";
 const isVideoUpload = (file) => file?.type?.startsWith("video/");
 
+const appendEvidenceFiles = (formData, files, fieldName, metadataFieldName, thumbnailFieldName) => {
+  let thumbnailUploadIndex = 0;
+  const metadata = (files || []).map((file) => {
+    formData.append(fieldName, file);
+    const details = { ...(file.evidenceMetadata || {}) };
+    if (thumbnailFieldName && file.evidencePosterFile) {
+      formData.append(thumbnailFieldName, file.evidencePosterFile);
+      details.thumbnailUploadIndex = thumbnailUploadIndex;
+      thumbnailUploadIndex += 1;
+    }
+    return details;
+  });
+  formData.append(metadataFieldName, JSON.stringify(metadata));
+};
+
 const safeJsonParse = (value, fallback = null) => {
   if (!value) return fallback;
   try {
@@ -987,8 +1002,14 @@ export const workService = {
     formData.set("requestedChainageTo", chainageTo);
     formData.set("description", String(payload.description || "").trim());
     formData.set("workersCount", String(Number(payload.workersCount || 0)));
-    (payload.beforeImages || []).forEach((file) => formData.append("beforeImages", file));
-    (payload.beforeVideos || []).forEach((file) => formData.append("beforeVideos", file));
+    appendEvidenceFiles(formData, payload.beforeImages, "beforeImages", "beforeImageMetadata");
+    appendEvidenceFiles(
+      formData,
+      payload.beforeVideos,
+      "beforeVideos",
+      "beforeVideoMetadata",
+      "beforeVideoThumbnails"
+    );
     const idempotencyKey = payload.idempotencyKey ||
       (window.crypto?.randomUUID?.() || `work-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const res = await client.post("/work-approvals", formData, {
@@ -1040,9 +1061,16 @@ export const workService = {
     formData.append("completedChainageFrom", completionPayload.completedChainageFrom || "");
     formData.append("completedChainageTo", completionPayload.completedChainageTo || "");
     formData.append("partialCompletionReason", completionPayload.partialCompletionReason || "");
-    files.forEach((file) => {
-      formData.append(isVideoUpload(file) ? "afterVideos" : "afterImages", file);
-    });
+    const afterImages = files.filter((file) => !isVideoUpload(file));
+    const afterVideos = files.filter(isVideoUpload);
+    appendEvidenceFiles(formData, afterImages, "afterImages", "afterImageMetadata");
+    appendEvidenceFiles(
+      formData,
+      afterVideos,
+      "afterVideos",
+      "afterVideoMetadata",
+      "afterVideoThumbnails"
+    );
     const res = await client.post(`/work-approvals/${id}/complete`, formData);
     return { success: true, work: mapWorkRecord(res.data.work) };
   },
@@ -1080,8 +1108,14 @@ export const hazardService = {
           if (["evidenceImages", "evidenceVideos"].includes(key)) return;
           if (value !== undefined && value !== null) formData.append(key, value);
         });
-        (payload.evidenceImages || []).forEach((file) => formData.append("evidenceImages", file));
-        (payload.evidenceVideos || []).forEach((file) => formData.append("evidenceVideos", file));
+        appendEvidenceFiles(formData, payload.evidenceImages, "evidenceImages", "evidenceImageMetadata");
+        appendEvidenceFiles(
+          formData,
+          payload.evidenceVideos,
+          "evidenceVideos",
+          "evidenceVideoMetadata",
+          "evidenceVideoThumbnails"
+        );
         const res = await client.post("/hazards", formData);
         return { success: true, hazard: mapHazardRecord(res.data.hazard) };
       },
@@ -1125,8 +1159,14 @@ export const hazardService = {
       async () => {
         const formData = new FormData();
         formData.append("closureNotes", payload.closureNotes || "");
-        (payload.closureImages || []).forEach((file) => formData.append("closureImages", file));
-        (payload.closureVideos || []).forEach((file) => formData.append("closureVideos", file));
+        appendEvidenceFiles(formData, payload.closureImages, "closureImages", "closureImageMetadata");
+        appendEvidenceFiles(
+          formData,
+          payload.closureVideos,
+          "closureVideos",
+          "closureVideoMetadata",
+          "closureVideoThumbnails"
+        );
         return (await client.patch(`/hazards/${id}/close`, formData)).data;
       },
       async () => {

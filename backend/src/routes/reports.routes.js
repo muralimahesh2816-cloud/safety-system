@@ -9,6 +9,7 @@ const User = require("../models/User");
 const Training = require("../models/Training");
 const { filterByPeriod, buildCsv } = require("../utils/reporting");
 const { getChainageFrom, getChainageTo } = require("../utils/chainage");
+const { canViewExactLocation, redactRecordLocations } = require("../utils/media-metadata");
 
 const router = express.Router();
 
@@ -66,7 +67,7 @@ const normalizeWorkflowStage = (record = {}) => {
   return stage === "Pending Approval" ? "Pending Final Approval" : stage;
 };
 
-const toLegacyWorkRecord = (record) => ({
+const toLegacyWorkRecord = (record, user) => redactRecordLocations({
   _id: record._id,
   approvalNumber: record.approvalNumber || `WA-${String(record._id).slice(-8).toUpperCase()}`,
   date: record.createdAt,
@@ -135,7 +136,7 @@ const toLegacyWorkRecord = (record) => ({
     (record.afterImages?.length || 0) +
     (record.beforeVideos?.length || 0) +
     (record.afterVideos?.length || 0)
-});
+}, user, ["beforeImages", "afterImages", "beforeVideos", "afterVideos"]);
 
 const formatCorrectiveActions = (actions = []) =>
   actions
@@ -147,7 +148,7 @@ const formatCorrectiveActions = (actions = []) =>
     .filter(Boolean)
     .join("; ");
 
-const toLegacyHazardRecord = (record) => ({
+const toLegacyHazardRecord = (record, user) => redactRecordLocations({
   _id: record._id,
   date: record.date || record.createdAt,
   createdAt: record.createdAt,
@@ -167,8 +168,41 @@ const toLegacyHazardRecord = (record) => ({
   actionTaken: record.closureNotes || formatCorrectiveActions(record.correctiveActions),
   status: record.status === "Closed" ? "Closed" : "Open",
   beforeImage: record.evidenceImages?.[0]?.url || record.beforeImage || "",
-  afterImage: record.closureImages?.[0]?.url || record.afterImage || ""
-});
+  afterImage: record.closureImages?.[0]?.url || record.afterImage || "",
+  beforeVideo: record.evidenceVideos?.[0]?.url || record.beforeVideo || "",
+  afterVideo: record.closureVideos?.[0]?.url || record.afterVideo || "",
+  evidenceImages: record.evidenceImages || [],
+  closureImages: record.closureImages || [],
+  evidenceVideos: record.evidenceVideos || [],
+  closureVideos: record.closureVideos || []
+}, user, ["evidenceImages", "closureImages", "evidenceVideos", "closureVideos"]);
+
+const toMediaExportRows = (record, moduleName, user) => {
+  const fields = moduleName === "work"
+    ? [["beforeImages", "Before"], ["beforeVideos", "Before"], ["afterImages", "Completion"], ["afterVideos", "Completion"]]
+    : [["evidenceImages", "Before"], ["evidenceVideos", "Before"], ["closureImages", "After"], ["closureVideos", "After"]];
+  const exactLocationAllowed = canViewExactLocation(user, record);
+  return fields.flatMap(([field, stage]) => (record[field] || []).map((media) => ({
+    module: `${moduleName}_media`,
+    title: record.title || record.approvalNumber || moduleName,
+    status: record.status,
+    priority: record.priority || record.severity || "",
+    createdAt: record.createdAt,
+    mediaType: media.mediaType || (field.toLowerCase().includes("video") ? "video" : "image"),
+    evidenceStage: stage,
+    captureSource: media.captureSource || "file",
+    capturedAt: media.location?.capturedAt || media.uploadedAt || "",
+    latitude: exactLocationAllowed ? media.location?.latitude ?? "" : "",
+    longitude: exactLocationAllowed ? media.location?.longitude ?? "" : "",
+    accuracyMeters: exactLocationAllowed ? media.location?.accuracyMeters ?? "" : "",
+    formattedAddress: media.location?.formattedAddress || media.location?.plaza || "",
+    uploadedBy: media.uploadedBy || "",
+    uploadedAt: media.uploadedAt || "",
+    mediaUrl: media.secureUrl || media.url || "",
+    thumbnailUrl: media.thumbnailUrl || "",
+    watermarkStatus: media.watermark?.processingStatus || "not_required"
+  })));
+};
 
 router.get(
   "/work",
@@ -182,7 +216,7 @@ router.get(
       )
       .sort({ createdAt: -1 });
     await audit(req, "report_work_view", "reports", { type: "work", rows: records.length });
-    res.json(records.map(toLegacyWorkRecord));
+    res.json(records.map((record) => toLegacyWorkRecord(record, req.user)));
   })
 );
 
@@ -195,11 +229,11 @@ router.get(
       .populate("reportedBy", "name")
       .populate("correctiveActions.owner", "name")
       .select(
-        "title date plaza location reportedBy reportedByName category description severity likelihood riskScore action correctiveActions closureNotes status evidenceImages closureImages beforeImage afterImage createdAt updatedAt"
+        "title date plaza location reportedBy reportedByName category description severity likelihood riskScore action correctiveActions closureNotes status evidenceImages closureImages evidenceVideos closureVideos beforeImage afterImage beforeVideo afterVideo createdAt updatedAt"
       )
       .sort({ createdAt: -1 });
     await audit(req, "report_hazard_view", "reports", { type: "hazard", rows: records.length });
-    res.json(records.map(toLegacyHazardRecord));
+    res.json(records.map((record) => toLegacyHazardRecord(record, req.user)));
   })
 );
 
@@ -292,8 +326,8 @@ router.get(
     const period = req.query.period || "monthly";
 
     const [work, hazards, users, training] = await Promise.all([
-      WorkApproval.find().select("title status priority createdAt"),
-      Hazard.find().select("title status severity createdAt"),
+      WorkApproval.find().select("title approvalNumber status priority createdBy assignedTo beforeImages afterImages beforeVideos afterVideos createdAt"),
+      Hazard.find().select("title status severity reportedBy assignedTo evidenceImages closureImages evidenceVideos closureVideos createdAt"),
       User.find().select("name role status createdAt"),
       Training.find().select("title category isPublished createdAt")
     ]);
@@ -304,7 +338,11 @@ router.get(
       users: filterByPeriod(users, period),
       training: filterByPeriod(training, period)
     };
-    const rows = toRows(filtered);
+    const rows = [
+      ...toRows(filtered),
+      ...filtered.work.flatMap((record) => toMediaExportRows(record, "work", req.user)),
+      ...filtered.hazards.flatMap((record) => toMediaExportRows(record, "hazard", req.user))
+    ];
     await audit(req, "report_export", "reports", {
       format,
       period,

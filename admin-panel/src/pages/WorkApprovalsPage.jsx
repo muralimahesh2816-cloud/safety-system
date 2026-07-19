@@ -9,6 +9,7 @@ import SafeChartContainer from "../components/common/SafeChartContainer";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import WorkApprovalDetailsModal from "../components/modals/WorkApprovalDetailsModal";
 import WorkCompletionSummaryCard from "../components/work/WorkCompletionSummaryCard";
+import DirectMediaCapture from "../components/media/DirectMediaCapture";
 import { workService } from "../api/services";
 import {
   closeLoadingPopup,
@@ -227,52 +228,13 @@ const getInitialFiltersVisible = () =>
     : localStorage.getItem(WORK_FILTERS_COLLAPSED_KEY) !== null
     ? localStorage.getItem(WORK_FILTERS_COLLAPSED_KEY) !== "true"
     : localStorage.getItem(LEGACY_WORK_FILTERS_VISIBLE_KEY) === "true");
-const MEDIA_IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
-const MEDIA_VIDEO_LIMIT_BYTES = 100 * 1024 * 1024;
-const isVideoUpload = (file) => file?.type?.startsWith("video/");
 const isVideoUrl = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url);
-const splitWorkMediaSelection = (fileList = []) => {
-  const images = [];
-  const videos = [];
-  const errors = [];
-
-  Array.from(fileList).forEach((file) => {
-    if (isVideoUpload(file)) {
-      if (file.size > MEDIA_VIDEO_LIMIT_BYTES) {
-        errors.push(`${file.name} exceeds 100MB video limit`);
-      } else if (videos.length < 10) {
-        videos.push(file);
-      }
-      return;
-    }
-
-    if (file.type?.startsWith("image/")) {
-      if (file.size > MEDIA_IMAGE_LIMIT_BYTES) {
-        errors.push(`${file.name} exceeds 10MB image limit`);
-      } else if (images.length < 10) {
-        images.push(file);
-      }
-      return;
-    }
-
-    errors.push(`${file.name} is not a supported image/video file`);
-  });
-
-  if (Array.from(fileList).filter((file) => file.type?.startsWith("image/")).length > 10) {
-    errors.push("Maximum 10 images are allowed");
-  }
-  if (Array.from(fileList).filter((file) => file.type?.startsWith("video/")).length > 10) {
-    errors.push("Maximum 10 videos are allowed");
-  }
-
-  return { images, videos, errors };
-};
 const WorkApprovalsPage = ({ user }) => {
   const [records, setRecords] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [beforeImages, setBeforeImages] = useState([]);
   const [beforeVideos, setBeforeVideos] = useState([]);
-  const [beforePreview, setBeforePreview] = useState("");
+  const [mediaResetKey, setMediaResetKey] = useState(0);
   const [modal, setModal] = useState({ open: false, items: [], index: 0, compare: null });
   const [selectedWork, setSelectedWork] = useState(null);
   const [error, setError] = useState("");
@@ -408,8 +370,7 @@ const WorkApprovalsPage = ({ user }) => {
       setChainageErrors({ chainageFrom: "", chainageTo: "" });
       setBeforeImages([]);
       setBeforeVideos([]);
-      if (beforePreview?.startsWith("blob:")) URL.revokeObjectURL(beforePreview);
-      setBeforePreview("");
+      setMediaResetKey((value) => value + 1);
       submissionKeyRef.current = "";
       await showSuccessPopup("Work Approval Submitted Successfully");
     } catch (submitError) {
@@ -679,16 +640,16 @@ const WorkApprovalsPage = ({ user }) => {
 
   const openGallery = (work, startAt = 0) => {
     const before = (work.beforeImages?.length ? work.beforeImages : work.beforeImage ? [work.beforeImage] : [])
-      .map((item) => ({ url: getMediaUrl(item), title: "Before Work" }))
+      .map((item) => ({ ...((item && typeof item === "object") ? item : {}), url: getMediaUrl(item), title: "Before Work" }))
       .filter((item) => Boolean(item.url));
     const after = (work.afterImages?.length ? work.afterImages : work.afterImage ? [work.afterImage] : [])
-      .map((item) => ({ url: getMediaUrl(item), title: "After Work" }))
+      .map((item) => ({ ...((item && typeof item === "object") ? item : {}), url: getMediaUrl(item), title: "After Work" }))
       .filter((item) => Boolean(item.url));
     const beforeVideos = (work.beforeVideos?.length ? work.beforeVideos : work.beforeVideo ? [work.beforeVideo] : [])
-      .map((item) => ({ url: getMediaUrl(item), title: "Before Work Video" }))
+      .map((item) => ({ ...((item && typeof item === "object") ? item : {}), url: getMediaUrl(item), title: "Before Work Video" }))
       .filter((item) => Boolean(item.url));
     const afterVideos = (work.afterVideos?.length ? work.afterVideos : work.afterVideo ? [work.afterVideo] : [])
-      .map((item) => ({ url: getMediaUrl(item), title: "After Work Video" }))
+      .map((item) => ({ ...((item && typeof item === "object") ? item : {}), url: getMediaUrl(item), title: "After Work Video" }))
       .filter((item) => Boolean(item.url));
     const combined = [...before, ...beforeVideos, ...after, ...afterVideos];
     setModal({
@@ -925,41 +886,19 @@ const WorkApprovalsPage = ({ user }) => {
               className="w-full resize-none rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-cyan-300/60 focus:outline-none"
               required
             />
-            <input
-              type="file"
-              accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/webm"
-              multiple
-              onChange={(event) => {
-                const { images, videos, errors } = splitWorkMediaSelection(event.target.files || []);
-                if (errors.length) showValidationPopup(errors.join(". "));
-                const selected = [...images, ...videos][0] || null;
-                setBeforeImages(images);
-                setBeforeVideos(videos);
-                if (beforePreview?.startsWith("blob:")) URL.revokeObjectURL(beforePreview);
-                setBeforePreview(selected ? URL.createObjectURL(selected) : "");
+            <DirectMediaCapture
+              label="Before Work Evidence"
+              module="work_approval"
+              stage="before"
+              reference={form.title || `${form.workType || "Work Approval"} - ${form.location || "Site"}`}
+              siteName={form.location}
+              capturedBy={user?.name}
+              resetKey={mediaResetKey}
+              onChange={(files) => {
+                setBeforeImages(files.filter((file) => file.type.startsWith("image/")));
+                setBeforeVideos(files.filter((file) => file.type.startsWith("video/")));
               }}
-              className="w-full rounded-xl border border-dashed border-white/20 bg-white/5 px-3 py-2 text-xs text-slate-300"
             />
-            {beforePreview ? (
-              isVideoUpload([...beforeImages, ...beforeVideos][0]) ? (
-                <video
-                  src={beforePreview}
-                  controls
-                  className="h-28 w-full rounded-xl border border-white/10 object-contain"
-                />
-              ) : (
-                <img
-                  src={beforePreview}
-                  alt="Before Work Preview"
-                  className="h-28 w-full rounded-xl border border-white/10 object-contain"
-                />
-              )
-            ) : null}
-            {beforeImages.length || beforeVideos.length ? (
-              <p className="text-[11px] text-slate-400">
-                Selected: {beforeImages.length} image(s), {beforeVideos.length} video(s)
-              </p>
-            ) : null}
             <button
               type="submit"
               disabled={submitting}
