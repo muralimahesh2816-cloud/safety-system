@@ -6,7 +6,7 @@ Backend authorization is enforced through `authorizePermission` and `authorizeRo
 
 | Stage | Primary Roles |
 | --- | --- |
-| Create work | Employee, operational roles, managers, Admin, Super Admin based on `work.create`. |
+| Create work | Supervisor (the standard creator role), Employee, operational roles, managers, Admin, and Super Admin based on `work.create`. |
 | Check work | Safety Officer, Safety Engineer, Site Engineer, Project Engineer, Maintenance Engineer with `work.check`. |
 | Recommend work | Project Manager, Construction Manager, Operations Manager, Maintenance Manager, Safety Manager with `work.recommend`. |
 | Final approval | Project Manager, Maintenance Manager, Admin, Super Admin with `work.approve`. |
@@ -32,4 +32,4 @@ The workflow also prevents the same non-Super Admin user from performing conflic
 
 ## Role Defaults
 
-Super Admin receives all module and stage permissions. Admin receives broad management permissions. Engineering, officer, and manager roles receive workflow permissions appropriate to their stage. Employee/User roles can create and view work by default but do not receive approval-stage authority unless explicitly assigned.
+Super Admin receives all module and stage permissions. Admin receives broad management permissions. Engineering, officer, and manager roles receive workflow permissions appropriate to their stage. Supervisor is a General Role and the standard Work Approval creator: it can create and view work but has no checker, recommender, or final-approver authority. Employee/User roles can also create and view work by default but do not receive approval-stage authority unless explicitly assigned.

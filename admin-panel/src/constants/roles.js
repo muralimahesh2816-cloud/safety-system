@@ -33,13 +33,20 @@ export const ROLE_LABELS = {
   [ROLES.OPERATIONS_MANAGER]: "Operations Manager",
   [ROLES.MAINTENANCE_MANAGER]: "Maintenance Manager",
   [ROLES.SAFETY_MANAGER]: "Safety Manager",
-  [ROLES.SUPERVISOR]: "Supervisor (Legacy)"
+  [ROLES.SUPERVISOR]: "Supervisor"
 };
 
 export const ROLE_GROUPS = [
   {
     label: "General Roles",
-    roles: [ROLES.EMPLOYEE, ROLES.USER, ROLES.VIEWER, ROLES.ADMIN, ROLES.SUPER_ADMIN]
+    roles: [
+      ROLES.SUPERVISOR,
+      ROLES.EMPLOYEE,
+      ROLES.USER,
+      ROLES.VIEWER,
+      ROLES.ADMIN,
+      ROLES.SUPER_ADMIN
+    ]
   },
   {
     label: "Checking Roles",
@@ -61,7 +68,7 @@ export const ROLE_GROUPS = [
   },
   {
     label: "Other Enterprise Roles",
-    roles: [ROLES.CONSTRUCTION_MANAGER, ROLES.OPERATIONS_MANAGER, ROLES.SUPERVISOR]
+    roles: [ROLES.CONSTRUCTION_MANAGER, ROLES.OPERATIONS_MANAGER]
   }
 ];
 

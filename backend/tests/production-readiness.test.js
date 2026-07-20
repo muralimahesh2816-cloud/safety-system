@@ -39,6 +39,17 @@ const {
   reverseGeocode,
   validateCoordinates
 } = require("../src/services/location.service");
+const { ROLES, ROLE_DEFAULT_PERMISSIONS } = require("../src/constants/roles");
+
+test("supervisor is a creator role without approval-stage authority", () => {
+  const workPermissions = ROLE_DEFAULT_PERMISSIONS[ROLES.SUPERVISOR].work;
+
+  assert.equal(workPermissions.view, true);
+  assert.equal(workPermissions.create, true);
+  assert.equal(workPermissions.check, false);
+  assert.equal(workPermissions.recommend, false);
+  assert.equal(workPermissions.approve, false);
+});
 
 test("CORS allows work submission idempotency and security headers", () => {
   const normalizedHeaders = allowedRequestHeaders.map((header) => header.toLowerCase());
