@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { assetSchema } = require("../utils/media-metadata");
+const { assetSchema, locationSchema } = require("../utils/media-metadata");
 const {
   WORK_STAGES,
   WORK_STAGE_VALUES,
@@ -111,6 +111,19 @@ const timelineSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const locationAuditSchema = new mongoose.Schema(
+  {
+    previousLocation: locationSchema,
+    newLocation: locationSchema,
+    reason: { type: String, required: true, trim: true },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    updatedByName: { type: String, default: "" },
+    updatedByRole: { type: String, default: "" },
+    updatedAt: { type: Date, default: Date.now }
+  },
+  { _id: false }
+);
+
 const signatureSchema = new mongoose.Schema(
   {
     signedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
@@ -129,6 +142,8 @@ const workApprovalSchema = new mongoose.Schema(
     category: { type: String, default: "General" },
     plaza: { type: String, default: "" },
     location: { type: String, required: true },
+    geoLocation: locationSchema,
+    locationAuditHistory: [locationAuditSchema],
     chainage: { type: String, default: "" },
     chainageNo: { type: String, default: "" },
     chainageFrom: { type: String, default: "", trim: true },

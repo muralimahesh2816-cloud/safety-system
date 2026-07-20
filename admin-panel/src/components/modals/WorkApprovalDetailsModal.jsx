@@ -28,6 +28,7 @@ import {
 } from "../../utils/chainage";
 import WorkCompletionSummaryCard from "../work/WorkCompletionSummaryCard";
 import DirectMediaCapture from "../media/DirectMediaCapture";
+import LocationMapCard from "../location/LocationMapCard";
 
 const WORKFLOW_STAGES = [
   "Pending Check",
@@ -771,6 +772,7 @@ const WorkApprovalDetailsModal = ({
                   </div>
 
                   <DescriptionCard title="Work Description" value={safeWork.description || safeWork.workDescription || safeWork.details} />
+                  <LocationMapCard value={safeWork.geoLocation} defaultAddress={safeWork.location} title="Work Location" readOnly />
                   {safeWork.checkedDescription ? <DescriptionCard title="Review Findings" value={safeWork.checkedDescription} tone="emerald" /> : null}
                   {safeWork.recommendedDescription ? <DescriptionCard title="Recommendation Remarks" value={safeWork.recommendedDescription} tone="emerald" /> : null}
                   {safeWork.approvalDescription ? <DescriptionCard title="Approval Remarks" value={safeWork.approvalDescription} tone="emerald" /> : null}

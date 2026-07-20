@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { assetSchema } = require("../utils/media-metadata");
+const { assetSchema, locationSchema } = require("../utils/media-metadata");
 
 const correctiveActionSchema = new mongoose.Schema(
   {
@@ -25,6 +25,19 @@ const timelineSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const locationAuditSchema = new mongoose.Schema(
+  {
+    previousLocation: locationSchema,
+    newLocation: locationSchema,
+    reason: { type: String, required: true, trim: true },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    updatedByName: { type: String, default: "" },
+    updatedByRole: { type: String, default: "" },
+    updatedAt: { type: Date, default: Date.now }
+  },
+  { _id: false }
+);
+
 const hazardSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
@@ -44,6 +57,8 @@ const hazardSchema = new mongoose.Schema(
     date: Date,
     plaza: { type: String, default: "" },
     location: { type: String, required: true },
+    geoLocation: locationSchema,
+    locationAuditHistory: [locationAuditSchema],
     action: { type: String, default: "" },
     status: {
       type: String,

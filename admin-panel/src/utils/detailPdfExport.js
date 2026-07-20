@@ -290,6 +290,8 @@ export const exportHazardDetailsPdf = async (hazard = {}, { save = true } = {}) 
   const closure = normalizeMedia(hazard.closureImages, hazard.afterImage);
   const evidenceVideos = normalizeMedia(hazard.evidenceVideos, hazard.beforeVideo);
   const closureVideos = normalizeMedia(hazard.closureVideos, hazard.afterVideo);
+  const primaryLocation = hazard.geoLocation || [...evidence, ...evidenceVideos, ...closure, ...closureVideos]
+    .map(mediaLocation).find((location) => location?.latitude != null || location?.recorded);
   return finalizePdf({
     reportTitle: "Hazard Details Report",
     fileName: `hazard-details-${hazard._id || Date.now()}.pdf`,
@@ -299,6 +301,10 @@ export const exportHazardDetailsPdf = async (hazard = {}, { save = true } = {}) 
       ["Category", hazard.category],
       ["Risk Level", `${safe(hazard.severity)} / ${safe(hazard.likelihood)} (Score ${hazard.riskScore || 0})`],
       ["Location", hazard.location],
+      ["GPS Address", primaryLocation?.formattedAddress],
+      ["GPS Coordinates", formatCoordinates(primaryLocation)],
+      ["GPS Source", primaryLocation?.locationSource],
+      ["GPS Accuracy", primaryLocation?.accuracyMeters ? `±${Math.round(Number(primaryLocation.accuracyMeters))} m` : ""],
       ["Plaza", hazard.plaza],
       ["Reported By", hazard.reportedBy || hazard.createdBy],
       ["Action Team", hazard.action || hazard.actionTeam],
@@ -333,7 +339,7 @@ export const exportWorkApprovalDetailsPdf = async (work = {}, { save = true } = 
     ? work.completedAt || work.completionDate || work.updatedAt
     : work.completionDate;
   const allMedia = [...before, ...beforeVideos, ...after, ...afterVideos];
-  const primaryLocation = allMedia.map(mediaLocation).find((location) => location?.latitude != null || location?.recorded);
+  const primaryLocation = work.geoLocation || allMedia.map(mediaLocation).find((location) => location?.latitude != null || location?.recorded);
   return finalizePdf({
     reportTitle: "Work Approval Report",
     fileName: `work-approval-details-${work._id || work.id || Date.now()}.pdf`,
@@ -373,6 +379,8 @@ export const exportWorkApprovalDetailsPdf = async (work = {}, { save = true } = 
       ["Completion Description", work.completionDescription],
       ["GPS Address", primaryLocation?.formattedAddress],
       ["GPS Coordinates", formatCoordinates(primaryLocation)],
+      ["GPS Source", primaryLocation?.locationSource],
+      ["GPS Accuracy", primaryLocation?.accuracyMeters ? `±${Math.round(Number(primaryLocation.accuracyMeters))} m` : ""],
       ["Before Images", before.length],
       ["Before Videos", beforeVideos.length],
       ["After Images", after.length],

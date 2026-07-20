@@ -43,10 +43,10 @@ const env = {
     accuracyWarningMeters: Number(process.env.MAX_ACCEPTABLE_GPS_ACCURACY_METERS || 100),
     locationRetentionDays: Number(process.env.MEDIA_LOCATION_RETENTION_DAYS || 0),
     mapProvider: process.env.MAP_PROVIDER || "none",
-    reverseGeocodingProvider: process.env.REVERSE_GEOCODING_PROVIDER || "none",
-    reverseGeocodingApiUrl: process.env.REVERSE_GEOCODING_API_URL || "",
-    reverseGeocodingApiKey: process.env.REVERSE_GEOCODING_API_KEY || "",
-    reverseGeocodingTimeoutMs: Number(process.env.REVERSE_GEOCODING_TIMEOUT_MS || 10000)
+    reverseGeocodingProvider: process.env.REVERSE_GEOCODING_PROVIDER || (process.env.GOOGLE_GEOCODING_API_KEY ? "google" : "none"),
+    reverseGeocodingApiUrl: process.env.REVERSE_GEOCODING_API_URL || (process.env.GOOGLE_GEOCODING_API_KEY ? "https://maps.googleapis.com/maps/api/geocode/json" : ""),
+    reverseGeocodingApiKey: process.env.REVERSE_GEOCODING_API_KEY || process.env.GOOGLE_GEOCODING_API_KEY || "",
+    reverseGeocodingTimeoutMs: Number(process.env.GOOGLE_GEOCODING_TIMEOUT_MS || process.env.REVERSE_GEOCODING_TIMEOUT_MS || 10000)
   },
   backup: {
     provider: process.env.BACKUP_PROVIDER || "manual",

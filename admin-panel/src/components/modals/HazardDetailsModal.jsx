@@ -15,6 +15,7 @@ import {
 import { formatDateTime } from "../../utils/format";
 import { getMediaUrl } from "../../utils/media";
 import { exportHazardDetailsPdf } from "../../utils/detailPdfExport";
+import LocationMapCard from "../location/LocationMapCard";
 
 const valueOrDash = (value) => (value === undefined || value === null || value === "" ? "-" : value);
 
@@ -202,6 +203,9 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
                   <InfoRow label="Reported By" value={hazard.reportedBy || hazard.createdBy?.name} icon={UserRound} />
                   <InfoRow label="Action Team" value={hazard.action || hazard.actionTeam} icon={UsersRound} />
                   <InfoRow label="Status" value={status} />
+                  <div className="mt-5">
+                    <LocationMapCard value={hazard.geoLocation} defaultAddress={hazard.location} title="Hazard Location" readOnly />
+                  </div>
 
                   <div className="mt-5 rounded-2xl border border-cyan-400/15 bg-cyan-500/[0.06] p-4">
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-200">Description</p>

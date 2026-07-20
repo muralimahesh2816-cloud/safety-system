@@ -995,7 +995,7 @@ export const workService = {
     Object.entries(payload).forEach(([key, value]) => {
       if (["beforeImages", "beforeVideos", "idempotencyKey", "onUploadProgress"].includes(key)) return;
       if (value !== undefined && value !== null) {
-        formData.append(key, value);
+        formData.append(key, key === "geoLocation" ? JSON.stringify(value) : value);
       }
     });
     formData.set("requestedChainageFrom", chainageFrom);
@@ -1020,6 +1020,10 @@ export const workService = {
   },
   update: async (id, payload) => {
     const res = await client.patch(`/work-approvals/${id}`, payload);
+    return { success: true, work: mapWorkRecord(res.data.work) };
+  },
+  updateLocation: async (id, location, reason) => {
+    const res = await client.patch(`/work-approvals/${id}/location`, { location, reason });
     return { success: true, work: mapWorkRecord(res.data.work) };
   },
   updateWorkflow: async (id, payload) =>
@@ -1106,7 +1110,7 @@ export const hazardService = {
         const formData = new FormData();
         Object.entries(payload).forEach(([key, value]) => {
           if (["evidenceImages", "evidenceVideos"].includes(key)) return;
-          if (value !== undefined && value !== null) formData.append(key, value);
+          if (value !== undefined && value !== null) formData.append(key, key === "geoLocation" ? JSON.stringify(value) : value);
         });
         appendEvidenceFiles(formData, payload.evidenceImages, "evidenceImages", "evidenceImageMetadata");
         appendEvidenceFiles(
@@ -1144,6 +1148,10 @@ export const hazardService = {
         throw new Error("Hazard edit is not available on legacy endpoint");
       }
     ),
+  updateLocation: async (id, location, reason) => {
+    const res = await client.patch(`/hazards/${id}/location`, { location, reason });
+    return { success: true, hazard: mapHazardRecord(res.data.hazard) };
+  },
   assign: async (id, assignedTo) =>
     withLegacyFallback(
       async () => (await client.patch(`/hazards/${id}/assign`, { assignedTo })).data,

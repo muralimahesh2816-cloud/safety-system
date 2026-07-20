@@ -11,7 +11,12 @@ const locationSchema = new mongoose.Schema(
     altitude: Number,
     altitudeMeters: Number,
     heading: Number,
+    placeId: String,
+    mapType: { type: String, enum: ["roadmap", "satellite"], default: "roadmap" },
+    zoom: { type: Number, min: 1, max: 22, default: 18 },
     capturedAt: Date,
+    updatedAt: Date,
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     permissionStatus: { type: String, default: "not_requested" },
     locationSource: { type: String, default: "browser_geolocation" },
     isVerified: { type: Boolean, default: false },
@@ -143,7 +148,14 @@ const normalizeLocation = (raw = {}, captureSource) => {
     heading: optionalFinite(raw.heading),
     capturedAt,
     permissionStatus,
-    locationSource: "browser_geolocation",
+    locationSource: ["device_gps", "browser_geolocation", "map_adjusted", "coordinate_entry", "place_search", "legacy", "unavailable"].includes(raw.locationSource)
+      ? raw.locationSource
+      : captureSource === "camera" ? "browser_geolocation" : "unavailable",
+    placeId: safeLocationText(raw.placeId, 180),
+    mapType: raw.mapType === "satellite" ? "satellite" : "roadmap",
+    zoom: Number.isFinite(Number(raw.zoom)) ? Math.min(22, Math.max(1, Number(raw.zoom))) : 18,
+    updatedAt: raw.updatedAt && !Number.isNaN(new Date(raw.updatedAt).getTime()) ? new Date(raw.updatedAt) : new Date(),
+    ...(raw.updatedBy && mongoose.Types.ObjectId.isValid(raw.updatedBy) ? { updatedBy: raw.updatedBy } : {}),
     isVerified: false,
     formattedAddress: safeLocationText(raw.formattedAddress, 500),
     addressLine1: safeLocationText(raw.addressLine1),
@@ -278,6 +290,10 @@ const redactAssetLocation = (asset) => {
 const redactRecordLocations = (record, user, mediaFields) => {
   if (canViewExactLocation(user, record)) return record;
   const next = { ...record };
+  if (record.geoLocation) {
+    const redacted = redactAssetLocation({ location: record.geoLocation });
+    next.geoLocation = redacted.location;
+  }
   mediaFields.forEach((field) => {
     next[field] = (record[field] || []).map(redactAssetLocation);
   });
@@ -286,6 +302,8 @@ const redactRecordLocations = (record, user, mediaFields) => {
 
 module.exports = {
   assetSchema,
+  locationSchema,
+  normalizeLocation,
   parseMediaMetadata,
   mergeMediaMetadata,
   redactRecordLocations,

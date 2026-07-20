@@ -63,3 +63,30 @@ body { background: var(--brand-background); color: var(--brand-text); }
   .page-content { padding: 0; }
   .brand-glass-card, .brand-page-header { break-inside: avoid; border-color: #ccc; background: #fff; box-shadow: none; }
 }
+
+.location-map-card { overflow: hidden; border: 1px solid rgba(var(--brand-primary-rgb),.28); border-radius: var(--radius-lg); background: rgba(15,17,19,.64); color: #f8f6f3; box-shadow: var(--shadow-card); }
+.location-map-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1rem; border-bottom: 1px solid rgba(255,255,255,.1); }
+.location-map-card__header h3 { margin: 0; font-size: 1rem; font-weight: 750; }
+.location-map-card__header p { margin: .25rem 0 0; color: #aaa6a1; font-size: .75rem; }
+.location-map-card__header-actions, .location-map-card__actions, .location-map-card__meta, .location-map-card__toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.location-map-card button, .location-map-card a { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: .4rem; border: 1px solid rgba(255,255,255,.15); border-radius: 10px; background: rgba(255,255,255,.08); padding: .55rem .75rem; color: #fff; font: inherit; font-size: .75rem; text-decoration: none; cursor: pointer; }
+.location-map-card button:hover, .location-map-card a:hover { border-color: rgba(var(--brand-primary-rgb),.7); background: rgba(var(--brand-primary-rgb),.18); }
+.location-map-card button:focus-visible, .location-map-card a:focus-visible, .location-map-card input:focus-visible { outline: 3px solid rgba(var(--brand-primary-rgb),.28); outline-offset: 2px; }
+.location-map-card__status { border-radius: 999px; background: rgba(var(--brand-primary-rgb),.22); padding: .4rem .65rem; color: #ffd9d3; font-size: .68rem; font-weight: 750; text-transform: uppercase; letter-spacing: .06em; }
+.location-map-card__address { display: flex; flex-direction: column; gap: .3rem; padding: 1rem; background: rgba(255,255,255,.035); }
+.location-map-card__address strong { font-size: .88rem; line-height: 1.5; }
+.location-map-card__address span { color: #aaa6a1; font: .72rem ui-monospace,monospace; }
+.location-map-card__search, .location-map-card__coordinates, .location-map-card__actions { padding: .75rem 1rem 0; }
+.location-map-card__search label, .location-map-card__coordinates label { display: block; color: #cbc6c0; font-size: .72rem; font-weight: 700; }
+.location-map-card__search > div { display: flex; gap: .5rem; margin-top: .4rem; }
+.location-map-card__search input, .location-map-card__coordinates input { width: 100%; min-height: 44px; margin-top: .4rem; border: 1px solid rgba(255,255,255,.16); border-radius: 10px; background: rgba(255,255,255,.07); padding: .65rem .75rem; color: #fff; }
+.location-map-card__coordinates { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .75rem; }
+.location-map-card__error { margin: .75rem 1rem 0; color: #fecaca; font-size: .75rem; }
+.location-map-card__map-shell { position: relative; height: clamp(280px,38vw,440px); margin-top: 1rem; border-top: 1px solid rgba(255,255,255,.1); background: #25282b; }
+.location-map-card__map { width: 100%; height: 100%; }
+.location-map-card__fallback { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .6rem; background: linear-gradient(135deg,#202326,#2d3033); padding: 1rem; color: #cbc6c0; text-align: center; }
+.location-map-card__toolbar { position: absolute; z-index: 2; top: .6rem; left: .6rem; padding: .3rem; border-radius: 12px; background: rgba(20,22,24,.82); backdrop-filter: blur(12px); }
+.location-map-card__toolbar button { min-width: 44px; padding: .45rem .6rem; }
+.location-map-card__meta { justify-content: space-between; padding: .8rem 1rem; color: #aaa6a1; font-size: .68rem; }
+.location-map-card__meta a { min-height: 36px; }
+@media (max-width:640px) { .location-map-card__header { flex-direction: column; } .location-map-card__coordinates { grid-template-columns: 1fr; } .location-map-card__search > div { flex-direction: column; } .location-map-card__actions button { width: 100%; } .location-map-card__toolbar { right: .5rem; left: .5rem; } }

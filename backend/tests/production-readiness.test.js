@@ -31,7 +31,8 @@ const { allowedRequestHeaders } = require("../src/middleware/security.middleware
 const {
   parseMediaMetadata,
   mergeMediaMetadata,
-  redactRecordLocations
+  redactRecordLocations,
+  normalizeLocation
 } = require("../src/utils/media-metadata");
 const {
   normalizeProviderResponse,
@@ -149,6 +150,7 @@ test("media metadata rejects invalid GPS ranges", () => {
 test("exact coordinates are redacted for unrelated roles", () => {
   const record = {
     createdBy: "507f1f77bcf86cd799439012",
+    geoLocation: { latitude: 13.34, longitude: 74.7, formattedAddress: "Restricted record address" },
     beforeImages: [{ location: { latitude: 13.34, longitude: 74.7, accuracyMeters: 20, formattedAddress: "Restricted site address" } }]
   };
   const redacted = redactRecordLocations(record, {
@@ -158,6 +160,23 @@ test("exact coordinates are redacted for unrelated roles", () => {
   assert.equal(redacted.beforeImages[0].location.latitude, undefined);
   assert.equal(redacted.beforeImages[0].location.formattedAddress, undefined);
   assert.equal(redacted.beforeImages[0].location.recorded, true);
+  assert.equal(redacted.geoLocation.latitude, undefined);
+  assert.equal(redacted.geoLocation.recorded, true);
+});
+
+test("record locations preserve safe provenance and map preferences", () => {
+  const location = normalizeLocation({
+    latitude: 13.476205,
+    longitude: 74.713226,
+    locationSource: "map_adjusted",
+    mapType: "satellite",
+    zoom: 19,
+    placeId: "sample-place"
+  }, "record");
+  assert.equal(location.locationSource, "map_adjusted");
+  assert.equal(location.mapType, "satellite");
+  assert.equal(location.zoom, 19);
+  assert.equal(location.placeId, "sample-place");
 });
 
 test("reverse geocoding normalizes a complete provider address", () => {

@@ -30,8 +30,10 @@ const { createMemoryUpload, IMAGE_MIME_TYPES, VIDEO_MIME_TYPES } = require("../u
 const {
   parseMediaMetadata,
   mergeMediaMetadata,
-  redactRecordLocations
+  redactRecordLocations,
+  normalizeLocation
 } = require("../utils/media-metadata");
+const { reverseGeocode } = require("../services/location.service");
 const {
   createNotification,
   notifyWorkCreated,
@@ -119,6 +121,14 @@ const ACTION_REQUIRED_CODES = {
 
 const normalizeObjectId = (value) => (value ? String(value) : "");
 const sameUser = (left, right) => normalizeObjectId(left) && normalizeObjectId(left) === normalizeObjectId(right);
+const parseRecordLocation = (raw, userId) => {
+  if (!raw) return undefined;
+  let value = raw;
+  if (typeof raw === "string") {
+    try { value = JSON.parse(raw); } catch (_error) { throw new ApiError(400, "Location details are invalid"); }
+  }
+  return normalizeLocation({ ...value, updatedBy: userId }, "record");
+};
 const isAdminWorkflowOverrideEnabled = () => env.workflowAdminOverrideEnabled === true;
 
 const deriveWorkflowStage = (work = {}) => normalizeWorkStage(work);
@@ -831,10 +841,12 @@ router.post(
     });
 
     const payload = parsed.data;
+    const geoLocation = parseRecordLocation(req.body.geoLocation, req.user.id);
     const normalizedChainage = normalizeChainagePayload(payload);
     const work = await WorkApproval.create({
       ...payload,
       ...normalizedChainage,
+      ...(geoLocation ? { geoLocation } : {}),
       title: payload.title || `${payload.workType} - ${payload.location}`,
       status: WORK_STAGES.PENDING_CHECK,
       workflowStage: WORK_STAGES.PENDING_CHECK,
@@ -917,6 +929,43 @@ router.get(
       .populate("comments.user", "name role")
       .populate("digitalSignatures.signedBy", "name role");
     if (!work) throw new ApiError(404, "Work approval not found");
+    res.json({ success: true, work: toLegacyWorkRecord(work, req.user) });
+  })
+);
+
+router.patch(
+  "/:id/location",
+  authMiddleware,
+  authorizePermission("work", "update"),
+  asyncHandler(async (req, res) => {
+    const work = await WorkApproval.findById(req.params.id);
+    if (!work) throw new ApiError(404, "Work approval not found");
+    const stage = deriveWorkflowStage(work);
+    const isCreator = sameUser(work.createdBy, req.user.id);
+    const creatorStage = [WORK_STAGES.PENDING_CHECK, WORK_STAGES.RETURNED].includes(stage);
+    const isAdministrator = [ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(req.user.role);
+    if (!(isCreator && creatorStage) && !isAdministrator) {
+      throw new ApiError(403, "You cannot change the location at this workflow stage", null, "LOCATION_UPDATE_FORBIDDEN");
+    }
+    const reason = String(req.body.reason || "").trim();
+    if (!reason) throw new ApiError(400, "A reason is required for every location change", null, "LOCATION_REASON_REQUIRED");
+    const submitted = parseRecordLocation(req.body.location, req.user.id);
+    if (!submitted?.latitude && submitted?.latitude !== 0) throw new ApiError(400, "Valid coordinates are required");
+    const resolved = await reverseGeocode(submitted.latitude, submitted.longitude, { requestId: req.id });
+    const nextLocation = normalizeLocation({ ...submitted, ...resolved, updatedBy: req.user.id, updatedAt: new Date() }, "record");
+    work.locationAuditHistory.push({
+      previousLocation: work.geoLocation?.toObject?.() || work.geoLocation || {},
+      newLocation: nextLocation,
+      reason,
+      updatedBy: req.user.id,
+      updatedByName: req.user.name || "",
+      updatedByRole: req.user.role || ""
+    });
+    work.geoLocation = nextLocation;
+    if (nextLocation.formattedAddress && nextLocation.formattedAddress !== "Address unavailable") work.location = nextLocation.formattedAddress;
+    work.timeline.push({ label: "Location Updated", description: reason, user: req.user.id });
+    await work.save();
+    await audit(req, "location_updated", "work", { reason, previousLocation: work.locationAuditHistory.at(-1).previousLocation, newLocation: nextLocation }, work._id);
     res.json({ success: true, work: toLegacyWorkRecord(work, req.user) });
   })
 );

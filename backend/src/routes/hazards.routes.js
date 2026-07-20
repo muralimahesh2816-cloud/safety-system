@@ -7,6 +7,7 @@ const validate = require("../middleware/validate.middleware");
 const audit = require("../middleware/audit.middleware");
 const Hazard = require("../models/Hazard");
 const User = require("../models/User");
+const { ROLES } = require("../constants/roles");
 const {
   createHazardSchema,
   updateHazardSchema,
@@ -19,8 +20,10 @@ const { IMAGE_MIME_TYPES, VIDEO_MIME_TYPES, createMemoryUpload } = require("../u
 const {
   parseMediaMetadata,
   mergeMediaMetadata,
-  redactRecordLocations
+  redactRecordLocations,
+  normalizeLocation
 } = require("../utils/media-metadata");
+const { reverseGeocode } = require("../services/location.service");
 const logger = require("../utils/logger");
 const { createNotification } = require("../services/notifications.service");
 const {
@@ -51,6 +54,15 @@ const likelihoodWeight = {
   Possible: 2,
   Likely: 3,
   "Almost Certain": 4
+};
+const sameUser = (left, right) => String(left?._id || left || "") === String(right?._id || right || "");
+const parseRecordLocation = (raw, userId) => {
+  if (!raw) return undefined;
+  let value = raw;
+  if (typeof raw === "string") {
+    try { value = JSON.parse(raw); } catch (_error) { throw new ApiError(400, "Location details are invalid"); }
+  }
+  return normalizeLocation({ ...value, updatedBy: userId }, "record");
 };
 
 const queueNotification = (payload) => {
@@ -202,6 +214,7 @@ router.post(
     });
 
     const payload = parsed.data;
+    const geoLocation = parseRecordLocation(req.body.geoLocation, req.user.id);
     const normalizedTitle =
       payload.title || `${payload.category || "Hazard"} - ${payload.plaza || payload.location || "Site"}`;
     const normalizedDescription =
@@ -211,6 +224,7 @@ router.post(
       }`;
     const hazard = await Hazard.create({
       ...payload,
+      ...(geoLocation ? { geoLocation } : {}),
       title: normalizedTitle,
       description: normalizedDescription,
       evidenceImages,
@@ -274,6 +288,41 @@ router.get(
       .populate("assignedTo", "name role")
       .populate("correctiveActions.owner", "name role");
     if (!hazard) throw new ApiError(404, "Hazard not found");
+    res.json({ success: true, hazard: toLegacyHazardRecord(hazard, req.user) });
+  })
+);
+
+router.patch(
+  "/:id/location",
+  authMiddleware,
+  authorizePermission("hazards", "update"),
+  asyncHandler(async (req, res) => {
+    const hazard = await Hazard.findById(req.params.id);
+    if (!hazard) throw new ApiError(404, "Hazard not found");
+    const isOwner = sameUser(hazard.reportedBy, req.user.id) || sameUser(hazard.assignedTo, req.user.id);
+    const isAdministrator = [ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(req.user.role);
+    if ((!isOwner || hazard.status === "Closed") && !isAdministrator) {
+      throw new ApiError(403, "You cannot change this hazard location", null, "LOCATION_UPDATE_FORBIDDEN");
+    }
+    const reason = String(req.body.reason || "").trim();
+    if (!reason) throw new ApiError(400, "A reason is required for every location change", null, "LOCATION_REASON_REQUIRED");
+    const submitted = parseRecordLocation(req.body.location, req.user.id);
+    if (!submitted?.latitude && submitted?.latitude !== 0) throw new ApiError(400, "Valid coordinates are required");
+    const resolved = await reverseGeocode(submitted.latitude, submitted.longitude, { requestId: req.id });
+    const nextLocation = normalizeLocation({ ...submitted, ...resolved, updatedBy: req.user.id, updatedAt: new Date() }, "record");
+    hazard.locationAuditHistory.push({
+      previousLocation: hazard.geoLocation?.toObject?.() || hazard.geoLocation || {},
+      newLocation: nextLocation,
+      reason,
+      updatedBy: req.user.id,
+      updatedByName: req.user.name || "",
+      updatedByRole: req.user.role || ""
+    });
+    hazard.geoLocation = nextLocation;
+    if (nextLocation.formattedAddress && nextLocation.formattedAddress !== "Address unavailable") hazard.location = nextLocation.formattedAddress;
+    hazard.timeline.push({ label: "Location Updated", description: reason, user: req.user.id });
+    await hazard.save();
+    await audit(req, "location_updated", "hazards", { reason, previousLocation: hazard.locationAuditHistory.at(-1).previousLocation, newLocation: nextLocation }, hazard._id);
     res.json({ success: true, hazard: toLegacyHazardRecord(hazard, req.user) });
   })
 );

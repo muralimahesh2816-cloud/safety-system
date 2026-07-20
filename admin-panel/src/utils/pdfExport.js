@@ -142,31 +142,24 @@ const reportColumns = {
 // Official PDFs intentionally exclude internal identifiers, raw media paths, and verbose audit fields.
 const pdfReportColumns = {
   work: [
-    { header: "Approval No", keys: ["Approval No", "approvalNumber"] },
-    { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
+    { header: "Sl No.", keys: [], type: "index" },
+    { header: "Work ID", keys: ["Work ID", "approvalNumber", "_id", "id"] },
     { header: "Work Type", keys: ["Work Type", "workType", "title"] },
-    { header: "Description", keys: ["Description", "description", "workDescription"] },
     { header: "Location", keys: ["Location", "location"] },
-    { header: "Requested Chainage", keys: ["Requested Chainage", "requestedChainage"] },
-    { header: "Approved Chainage", keys: ["Approved Chainage", "approvedChainage"] },
-    { header: "Completed Chainage", keys: ["Completed Chainage", "completedChainage"] },
-    { header: "Completion %", keys: ["Completion %", "completionPercentage"] },
-    { header: "Workers", keys: ["Workers", "Workers Count", "workersCount"] },
-    { header: "Workflow Stage", keys: ["Workflow Stage", "workflowStage", "status"] },
+    { header: "Chainage", keys: ["Requested Chainage", "requestedChainage", "chainage", "chainageNo"] },
     { header: "Created By", keys: ["Created By", "createdByName", "reportedBy"] },
-    { header: "Approved By", keys: ["Approved By", "approvedByName", "approvedBy"] },
-    { header: "Completion Date", keys: ["Completion Date", "completionDate", "completedAt"], type: "date" }
+    { header: "Status", keys: ["Status", "workflowStage", "status"] },
+    { header: "Created Date", keys: ["Created Date", "Date", "date", "createdAt"], type: "date" },
+    { header: "Completed Date", keys: ["Completed Date", "Completion Date", "completionDate", "completedAt"], type: "date" }
   ],
   approved: null,
   hazard: [
     { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
     { header: "Plaza", keys: ["Plaza", "plaza"] },
-    { header: "Location", keys: ["Location", "location"] },
+    { header: "Location / Chainage", keys: ["Location / Chainage", "Location", "location"] },
     { header: "Reported By", keys: ["Reported By", "reportedBy"] },
     { header: "Category", keys: ["Category", "category"] },
     { header: "Description", keys: ["Description", "description"] },
-    { header: "Risk Level", keys: ["Risk Level", "riskLevel", "severity"] },
-    { header: "Risk Score", keys: ["Risk Score", "riskScore"] },
     { header: "Action Team", keys: ["Action Team", "actionTeam", "Action"] },
     { header: "Action Taken", keys: ["Action Taken", "closureNotes", "actionTaken"] },
     { header: "Status", keys: ["Status", "status"] }
@@ -230,7 +223,8 @@ const formatDateValue = (value) => {
   });
 };
 
-const formatColumnValue = (row, column) => {
+const formatColumnValue = (row, column, index) => {
+  if (column.type === "index") return String(index + 1);
   if (column.type === "chainageFrom") return safeValue(getChainageFrom(row));
   if (column.type === "chainageTo") return safeValue(getReportChainageTo(row));
   const value = pickValue(row, column.keys);
@@ -244,9 +238,9 @@ export const getPdfReportColumns = (type = "work") =>
   pdfReportColumns[type] || reportColumns[type] || pdfReportColumns.work;
 
 const normalizeRowsWithColumns = (rows = [], columns = []) =>
-  rows.map((row) =>
+  rows.map((row, index) =>
     columns.reduce((acc, column) => {
-      acc[column.header] = formatColumnValue(row, column);
+      acc[column.header] = formatColumnValue(row, column, index);
       return acc;
     }, {})
   );
