@@ -12,3 +12,25 @@ test("training PDF exposes useful official fields", () => {
   expect(headers).toEqual(expect.arrayContaining(["Training Title", "Concept", "Trainer", "Location", "Remarks"]));
   expect(headers).not.toContain("_id");
 });
+
+test("work report uses the approved 16-column order", () => {
+  const headers = getPdfReportColumns("work").map((column) => column.header);
+  expect(headers).toEqual([
+    "Approval No",
+    "Date",
+    "Work Type",
+    "Location",
+    "Requested Chainage",
+    "Approved Chainage",
+    "Completed Chainage",
+    "Completion %",
+    "Workers",
+    "Created By",
+    "Created Role",
+    "Workflow Stage",
+    "Checked By",
+    "Recommended By",
+    "Approved By",
+    "Status"
+  ]);
+});

@@ -27,6 +27,7 @@ import {
   getChainageDisplay
 } from "../../utils/chainage";
 import WorkCompletionSummaryCard from "../work/WorkCompletionSummaryCard";
+import RoleBasedUserSelect from "../work/RoleBasedUserSelect";
 import DirectMediaCapture from "../media/DirectMediaCapture";
 import MediaLocationCard from "../media/MediaLocationCard";
 
@@ -48,7 +49,9 @@ const ADMIN_OVERRIDE_ROLES = ["admin", "super_admin"];
 const valueOrDash = (value) => (value === undefined || value === null || value === "" ? "-" : value);
 
 const normalizeRole = (role = "") => String(role || "").trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_");
-const getUserId = (value = {}) => String(value?.id || value?._id || value?.userId || "");
+const getUserId = (value = {}) => String(
+  value && typeof value === "object" ? value.id || value._id || value.userId || "" : value || ""
+);
 const getWorkCreatorId = (work = {}) => String(work.createdBy?._id || work.createdBy || work.createdById || "");
 const isCreatorOfWork = (work = {}, user = {}) => {
   const userId = getUserId(user);
@@ -218,6 +221,90 @@ const WorkflowStep = ({ step }) => {
   );
 };
 
+const assignmentDetails = (work = {}, field, label) => ({
+  field,
+  label,
+  id: getUserId(work[field]),
+  name: work[field]?.name || work[`${field}Name`] || "Unassigned",
+  role: work[field]?.role || work[`${field}Role`] || "",
+  date: work[`${field}At`] || ""
+});
+
+const AssignmentSummary = ({ work, stage, user, busy, onReassign }) => {
+  const assignments = [
+    assignmentDetails(work, "assignedChecker", "Checker"),
+    assignmentDetails(work, "assignedRecommender", "Safety Manager"),
+    assignmentDetails(work, "assignedFinalApprover", "Final Approver")
+  ];
+  const current = {
+    "Pending Check": { field: "assignedChecker", stage: "check" },
+    "Returned for Correction": { field: "assignedChecker", stage: "check" },
+    "Pending Recommendation": { field: "assignedRecommender", stage: "recommendation" },
+    "Pending Final Approval": { field: "assignedFinalApprover", stage: "finalApproval" }
+  }[stage];
+  const canReassign = ADMIN_OVERRIDE_ROLES.includes(normalizeRole(user?.role)) && current && onReassign;
+  const reassignExcludedIds = [
+    getWorkCreatorId(work),
+    ...(current?.stage !== "check" ? [getUserId(work.checkedById || work.checkedBy)] : []),
+    ...(current?.stage === "finalApproval" ? [getUserId(work.recommendedById || work.recommendedBy)] : [])
+  ].filter(Boolean);
+  const [nextUserId, setNextUserId] = useState("");
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    setNextUserId("");
+    setReason("");
+  }, [stage, work?._id, work?.id]);
+
+  return (
+    <div className="mb-5 rounded-3xl border border-white/10 bg-white/[0.045] p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <UsersRound size={18} className="text-cyan-300" />
+        <h3 className="font-display text-base font-semibold text-white">Assignment Summary</h3>
+      </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        {assignments.map((item) => (
+          <div key={item.field} className="rounded-2xl border border-white/10 bg-slate-950/45 p-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{item.label}</p>
+            <p className={`mt-1 text-sm font-semibold ${item.id ? "text-white" : "text-amber-200"}`}>{item.name}</p>
+            <p className="mt-0.5 text-xs capitalize text-slate-400">{item.role ? item.role.replace(/_/g, " ") : "-"}</p>
+            <p className="mt-1 text-[11px] text-slate-500">{item.date ? `Assigned ${formatDateTime(item.date)}` : "Not assigned"}</p>
+          </div>
+        ))}
+      </div>
+      {canReassign ? (
+        <div className="mt-4 grid grid-cols-1 gap-3 rounded-2xl border border-amber-300/15 bg-amber-500/[0.05] p-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,.75fr)_auto] lg:items-end">
+          <RoleBasedUserSelect
+            stage={current.stage}
+            value={nextUserId}
+            onChange={setNextUserId}
+            excludeUserIds={reassignExcludedIds}
+            label="Reassign Current Stage"
+            compact
+          />
+          <label>
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-amber-100">Reason *</span>
+            <input
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="Why is this reassigned?"
+              className="w-full rounded-xl border border-white/12 bg-slate-950/70 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-amber-300/60 focus:outline-none"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={busy || !nextUserId || !reason.trim()}
+            onClick={() => onReassign(current.stage, nextUserId, reason)}
+            className="rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Reassign
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 const ActionPanel = ({
   work,
   user,
@@ -241,7 +328,9 @@ const ActionPanel = ({
   completedChainageTo,
   setCompletedChainageTo,
   partialCompletionReason,
-  setPartialCompletionReason
+  setPartialCompletionReason,
+  nextAssigneeId,
+  setNextAssigneeId
 }) => {
   const safeWork = work || {};
   const role = normalizeRole(user?.role);
@@ -471,8 +560,23 @@ const ActionPanel = ({
   }
 
   const Icon = currentAction.icon;
-  const canPrimary = hasWorkAction(user, currentAction.action);
+  const assignment = {
+    check: assignmentDetails(safeWork, "assignedChecker", "Checker"),
+    recommend: assignmentDetails(safeWork, "assignedRecommender", "Safety Manager"),
+    approve: assignmentDetails(safeWork, "assignedFinalApprover", "Final Approver")
+  }[currentAction.action];
+  const isAssignedActor = Boolean(userId && assignment?.id && userId === assignment.id);
+  const canPrimary = hasWorkAction(user, currentAction.action) && (isAssignedActor || canUseAdminOverride);
   const canReturn = canPrimary;
+  const nextAssignment = {
+    check: { stage: "recommendation", label: "Assign Safety Manager", optionKey: "assignedRecommenderId" },
+    recommend: { stage: "finalApproval", label: "Assign Final Approver", optionKey: "assignedFinalApproverId" }
+  }[currentAction.action];
+  const nextAssignmentExcludedIds = [
+    getWorkCreatorId(safeWork),
+    userId,
+    ...(currentAction.action === "recommend" ? [getUserId(safeWork.checkedById || safeWork.checkedBy)] : [])
+  ].filter(Boolean);
 
   return (
     <div className="rounded-3xl border border-cyan-300/20 bg-cyan-500/[0.07] p-4">
@@ -493,6 +597,18 @@ const ActionPanel = ({
           className="w-full resize-none rounded-2xl border border-white/12 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-cyan-300/60 focus:outline-none"
         />
       </label>
+      {canPrimary && nextAssignment ? (
+        <div className="mt-4">
+          <RoleBasedUserSelect
+            stage={nextAssignment.stage}
+            value={nextAssigneeId}
+            onChange={setNextAssigneeId}
+            excludeUserIds={nextAssignmentExcludedIds}
+            label={nextAssignment.label}
+            required
+          />
+        </div>
+      ) : null}
       {canUseAdminOverride ? (
         <label className="mt-4 block">
           <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.14em] text-amber-200">
@@ -511,15 +627,22 @@ const ActionPanel = ({
       {canPrimary ? (
         <button
           type="button"
-          disabled={busy}
-          onClick={() => onStageAction?.(currentAction.action, stageDescription, { overrideReason })}
+          disabled={busy || Boolean(nextAssignment && !nextAssigneeId)}
+          onClick={() => onStageAction?.(currentAction.action, stageDescription, {
+            overrideReason,
+            ...(nextAssignment ? { [nextAssignment.optionKey]: nextAssigneeId } : {})
+          })}
           className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-500 to-teal-500 px-4 py-3 text-sm font-black uppercase tracking-[0.16em] text-white shadow-[0_20px_45px_rgba(8,145,178,.2)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Icon size={16} />
           {currentAction.button}
         </button>
       ) : (
-        <p className="mt-2 text-xs text-amber-200">Your role can view this stage, but cannot perform this action.</p>
+        <p className="mt-2 text-xs text-amber-200">
+          {assignment?.id
+            ? `This action is assigned to ${assignment.name}.`
+            : "This stage is unassigned. An administrator must assign an eligible user."}
+        </p>
       )}
 
       {canReturn ? (
@@ -560,6 +683,7 @@ const WorkApprovalDetailsModal = ({
   onOpenMedia,
   onStageAction,
   onComplete,
+  onReassign,
   onEdit
 }) => {
   const safeWork = work || null;
@@ -572,6 +696,7 @@ const WorkApprovalDetailsModal = ({
   const [completedChainageTo, setCompletedChainageTo] = useState("");
   const [partialCompletionReason, setPartialCompletionReason] = useState("");
   const [completionFiles, setCompletionFiles] = useState([]);
+  const [nextAssigneeId, setNextAssigneeId] = useState("");
   const before = useMemo(() => normalizeMedia(safeWork?.beforeImages, safeWork?.beforeImage), [safeWork]);
   const after = useMemo(() => normalizeMedia(safeWork?.afterImages, safeWork?.afterImage), [safeWork]);
   const beforeVideos = useMemo(() => normalizeMedia(safeWork?.beforeVideos, safeWork?.beforeVideo), [safeWork]);
@@ -606,27 +731,27 @@ const WorkApprovalDetailsModal = ({
         label: "Checked",
         completed: Boolean(safeWork?.checkedAt || safeWork?.checkedBy),
         current: stage === "Pending Check",
-        name: safeWork?.checkedBy,
-        role: safeWork?.checkedByRole,
-        date: safeWork?.checkedAt,
+        name: safeWork?.checkedBy || safeWork?.assignedChecker?.name || safeWork?.assignedCheckerName,
+        role: safeWork?.checkedByRole || safeWork?.assignedChecker?.role || safeWork?.assignedCheckerRole,
+        date: safeWork?.checkedAt || safeWork?.assignedCheckerAt,
         description: safeWork?.checkedDescription
       },
       {
         label: "Recommended",
         completed: Boolean(safeWork?.recommendedAt || safeWork?.recommendedBy),
         current: stage === "Pending Recommendation",
-        name: safeWork?.recommendedBy,
-        role: safeWork?.recommendedByRole,
-        date: safeWork?.recommendedAt,
+        name: safeWork?.recommendedBy || safeWork?.assignedRecommender?.name || safeWork?.assignedRecommenderName,
+        role: safeWork?.recommendedByRole || safeWork?.assignedRecommender?.role || safeWork?.assignedRecommenderRole,
+        date: safeWork?.recommendedAt || safeWork?.assignedRecommenderAt,
         description: safeWork?.recommendedDescription
       },
       {
         label: "Approved",
         completed: Boolean(safeWork?.approvedAt || safeWork?.approvedBy),
         current: stage === "Pending Final Approval",
-        name: safeWork?.approvedByName || safeWork?.approvedBy,
-        role: safeWork?.approvedByRole,
-        date: safeWork?.approvedAt || safeWork?.approvalDate,
+        name: safeWork?.approvedByName || safeWork?.approvedBy || safeWork?.assignedFinalApprover?.name || safeWork?.assignedFinalApproverName,
+        role: safeWork?.approvedByRole || safeWork?.assignedFinalApprover?.role || safeWork?.assignedFinalApproverRole,
+        date: safeWork?.approvedAt || safeWork?.approvalDate || safeWork?.assignedFinalApproverAt,
         description: safeWork?.approvalDescription
       },
       {
@@ -668,6 +793,7 @@ const WorkApprovalDetailsModal = ({
     setCompletedChainageTo(defaultCompletedTo || "");
     setPartialCompletionReason("");
     setCompletionFiles([]);
+    setNextAssigneeId("");
   }, [safeWork, stage]);
 
   const openMedia = (index) => onOpenMedia?.(allMedia, index);
@@ -745,6 +871,13 @@ const WorkApprovalDetailsModal = ({
                   <WorkflowStep key={step.label} step={step} />
                 ))}
               </div>
+              <AssignmentSummary
+                work={safeWork}
+                stage={stage}
+                user={user}
+                busy={busy}
+                onReassign={onReassign}
+              />
 
               <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(340px,.92fr)]">
                 <div className="space-y-5">
@@ -826,6 +959,8 @@ const WorkApprovalDetailsModal = ({
                     setCompletedChainageTo={setCompletedChainageTo}
                     partialCompletionReason={partialCompletionReason}
                     setPartialCompletionReason={setPartialCompletionReason}
+                    nextAssigneeId={nextAssigneeId}
+                    setNextAssigneeId={setNextAssigneeId}
                   />
                   {beforeMedia.length ? beforeMedia.map((item, index) => (
                     <ImagePanel key={item.id || item.url || index} label={`Before Work Evidence ${index + 1}`} tone="text-teal-300" item={item} onOpen={() => openMedia(index)} />

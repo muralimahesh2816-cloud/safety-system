@@ -17,6 +17,8 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     mobile: { type: String, default: "" },
+    employeeId: { type: String, default: "", trim: true },
+    department: { type: String, default: "", trim: true },
     password: { type: String, required: true },
     role: {
       type: String,
@@ -70,5 +72,6 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ role: 1, status: 1 });
 userSchema.index({ status: 1, lastLoginAt: -1 });
 userSchema.index({ email: 1, status: 1 });
+userSchema.index({ employeeId: 1, status: 1 });
 
 module.exports = mongoose.model("User", userSchema);

@@ -29,6 +29,7 @@ const createWorkSchema = withChainageValidation(z.object({
   workersCount: z.coerce.number().min(1, "Workers Count must be greater than zero").optional().default(1),
   priority: z.enum(["Low", "Medium", "High", "Critical"]).optional().default("Medium"),
   assignedTo: z.string().optional(),
+  assignedCheckerId: z.string().min(1, "Assigned Checker is required"),
   startDate: z.string().optional(),
   dueDate: z.string().optional()
 }));
@@ -82,7 +83,22 @@ const stageActionSchema = z.object({
   reviewFindings: z.string().trim().optional().default(""),
   recommendationRemarks: z.string().trim().optional().default(""),
   approvalRemarks: z.string().trim().optional().default(""),
-  overrideReason: z.string().trim().optional().default("")
+  overrideReason: z.string().trim().optional().default(""),
+  assignedRecommenderId: z.string().trim().optional(),
+  assignedFinalApproverId: z.string().trim().optional()
+});
+
+const checkWorkSchema = stageActionSchema.extend({
+  assignedRecommenderId: z.string().trim().min(1, "Assigned Safety Manager is required")
+});
+
+const recommendWorkSchema = stageActionSchema.extend({
+  assignedFinalApproverId: z.string().trim().min(1, "Assigned Final Approver is required")
+});
+
+const reassignWorkSchema = z.object({
+  userId: z.string().trim().min(1, "New assignee is required"),
+  reason: z.string().trim().min(3, "Reassignment reason is required")
 });
 
 const returnWorkSchema = z.object({
@@ -112,6 +128,9 @@ module.exports = {
   workflowActionSchema,
   statusUpdateSchema,
   stageActionSchema,
+  checkWorkSchema,
+  recommendWorkSchema,
+  reassignWorkSchema,
   returnWorkSchema,
   completeWorkSchema,
   commentSchema,

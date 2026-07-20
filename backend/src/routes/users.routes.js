@@ -1,4 +1,5 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const asyncHandler = require("../utils/async-handler");
 const ApiError = require("../utils/api-error");
@@ -15,7 +16,11 @@ const {
 const { env } = require("../config/env");
 const { uploadAsset } = require("../utils/uploads");
 const { createMemoryUpload } = require("../utils/multer");
-const { ROLES } = require("../constants/roles");
+const { ROLES, getRoleQueryValues } = require("../constants/roles");
+const {
+  normalizeAssignmentStage,
+  getEligibleAssigneeRoles
+} = require("../constants/work-assignment");
 const {
   normalizePagePermissions,
   toActionPermissions
@@ -43,7 +48,13 @@ router.get(
     if (status) filters.status = status;
     if (search) {
       const regex = new RegExp(escapeRegex(search), "i");
-      filters.$or = [{ name: regex }, { email: regex }, { mobile: regex }];
+      filters.$or = [
+        { name: regex },
+        { email: regex },
+        { mobile: regex },
+        { employeeId: regex },
+        { department: regex }
+      ];
     }
 
     const shouldPaginate = hasPagination(req.query);
@@ -75,6 +86,47 @@ router.get(
         : { total, unpaginated: true }
     });
     await audit(req, "view", "users");
+  })
+);
+
+router.get(
+  "/eligible-assignees",
+  authMiddleware,
+  authorizePermission("work", "view"),
+  asyncHandler(async (req, res) => {
+    const stage = normalizeAssignmentStage(req.query.stage);
+    const eligibleRoles = getEligibleAssigneeRoles(stage);
+    if (!stage || eligibleRoles.length === 0) {
+      throw new ApiError(400, "A valid assignment stage is required");
+    }
+
+    const filters = {
+      status: "active",
+      role: { $in: getRoleQueryValues(eligibleRoles) }
+    };
+    const excludedIds = [
+      req.query.excludeUserId,
+      ...String(req.query.excludeUserIds || "").split(",")
+    ]
+      .map((value) => String(value || "").trim())
+      .filter((value) => mongoose.Types.ObjectId.isValid(value));
+    if (excludedIds.length) filters._id = { $nin: excludedIds };
+    if (req.query.search) {
+      const regex = new RegExp(escapeRegex(req.query.search), "i");
+      filters.$or = [
+        { name: regex },
+        { email: regex },
+        { employeeId: regex }
+      ];
+    }
+
+    const users = await User.find(filters)
+      .select("name employeeId role")
+      .sort({ name: 1 })
+      .limit(100)
+      .lean();
+
+    res.json({ success: true, stage, users });
   })
 );
 

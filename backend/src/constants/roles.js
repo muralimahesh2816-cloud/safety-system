@@ -39,14 +39,22 @@ const ROLE_ALIASES = {
   "maintenance engineer": ROLES.MAINTENANCE_ENGINEER,
   project_manager: ROLES.PROJECT_MANAGER,
   "project manager": ROLES.PROJECT_MANAGER,
+  project_manger: ROLES.PROJECT_MANAGER,
+  "project manger": ROLES.PROJECT_MANAGER,
   construction_manager: ROLES.CONSTRUCTION_MANAGER,
   "construction manager": ROLES.CONSTRUCTION_MANAGER,
   operations_manager: ROLES.OPERATIONS_MANAGER,
   "operations manager": ROLES.OPERATIONS_MANAGER,
   maintenance_manager: ROLES.MAINTENANCE_MANAGER,
   "maintenance manager": ROLES.MAINTENANCE_MANAGER,
+  maintance_manager: ROLES.MAINTENANCE_MANAGER,
+  "maintance manager": ROLES.MAINTENANCE_MANAGER,
+  maintainance_manager: ROLES.MAINTENANCE_MANAGER,
+  "maintainance manager": ROLES.MAINTENANCE_MANAGER,
   safety_manager: ROLES.SAFETY_MANAGER,
   "safety manager": ROLES.SAFETY_MANAGER,
+  safety_manger: ROLES.SAFETY_MANAGER,
+  "safety manger": ROLES.SAFETY_MANAGER,
   supervisor: ROLES.SUPERVISOR
 };
 
@@ -58,6 +66,16 @@ const normalizeRole = (role = ROLES.USER) => {
     .replace(/\s+/g, " ");
   const snakeCase = normalized.replace(/\s+/g, "_");
   return ROLE_ALIASES[normalized] || ROLE_ALIASES[snakeCase] || ROLES.USER;
+};
+
+const getRoleQueryValues = (roles = []) => {
+  const normalizedRoles = new Set(roles.map((role) => normalizeRole(role)));
+  return [...new Set([
+    ...normalizedRoles,
+    ...Object.entries(ROLE_ALIASES)
+      .filter(([, canonical]) => normalizedRoles.has(canonical))
+      .map(([alias]) => alias)
+  ])];
 };
 
 const MODULES = [
@@ -234,5 +252,6 @@ module.exports = {
   ROLES,
   MODULES,
   ROLE_DEFAULT_PERMISSIONS,
-  normalizeRole
+  normalizeRole,
+  getRoleQueryValues
 };

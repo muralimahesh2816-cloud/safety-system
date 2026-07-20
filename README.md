@@ -57,3 +57,15 @@ npm start
 - Reporting and export (CSV / Excel / PDF client-side)
 - Company profile, branding, and security settings
 - Notification center with unread counts and browser alerts
+
+## Assigned Work Approval Workflow
+
+Work approvals use named, stage-specific assignments. A creator, including a Supervisor, must assign one active eligible checker when submitting work. The assigned checker records findings and assigns an active Safety Manager. That Safety Manager records a recommendation and assigns an active Project Manager or Maintenance Manager for final approval. Only the assigned user can act at each stage; the creator remains view-only for check, recommendation, and approval actions.
+
+Eligible assignees are loaded from `GET /api/v1/users/eligible-assignees?stage=check|recommendation|finalApproval`. The endpoint is authenticated, returns active users only, and supports `search`, `excludeUserId`, and comma-separated `excludeUserIds` filters. Administrators can reassign the current stage through `POST /api/v1/work-approvals/:id/reassign/:stage`; a reason is mandatory and the change is added to the audit trail and workflow timeline.
+
+Workflow notifications and email are sent directly to the named assignee. Returned work is sent directly to the creator. Older unassigned records remain readable, but an administrator must assign an eligible user before the pending workflow action can continue.
+
+## Official Work Report
+
+The Work Report PDF and Excel exports share one fixed 16-column schema: Approval No, Date, Work Type, Location, Requested Chainage, Approved Chainage, Completed Chainage, Completion %, Workers, Created By, Created Role, Workflow Stage, Checked By, Recommended By, Approved By, and Status. PDF output is A4 landscape with repeated red headers and page footers; Excel output includes report metadata, applied date range, filters, column widths, and a frozen header row.

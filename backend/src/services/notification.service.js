@@ -358,14 +358,21 @@ const sendWorkStageNotification = async ({
   });
 };
 
+const buildAssignedWorkMessage = (work, stage, assignedBy = "") => {
+  const recordId = work.approvalNumber || (work._id ? `WA-${String(work._id).slice(-8).toUpperCase()}` : "Work approval");
+  const chainageFrom = work.requestedChainageFrom || work.chainageFrom || work.chainageNo || "-";
+  const chainageTo = work.requestedChainageTo || work.chainageTo || chainageFrom;
+  return `${recordId} | Creator: ${work.createdByName || "-"} | Location: ${work.location || "-"} | Chainage: ${chainageFrom} to ${chainageTo} | Workers: ${work.workersCount || 0} | Stage: ${stage}${assignedBy ? ` | Assigned by: ${assignedBy}` : ""}`;
+};
+
 const notifyWorkCreated = async ({ work, actorId }) => {
-  const users = await getActiveUsersByRolesOrPermission({ roles: CHECKER_ROLES, workPermission: "check" });
+  const users = await getUsersByIds([work.assignedChecker]);
   return sendWorkStageNotification({
     users,
     work,
-    title: "New Work Approval Requires Review",
-    intro: "A new work approval has been created and requires checker review.",
-    message: `${work.workType || work.title || "Work approval"} requires review at ${work.location || "-"}.`,
+    title: "New Work Approval Assigned to You",
+    intro: `${work.createdByName || "A creator"} assigned a new work approval to you for checking.`,
+    message: buildAssignedWorkMessage(work, "Pending Check", work.createdByName || "Creator"),
     actionLabel: "Review Work Approval",
     priority: "high",
     color: "orange",
@@ -375,13 +382,13 @@ const notifyWorkCreated = async ({ work, actorId }) => {
 };
 
 const notifyWorkChecked = async ({ work, actorId }) => {
-  const users = await getActiveUsersByRolesOrPermission({ roles: RECOMMENDER_ROLES });
+  const users = await getUsersByIds([work.assignedRecommender]);
   return sendWorkStageNotification({
     users,
     work,
-    title: "Work Approval Ready for Recommendation",
-    intro: "A work approval has been checked and is ready for Safety Manager recommendation.",
-    message: `${work.workType || work.title || "Work approval"} is ready for recommendation.`,
+    title: "Work Approval Assigned for Recommendation",
+    intro: `${work.checkedBy || "The checker"} assigned this checked work approval to you for recommendation.`,
+    message: buildAssignedWorkMessage(work, "Pending Recommendation", work.checkedBy || "Checker"),
     actionLabel: "Review Recommendation",
     priority: "high",
     color: "purple",
@@ -391,19 +398,74 @@ const notifyWorkChecked = async ({ work, actorId }) => {
 };
 
 const notifyWorkRecommended = async ({ work, actorId }) => {
-  const users = await getActiveUsersByRolesOrPermission({ roles: getFinalApproverRoles() });
+  const users = await getUsersByIds([work.assignedFinalApprover]);
   return sendWorkStageNotification({
     users,
     work,
-    title: "Work Approval Ready for Final Approval",
-    intro: "A work approval has been recommended by Safety Manager and is ready for final approval.",
-    message: `${work.workType || work.title || "Work approval"} is ready for final approval.`,
+    title: "Work Approval Assigned for Final Approval",
+    intro: `${work.recommendedBy || "The Safety Manager"} assigned this recommended work approval to you for final approval.`,
+    message: buildAssignedWorkMessage(work, "Pending Final Approval", work.recommendedBy || "Safety Manager"),
     actionLabel: "Review Final Approval",
     priority: "urgent",
     color: "red",
     progress: ["Created", "Checked", "Recommended", "Pending Final Approval"],
     createdBy: actorId
   });
+};
+
+const notifyWorkReassigned = async ({
+  work,
+  actorId,
+  newAssigneeId,
+  previousAssigneeId,
+  stage,
+  reason = ""
+}) => {
+  const [newUsers, previousUsers] = await Promise.all([
+    getUsersByIds([newAssigneeId]),
+    getUsersByIds([previousAssigneeId])
+  ]);
+  const stageLabel = {
+    check: "checking",
+    recommendation: "recommendation",
+    finalApproval: "final approval"
+  }[stage] || "review";
+
+  const notifications = [
+    sendWorkStageNotification({
+      users: newUsers,
+      work,
+      title: "Work Approval Reassigned to You",
+      intro: `An administrator reassigned this work approval to you for ${stageLabel}.`,
+      message: `${buildAssignedWorkMessage(work, stageLabel, "Administrator")} | Reason: ${reason || "-"}`,
+      actionLabel: "Open Assigned Work",
+      priority: "high",
+      color: "orange",
+      progress: ["Created", `Assigned for ${stageLabel}`],
+      createdBy: actorId,
+      extraRows: [["Reassignment Reason", reason || "-"]],
+      data: { assignmentStage: stage, reason }
+    })
+  ];
+
+  if (previousUsers.length && String(previousAssigneeId) !== String(newAssigneeId)) {
+    notifications.push(sendWorkStageNotification({
+      users: previousUsers,
+      work,
+      title: "Work Approval Assignment Changed",
+      intro: `This work approval is no longer assigned to you for ${stageLabel}.`,
+      message: `${work.workType || work.title || "Work approval"} was reassigned by an administrator.`,
+      actionLabel: "View Work Approval",
+      priority: "medium",
+      color: "blue",
+      progress: ["Created", "Reassigned"],
+      createdBy: actorId,
+      extraRows: [["Reassignment Reason", reason || "-"]],
+      data: { assignmentStage: stage, reason }
+    }));
+  }
+
+  return Promise.all(notifications);
 };
 
 const notifyWorkApproved = async ({ work, actorId }) => {
@@ -508,6 +570,7 @@ module.exports = {
   notifyWorkCreated,
   notifyWorkChecked,
   notifyWorkRecommended,
+  notifyWorkReassigned,
   notifyWorkApproved,
   notifyWorkReturned,
   notifyWorkCompleted

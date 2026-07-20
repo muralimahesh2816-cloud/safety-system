@@ -9,6 +9,7 @@ import SafeChartContainer from "../components/common/SafeChartContainer";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import WorkApprovalDetailsModal from "../components/modals/WorkApprovalDetailsModal";
 import WorkCompletionSummaryCard from "../components/work/WorkCompletionSummaryCard";
+import RoleBasedUserSelect from "../components/work/RoleBasedUserSelect";
 import DirectMediaCapture from "../components/media/DirectMediaCapture";
 import { workService } from "../api/services";
 import {
@@ -61,7 +62,9 @@ const QUEUE_FILTERS = [
   { value: "returned", label: "Returned for Correction" }
 ];
 const normalizeRole = (role = "") => String(role || "").trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_");
-const getUserId = (value = {}) => String(value?.id || value?._id || value?.userId || "");
+const getUserId = (value = {}) => String(
+  value && typeof value === "object" ? value.id || value._id || value.userId || "" : value || ""
+);
 const getWorkCreatorId = (work = {}) => String(work.createdBy?._id || work.createdBy || work.createdById || "");
 const isCreatorOfWork = (work = {}, user = {}) => {
   const userId = getUserId(user);
@@ -79,9 +82,12 @@ const hasStageRole = (user = {}, action) => {
 };
 const canActOnStage = (work = {}, user = {}) => {
   const stage = getWorkflowStage(work);
-  if (stage === "Pending Check") return hasStageRole(user, "check");
-  if (stage === "Pending Recommendation") return hasStageRole(user, "recommend");
-  if (stage === "Pending Final Approval") return hasStageRole(user, "approve");
+  const role = normalizeRole(user?.role);
+  if (ADMIN_OVERRIDE_ENABLED && ADMIN_OVERRIDE_ROLES.includes(role)) return true;
+  const userId = getUserId(user);
+  if (stage === "Pending Check") return hasStageRole(user, "check") && userId === getUserId(work.assignedChecker);
+  if (stage === "Pending Recommendation") return hasStageRole(user, "recommend") && userId === getUserId(work.assignedRecommender);
+  if (stage === "Pending Final Approval") return hasStageRole(user, "approve") && userId === getUserId(work.assignedFinalApprover);
   return false;
 };
 const getDefaultQueueFilter = (user = {}) => {
@@ -102,6 +108,23 @@ const getRequiredAction = (work = {}) => ({
   Completed: "Completed",
   "Returned for Correction": "Returned for Correction"
 }[getWorkflowStage(work)] || "Awaiting Review");
+const getCurrentAssignment = (work = {}) => {
+  const stage = getWorkflowStage(work);
+  const config = {
+    "Pending Check": ["assignedChecker", "Checker"],
+    "Pending Recommendation": ["assignedRecommender", "Safety Manager"],
+    "Pending Final Approval": ["assignedFinalApprover", "Final Approver"]
+  }[stage];
+  if (!config) return null;
+  const [field, label] = config;
+  const assigned = work[field];
+  return {
+    label,
+    name: assigned?.name || work[`${field}Name`] || "Unassigned",
+    role: assigned?.role || work[`${field}Role`] || "",
+    date: work[`${field}At`] || ""
+  };
+};
 
 const getApiErrorMessage = (error, fallback = "Request failed") => {
   const data = error?.response?.data;
@@ -141,6 +164,7 @@ const getWorkSubmitValidationMessage = ({ form, chainageValidation, beforeImages
   if (!form.location) missing.push("Location");
   if (!form.workersCount) missing.push("Workers Count");
   if (!form.description.trim()) missing.push("Work Description");
+  if (!form.assignedCheckerId) missing.push("Assigned Checker");
   if (!beforeImages.length) missing.push("Before Image");
 
   const chainageMessages = Object.values(chainageValidation.errors).filter(Boolean);
@@ -164,6 +188,7 @@ const initialForm = {
   description: "",
   priority: "Medium",
   assignedTo: "",
+  assignedCheckerId: "",
   startDate: "",
   dueDate: ""
 };
@@ -285,7 +310,13 @@ const WorkApprovalsPage = ({ user }) => {
     else setLoading(true);
     setError("");
     try {
-      const workRes = await workService.list({ page, limit: 25 });
+      const isAssignedQueue = ["pending_check", "pending_recommendation", "pending_approval"].includes(queueFilter);
+      const isAdministrator = ADMIN_OVERRIDE_ROLES.includes(normalizeRole(user?.role));
+      const workRes = await workService.list({
+        page,
+        limit: 25,
+        assignedToMe: isAssignedQueue && !isAdministrator ? true : undefined
+      });
       setRecords((previous) => append ? [...previous, ...(workRes.records || [])] : workRes.records || []);
       setPagination(workRes.pagination || null);
     } catch (fetchError) {
@@ -294,7 +325,7 @@ const WorkApprovalsPage = ({ user }) => {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, []);
+  }, [queueFilter, user?.role]);
 
   useEffect(() => {
     fetchAll();
@@ -325,6 +356,7 @@ const WorkApprovalsPage = ({ user }) => {
       !chainageValidation.isValid ||
       !form.workersCount ||
       !form.description.trim() ||
+      !form.assignedCheckerId ||
       beforeImages.length === 0
     ) {
       const validationMessage = getWorkSubmitValidationMessage({
@@ -410,7 +442,8 @@ const WorkApprovalsPage = ({ user }) => {
         service: () => workService.check(id, {
           reviewFindings: cleanDescription,
           description: cleanDescription,
-          overrideReason: options.overrideReason || ""
+          overrideReason: options.overrideReason || "",
+          assignedRecommenderId: options.assignedRecommenderId || ""
         }),
         success: "Work Checked Successfully"
       },
@@ -420,7 +453,8 @@ const WorkApprovalsPage = ({ user }) => {
         service: () => workService.recommend(id, {
           recommendationRemarks: cleanDescription,
           description: cleanDescription,
-          overrideReason: options.overrideReason || ""
+          overrideReason: options.overrideReason || "",
+          assignedFinalApproverId: options.assignedFinalApproverId || ""
         }),
         success: "Work Recommended Successfully"
       },
@@ -476,6 +510,33 @@ const WorkApprovalsPage = ({ user }) => {
 
     if (statusErrorMessage) {
       await showValidationPopup(statusErrorMessage, "Workflow update failed");
+    }
+  };
+
+  const reassignWork = async (work, stage, userId, reason) => {
+    const id = getWorkRecordId(work);
+    if (!id || !userId || !String(reason || "").trim()) {
+      showValidationPopup("Select the new assignee and enter a reassignment reason.");
+      return;
+    }
+    const confirmed = await showConfirmPopup({
+      title: "Reassign Work Approval",
+      text: "This change is audited and both affected users will be notified.",
+      confirmText: "Reassign",
+      cancelText: "Cancel",
+      icon: "warning"
+    });
+    if (!confirmed) return;
+    setBusyWorkId(id);
+    try {
+      const response = await workService.reassign(id, stage, { userId, reason: String(reason).trim() });
+      setRecords((previous) => previous.map((item) => getWorkRecordId(item) === id ? response.work : item));
+      setSelectedWork(response.work);
+      await showSuccessPopup("Work Approval Reassigned Successfully");
+    } catch (reassignError) {
+      showValidationPopup(getApiErrorMessage(reassignError, "Unable to reassign work approval."));
+    } finally {
+      setBusyWorkId("");
     }
   };
 
@@ -886,6 +947,14 @@ const WorkApprovalsPage = ({ user }) => {
               className="w-full resize-none rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-cyan-300/60 focus:outline-none"
               required
             />
+            <RoleBasedUserSelect
+              stage="check"
+              value={form.assignedCheckerId}
+              onChange={(assignedCheckerId) => setForm((previous) => ({ ...previous, assignedCheckerId }))}
+              excludeUserId={getUserId(user)}
+              label="Assign Checker"
+              required
+            />
             <DirectMediaCapture
               label="Before Work Evidence"
               module="work_approval"
@@ -1176,6 +1245,7 @@ const WorkApprovalsPage = ({ user }) => {
                 const chainageDisplay = getChainageDisplay(work, true);
                 const statusSinceText = getWorkStatusSinceText(work);
                 const actionRequired = getRequiredAction(work);
+                const currentAssignment = getCurrentAssignment(work);
 
                 return (
                   <div
@@ -1224,6 +1294,12 @@ const WorkApprovalsPage = ({ user }) => {
                             {work.location || "-"} | {chainageDisplay.label}: {chainageDisplay.range}
                           </p>
                           <p className="mt-1 text-xs text-slate-300">Created By: {getWorkReporterName(work) || "-"}</p>
+                          {currentAssignment ? (
+                            <p className="mt-1 text-xs text-cyan-100">
+                              Assigned {currentAssignment.label}: {currentAssignment.name}
+                              {currentAssignment.role ? ` (${currentAssignment.role.replace(/_/g, " ")})` : ""}
+                            </p>
+                          ) : null}
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             {!workCompleted ? (
                               <>
@@ -1586,6 +1662,7 @@ const WorkApprovalsPage = ({ user }) => {
           }
           onStageAction={(action, description, options) => runStageAction(selectedWork, action, description, options)}
           onComplete={(files, description, completionPayload) => completeWork(selectedWork, files, description, completionPayload)}
+          onReassign={(stage, userId, reason) => reassignWork(selectedWork, stage, userId, reason)}
           onEdit={() => {
             if (selectedWork && canEditWorkRecord(selectedWork)) {
               openEditWork(selectedWork);

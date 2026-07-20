@@ -39,7 +39,18 @@ const {
   reverseGeocode,
   validateCoordinates
 } = require("../src/services/location.service");
-const { ROLES, ROLE_DEFAULT_PERMISSIONS } = require("../src/constants/roles");
+const { ROLES, ROLE_DEFAULT_PERMISSIONS, normalizeRole } = require("../src/constants/roles");
+const {
+  ASSIGNMENT_STAGES,
+  getAssignmentField,
+  isEligibleAssigneeRole
+} = require("../src/constants/work-assignment");
+const {
+  createWorkSchema,
+  checkWorkSchema,
+  recommendWorkSchema
+} = require("../src/validators/work.validators");
+const WorkApproval = require("../src/models/WorkApproval");
 
 test("supervisor is a creator role without approval-stage authority", () => {
   const workPermissions = ROLE_DEFAULT_PERMISSIONS[ROLES.SUPERVISOR].work;
@@ -49,6 +60,42 @@ test("supervisor is a creator role without approval-stage authority", () => {
   assert.equal(workPermissions.check, false);
   assert.equal(workPermissions.recommend, false);
   assert.equal(workPermissions.approve, false);
+});
+
+test("legacy misspelled manager roles normalize to canonical roles", () => {
+  assert.equal(normalizeRole("project_manger"), ROLES.PROJECT_MANAGER);
+  assert.equal(normalizeRole("maintance manager"), ROLES.MAINTENANCE_MANAGER);
+  assert.equal(normalizeRole("safety_manger"), ROLES.SAFETY_MANAGER);
+});
+
+test("workflow assignment roles and fields are stage specific", () => {
+  assert.equal(isEligibleAssigneeRole(ASSIGNMENT_STAGES.CHECK, ROLES.SAFETY_ENGINEER), true);
+  assert.equal(isEligibleAssigneeRole(ASSIGNMENT_STAGES.CHECK, ROLES.SAFETY_MANAGER), false);
+  assert.equal(isEligibleAssigneeRole(ASSIGNMENT_STAGES.RECOMMENDATION, ROLES.SAFETY_MANAGER), true);
+  assert.equal(isEligibleAssigneeRole(ASSIGNMENT_STAGES.FINAL_APPROVAL, ROLES.PROJECT_MANAGER), true);
+  assert.equal(getAssignmentField(ASSIGNMENT_STAGES.FINAL_APPROVAL), "assignedFinalApprover");
+});
+
+test("work creation and transitions require the next named assignee", () => {
+  const baseWork = {
+    workType: "Road maintenance",
+    location: "KM 320",
+    requestedChainageFrom: "KM 320+000",
+    requestedChainageTo: "KM 320+500",
+    workersCount: 4
+  };
+  assert.equal(createWorkSchema.safeParse(baseWork).success, false);
+  assert.equal(createWorkSchema.safeParse({ ...baseWork, assignedCheckerId: "507f1f77bcf86cd799439011" }).success, true);
+  assert.equal(checkWorkSchema.safeParse({ reviewFindings: "Checked" }).success, false);
+  assert.equal(checkWorkSchema.safeParse({ reviewFindings: "Checked", assignedRecommenderId: "507f1f77bcf86cd799439012" }).success, true);
+  assert.equal(recommendWorkSchema.safeParse({ recommendationRemarks: "Recommended" }).success, false);
+});
+
+test("work assignment indexes support assigned-to-me stage queues", () => {
+  const indexFields = WorkApproval.schema.indexes().map(([definition]) => Object.keys(definition).join(","));
+  assert.equal(indexFields.includes("assignedChecker,workflowStage,createdAt"), true);
+  assert.equal(indexFields.includes("assignedRecommender,workflowStage,createdAt"), true);
+  assert.equal(indexFields.includes("assignedFinalApprover,workflowStage,createdAt"), true);
 });
 
 test("CORS allows work submission idempotency and security headers", () => {

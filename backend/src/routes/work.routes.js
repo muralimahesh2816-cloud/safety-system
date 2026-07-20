@@ -9,7 +9,14 @@ const audit = require("../middleware/audit.middleware");
 const logger = require("../utils/logger");
 const { env } = require("../config/env");
 const WorkApproval = require("../models/WorkApproval");
+const User = require("../models/User");
 const { ROLES } = require("../constants/roles");
+const {
+  ASSIGNMENT_STAGES,
+  normalizeAssignmentStage,
+  getAssignmentField,
+  isEligibleAssigneeRole
+} = require("../constants/work-assignment");
 const {
   WORK_STAGES,
   isPostApprovalStage,
@@ -20,6 +27,9 @@ const {
   updateWorkSchema,
   statusUpdateSchema,
   stageActionSchema,
+  checkWorkSchema,
+  recommendWorkSchema,
+  reassignWorkSchema,
   returnWorkSchema,
   completeWorkSchema,
   commentSchema,
@@ -35,10 +45,10 @@ const {
 } = require("../utils/media-metadata");
 const { reverseGeocode } = require("../services/location.service");
 const {
-  createNotification,
   notifyWorkCreated,
   notifyWorkChecked,
   notifyWorkRecommended,
+  notifyWorkReassigned,
   notifyWorkApproved,
   notifyWorkReturned,
   notifyWorkCompleted
@@ -151,6 +161,63 @@ const assertStagePermission = (req, action) => {
     permission: `work.${action}`
   });
   throw new ApiError(403, `You do not have permission to ${String(WORK_STAGE_LABELS[action] || action).toLowerCase()}`, null, code);
+};
+
+const ACTION_ASSIGNMENT_STAGE = Object.freeze({
+  check: ASSIGNMENT_STAGES.CHECK,
+  recommend: ASSIGNMENT_STAGES.RECOMMENDATION,
+  approve: ASSIGNMENT_STAGES.FINAL_APPROVAL
+});
+
+const getAssignmentSnapshotPrefix = (stage) => ({
+  [ASSIGNMENT_STAGES.CHECK]: "assignedChecker",
+  [ASSIGNMENT_STAGES.RECOMMENDATION]: "assignedRecommender",
+  [ASSIGNMENT_STAGES.FINAL_APPROVAL]: "assignedFinalApprover"
+}[stage]);
+
+const assignStageUser = (work, stage, user, assignedAt = new Date()) => {
+  const prefix = getAssignmentSnapshotPrefix(stage);
+  if (!prefix || !user?._id) throw new ApiError(400, "Invalid workflow assignment");
+  work[prefix] = user._id;
+  work[`${prefix}Name`] = user.name || "";
+  work[`${prefix}Role`] = user.role || "";
+  work[`${prefix}At`] = assignedAt;
+};
+
+const resolveEligibleAssignee = async (userId, stage, excludedUserIds = []) => {
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new ApiError(400, "Selected assignee is invalid", null, "INVALID_ASSIGNEE");
+  }
+  const user = await User.findById(userId).select("name email employeeId role status");
+  if (!user || user.status !== "active") {
+    throw new ApiError(400, "Selected assignee must be an active user", null, "INACTIVE_ASSIGNEE");
+  }
+  if (!isEligibleAssigneeRole(stage, user.role)) {
+    throw new ApiError(400, "Selected user is not eligible for this workflow stage", null, "ASSIGNEE_ROLE_MISMATCH");
+  }
+  if (excludedUserIds.some((excludedId) => sameUser(excludedId, user._id))) {
+    throw new ApiError(400, "The same person cannot perform multiple stages on this work approval", null, "SAME_USER_STAGE_CONFLICT");
+  }
+  return user;
+};
+
+const assertAssignedActor = (req, work, action, overrideReason = "") => {
+  const stage = ACTION_ASSIGNMENT_STAGE[action];
+  const field = getAssignmentField(stage);
+  const assignedUserId = field ? work[field] : null;
+  if (sameUser(assignedUserId, req.user?.id)) return;
+
+  const canOverride = [ROLES.ADMIN, ROLES.SUPER_ADMIN].includes(req.user?.role) && isAdminWorkflowOverrideEnabled();
+  if (canOverride && String(overrideReason || "").trim()) return;
+  if (canOverride) {
+    throw new ApiError(400, "Admin override reason is required", null, "WORK_ASSIGNMENT_OVERRIDE_REASON_REQUIRED");
+  }
+  throw new ApiError(
+    403,
+    assignedUserId ? "This workflow action is assigned to another user" : "This work approval has no assignee for the current stage",
+    { assignmentStage: stage },
+    assignedUserId ? "WORK_NOT_ASSIGNED_TO_USER" : "WORK_STAGE_UNASSIGNED"
+  );
 };
 
 const createStageActor = (req, description = "", extra = {}) => ({
@@ -426,6 +493,14 @@ const clearReviewFieldsForResubmission = (work) => {
   work.approvedByRole = "";
   work.approvalDescription = "";
   work.approvedAt = null;
+  work.assignedRecommender = null;
+  work.assignedRecommenderName = "";
+  work.assignedRecommenderRole = "";
+  work.assignedRecommenderAt = null;
+  work.assignedFinalApprover = null;
+  work.assignedFinalApproverName = "";
+  work.assignedFinalApproverRole = "";
+  work.assignedFinalApproverAt = null;
   work.status = WORK_STAGES.PENDING_CHECK;
   work.workflowStage = WORK_STAGES.PENDING_CHECK;
 };
@@ -680,7 +755,7 @@ const toLegacyWorkRecord = (record, user) => {
   );
 };
 
-const buildWorkQuery = (query = {}) => {
+const buildWorkQuery = (query = {}, userId = "") => {
   const filters = {};
   const search = String(query.search || query.q || "").trim();
 
@@ -733,6 +808,18 @@ const buildWorkQuery = (query = {}) => {
   if (query.checkedBy) filters.checkedBy = new RegExp(escapeRegex(query.checkedBy), "i");
   if (query.recommendedBy) filters.recommendedBy = new RegExp(escapeRegex(query.recommendedBy), "i");
   if (query.approvedBy) filters.approvedBy = new RegExp(escapeRegex(query.approvedBy), "i");
+  if (query.assignedToMe === "true" && userId) {
+    filters.$and = [
+      ...(filters.$and || []),
+      {
+        $or: [
+          { workflowStage: WORK_STAGES.PENDING_CHECK, assignedChecker: userId },
+          { workflowStage: WORK_STAGES.PENDING_RECOMMENDATION, assignedRecommender: userId },
+          { workflowStage: WORK_STAGES.PENDING_FINAL_APPROVAL, assignedFinalApprover: userId }
+        ]
+      }
+    ];
+  }
 
   return filters;
 };
@@ -742,7 +829,7 @@ router.get(
   authMiddleware,
   authorizePermission("work", "view"),
   asyncHandler(async (req, res) => {
-    const filters = buildWorkQuery(req.query);
+    const filters = buildWorkQuery(req.query, req.user.id);
     const shouldPaginate = req.query.unpaginated !== "true";
     const pagination = getPagination(
       { ...req.query, limit: req.query.limit || 25 },
@@ -751,6 +838,9 @@ router.get(
     let query = WorkApproval.find(filters)
       .populate("createdBy", "name role")
       .populate("assignedTo", "name role")
+      .populate("assignedChecker", "name employeeId role")
+      .populate("assignedRecommender", "name employeeId role")
+      .populate("assignedFinalApprover", "name employeeId role")
       .sort({ createdAt: -1 })
       .lean();
     if (shouldPaginate) {
@@ -804,6 +894,11 @@ router.post(
     if (!parsed.success) {
       throw new ApiError(400, "Validation failed", parsed.error.flatten());
     }
+    const assignedChecker = await resolveEligibleAssignee(
+      parsed.data.assignedCheckerId,
+      ASSIGNMENT_STAGES.CHECK,
+      [req.user.id]
+    );
 
     const beforeFiles = [...(req.files?.beforeImages || []), ...(req.files?.beforeImage || [])];
     const beforeVideoFiles = [...(req.files?.beforeVideos || []), ...(req.files?.beforeVideo || [])];
@@ -865,6 +960,10 @@ router.post(
       createdByRole: req.user.role || "",
       idempotencyKey: idempotencyKey || undefined,
       assignedTo: payload.assignedTo || null,
+      assignedChecker: assignedChecker._id,
+      assignedCheckerName: assignedChecker.name || "",
+      assignedCheckerRole: assignedChecker.role || "",
+      assignedCheckerAt: new Date(),
       startDate: parseDate(payload.startDate),
       dueDate: parseDate(payload.dueDate),
       workflow: [],
@@ -894,17 +993,6 @@ router.post(
       { mediaCount: beforeImages.length + beforeVideos.length },
       work._id
     );
-    if (work.assignedTo) {
-      runWorkflowNotification("work_assigned", () =>
-        createNotification({
-          userId: work.assignedTo,
-          type: "work",
-          title: "New Work Approval",
-          message: `${work.title} was assigned to you`,
-          data: { workId: work._id }
-        })
-      );
-    }
     runWorkflowNotification("work_created", () =>
       notifyWorkCreated({ work, actorId: req.user.id })
     );
@@ -926,6 +1014,9 @@ router.get(
     const work = await WorkApproval.findById(req.params.id)
       .populate("createdBy", "name role")
       .populate("assignedTo", "name role")
+      .populate("assignedChecker", "name employeeId role")
+      .populate("assignedRecommender", "name employeeId role")
+      .populate("assignedFinalApprover", "name employeeId role")
       .populate("comments.user", "name role")
       .populate("digitalSignatures.signedBy", "name role");
     if (!work) throw new ApiError(404, "Work approval not found");
@@ -1121,17 +1212,24 @@ router.post(
   authMiddleware,
   asyncHandler(async (req, res) => {
     assertStagePermission(req, "check");
-    const payload = validateStagePayload(stageActionSchema, req.body);
+    const payload = validateStagePayload(checkWorkSchema, req.body);
     const reviewFindings = getRequiredActionDescription("check", payload);
     const work = await WorkApproval.findById(req.params.id);
     if (!work) throw new ApiError(404, "Work approval not found");
     assertWorkflowStage(work, WORK_STAGES.PENDING_CHECK);
+    assertAssignedActor(req, work, "check", payload.overrideReason);
     const overrideConflicts = assertStageSeparation(req, work, "check", payload.overrideReason);
+    const assignedRecommender = await resolveEligibleAssignee(
+      payload.assignedRecommenderId,
+      ASSIGNMENT_STAGES.RECOMMENDATION,
+      [work.createdBy, req.user.id]
+    );
 
     const actor = createStageActor(req, reviewFindings, { reviewFindings });
     updateStageActorFields(work, "checked", actor);
     work.status = WORK_STAGES.PENDING_RECOMMENDATION;
     work.workflowStage = WORK_STAGES.PENDING_RECOMMENDATION;
+    assignStageUser(work, ASSIGNMENT_STAGES.RECOMMENDATION, assignedRecommender);
     work.approvalHistory.push({ action: "checked", by: req.user.id, comment: reviewFindings });
     addWorkflowTimeline(work, {
       label: "Checked",
@@ -1140,7 +1238,7 @@ router.post(
     });
 
     await work.save();
-    await audit(req, "work_check", "work", { reviewFindings }, work._id);
+    await audit(req, "work_check", "work", { reviewFindings, assignedRecommenderId: assignedRecommender._id }, work._id);
     await runWorkflowNotification("work_checked", () =>
       notifyWorkChecked({ work, actorId: req.user.id })
     );
@@ -1166,17 +1264,24 @@ router.post(
   authMiddleware,
   asyncHandler(async (req, res) => {
     assertStagePermission(req, "recommend");
-    const payload = validateStagePayload(stageActionSchema, req.body);
+    const payload = validateStagePayload(recommendWorkSchema, req.body);
     const recommendationRemarks = getRequiredActionDescription("recommend", payload);
     const work = await WorkApproval.findById(req.params.id);
     if (!work) throw new ApiError(404, "Work approval not found");
     assertWorkflowStage(work, WORK_STAGES.PENDING_RECOMMENDATION);
+    assertAssignedActor(req, work, "recommend", payload.overrideReason);
     const overrideConflicts = assertStageSeparation(req, work, "recommend", payload.overrideReason);
+    const assignedFinalApprover = await resolveEligibleAssignee(
+      payload.assignedFinalApproverId,
+      ASSIGNMENT_STAGES.FINAL_APPROVAL,
+      [work.createdBy, work.checkedById, req.user.id]
+    );
 
     const actor = createStageActor(req, recommendationRemarks, { recommendationRemarks });
     updateStageActorFields(work, "recommended", actor);
     work.status = WORK_STAGES.PENDING_FINAL_APPROVAL;
     work.workflowStage = WORK_STAGES.PENDING_FINAL_APPROVAL;
+    assignStageUser(work, ASSIGNMENT_STAGES.FINAL_APPROVAL, assignedFinalApprover);
     work.approvalHistory.push({ action: "recommended", by: req.user.id, comment: recommendationRemarks });
     addWorkflowTimeline(work, {
       label: "Recommended",
@@ -1185,7 +1290,7 @@ router.post(
     });
 
     await work.save();
-    await audit(req, "work_recommend", "work", { recommendationRemarks }, work._id);
+    await audit(req, "work_recommend", "work", { recommendationRemarks, assignedFinalApproverId: assignedFinalApprover._id }, work._id);
     await runWorkflowNotification("work_recommended", () =>
       notifyWorkRecommended({ work, actorId: req.user.id })
     );
@@ -1216,6 +1321,7 @@ router.post(
     const work = await WorkApproval.findById(req.params.id);
     if (!work) throw new ApiError(404, "Work approval not found");
     assertWorkflowStage(work, WORK_STAGES.PENDING_FINAL_APPROVAL);
+    assertAssignedActor(req, work, "approve", payload.overrideReason);
     const overrideConflicts = assertStageSeparation(req, work, "approve", payload.overrideReason);
 
     const actor = createStageActor(req, approvalRemarks, { approvalRemarks });
@@ -1282,6 +1388,7 @@ router.post(
       );
     }
     const stageAction = assertReturnPermissionForStage(req, currentStage);
+    assertAssignedActor(req, work, stageAction, payload.overrideReason);
     const overrideConflicts = assertStageSeparation(req, work, stageAction, payload.overrideReason);
 
     const actor = createStageActor(req, correctionReason);
@@ -1328,6 +1435,59 @@ router.post(
       );
     }
     res.json({ success: true, work: toLegacyWorkRecord(work) });
+  })
+);
+
+router.post(
+  "/:id/reassign/:stage",
+  authMiddleware,
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.ADMIN),
+  asyncHandler(async (req, res) => {
+    const payload = validateStagePayload(reassignWorkSchema, req.body);
+    const stage = normalizeAssignmentStage(req.params.stage);
+    const field = getAssignmentField(stage);
+    if (!field) throw new ApiError(400, "Invalid workflow assignment stage");
+
+    const work = await WorkApproval.findById(req.params.id);
+    if (!work) throw new ApiError(404, "Work approval not found");
+    const currentStage = deriveWorkflowStage(work);
+    const expectedStage = {
+      [ASSIGNMENT_STAGES.CHECK]: WORK_STAGES.PENDING_CHECK,
+      [ASSIGNMENT_STAGES.RECOMMENDATION]: WORK_STAGES.PENDING_RECOMMENDATION,
+      [ASSIGNMENT_STAGES.FINAL_APPROVAL]: WORK_STAGES.PENDING_FINAL_APPROVAL
+    }[stage];
+    if (currentStage !== expectedStage && !(stage === ASSIGNMENT_STAGES.CHECK && currentStage === WORK_STAGES.RETURNED)) {
+      throw new ApiError(409, "Only the current workflow-stage assignment can be changed", { currentStage, expectedStage });
+    }
+
+    const excludedUserIds = [work.createdBy];
+    if (stage !== ASSIGNMENT_STAGES.CHECK) excludedUserIds.push(work.checkedById);
+    if (stage === ASSIGNMENT_STAGES.FINAL_APPROVAL) excludedUserIds.push(work.recommendedById);
+    const nextAssignee = await resolveEligibleAssignee(payload.userId, stage, excludedUserIds);
+    const previousAssigneeId = work[field];
+    assignStageUser(work, stage, nextAssignee);
+    addWorkflowTimeline(work, {
+      label: "Assignment Changed",
+      description: `${req.user.name || "Administrator"} reassigned ${stage} to ${nextAssignee.name}: ${payload.reason}`,
+      userId: req.user.id
+    });
+    work.approvalHistory.push({ action: `reassigned_${stage}`, by: req.user.id, comment: payload.reason });
+    await work.save();
+    await audit(req, "work_reassign", "work", {
+      stage,
+      previousAssigneeId,
+      newAssigneeId: nextAssignee._id,
+      reason: payload.reason
+    }, work._id);
+    runWorkflowNotification("work_reassigned", () => notifyWorkReassigned({
+      work,
+      actorId: req.user.id,
+      newAssigneeId: nextAssignee._id,
+      previousAssigneeId,
+      stage,
+      reason: payload.reason
+    }));
+    res.json({ success: true, work: toLegacyWorkRecord(work, req.user) });
   })
 );
 

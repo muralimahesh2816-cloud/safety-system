@@ -9,47 +9,19 @@ const reportColumns = {
     { header: "Approval No", keys: ["Approval No", "approvalNumber"] },
     { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
     { header: "Work Type", keys: ["Work Type", "workType", "title"] },
-    { header: "Description", keys: ["Description", "description", "workDescription"] },
-    { header: "Plaza", keys: ["Plaza", "plaza"] },
     { header: "Location", keys: ["Location", "location"] },
-    { header: "Chainage From", keys: ["Chainage From", "chainageFrom", "chainage", "chainageNo"], type: "chainageFrom" },
-    { header: "Chainage To", keys: ["Chainage To", "chainageTo"], type: "chainageTo" },
     { header: "Requested Chainage", keys: ["Requested Chainage", "requestedChainage"] },
     { header: "Approved Chainage", keys: ["Approved Chainage", "approvedChainage"] },
     { header: "Completed Chainage", keys: ["Completed Chainage", "completedChainage"] },
-    { header: "Remaining Chainage", keys: ["Remaining Chainage", "remainingChainage"] },
-    { header: "Partial Reason", keys: ["Partial Completion Reason", "partialCompletionReason"] },
     { header: "Completion %", keys: ["Completion %", "completionPercentage"] },
     { header: "Workers", keys: ["Workers", "Workers Count", "workersCount"] },
     { header: "Created By", keys: ["Created By", "createdByName", "reportedBy", "createdBy"] },
     { header: "Created Role", keys: ["Created Role", "createdByRole"] },
     { header: "Workflow Stage", keys: ["Workflow Stage", "workflowStage", "status"] },
     { header: "Checked By", keys: ["Checked By", "checkedBy"] },
-    { header: "Checked Role", keys: ["Checked Role", "checkedByRole"] },
-    { header: "Checked Date", keys: ["Checked Date", "checkedAt"], type: "date" },
-    { header: "Review Findings", keys: ["Review Findings", "Checked Description", "checkedDescription"] },
     { header: "Recommended By", keys: ["Recommended By", "recommendedBy"] },
-    { header: "Recommended Role", keys: ["Recommended Role", "recommendedByRole"] },
-    { header: "Recommended Date", keys: ["Recommended Date", "recommendedAt"], type: "date" },
-    { header: "Recommendation Remarks", keys: ["Recommendation Remarks", "Recommended Description", "recommendedDescription"] },
     { header: "Approved By", keys: ["Approved By", "approvedByName", "approvedBy"] },
-    { header: "Approved Role", keys: ["Approved Role", "approvedByRole"] },
-    { header: "Approval Date", keys: ["Approval Date", "approvedAt", "approvalDate"], type: "date" },
-    { header: "Approval Remarks", keys: ["Approval Remarks", "Approval Description", "approvalDescription"] },
-    { header: "Returned By", keys: ["Returned By", "returnedBy"] },
-    { header: "Returned Date", keys: ["Returned Date", "returnedAt"], type: "date" },
-    { header: "Return Reason", keys: ["Return Description", "returnDescription"] },
-    { header: "Completion Date", keys: ["Completion Date", "completionDate", "completedAt"], type: "date" },
-    { header: "Completed By", keys: ["Completed By", "completedBy"] },
-    { header: "Completion Description", keys: ["Completion Description", "completionDescription"] },
-    { header: "Updated Date", keys: ["Updated Date", "updatedAt"], type: "date" },
-    { header: "Audit History Summary", keys: ["Audit History Summary", "auditHistorySummary"] },
-    { header: "Status", keys: ["Status", "status"] },
-    { header: "Before Image", keys: ["Before Image", "beforeImage", "beforeImages"] },
-    { header: "After Image", keys: ["After Image", "afterImage", "afterImages"] },
-    { header: "Before Video", keys: ["Before Video", "beforeVideo", "beforeVideos"] },
-    { header: "After Video", keys: ["After Video", "afterVideo", "afterVideos"] },
-    { header: "Media Count", keys: ["Media Count", "mediaCount"] }
+    { header: "Status", keys: ["Status", "status"] }
   ],
   hazard: [
     { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
@@ -141,17 +113,7 @@ const reportColumns = {
 
 // Official PDFs intentionally exclude internal identifiers, raw media paths, and verbose audit fields.
 const pdfReportColumns = {
-  work: [
-    { header: "Sl No.", keys: [], type: "index" },
-    { header: "Work ID", keys: ["Work ID", "approvalNumber", "_id", "id"] },
-    { header: "Work Type", keys: ["Work Type", "workType", "title"] },
-    { header: "Location", keys: ["Location", "location"] },
-    { header: "Chainage", keys: ["Requested Chainage", "requestedChainage", "chainage", "chainageNo"] },
-    { header: "Created By", keys: ["Created By", "createdByName", "reportedBy"] },
-    { header: "Status", keys: ["Status", "workflowStage", "status"] },
-    { header: "Created Date", keys: ["Created Date", "Date", "date", "createdAt"], type: "date" },
-    { header: "Completed Date", keys: ["Completed Date", "Completion Date", "completionDate", "completedAt"], type: "date" }
-  ],
+  work: reportColumns.work,
   approved: null,
   hazard: [
     { header: "Date", keys: ["Date", "date", "createdAt"], type: "date" },
@@ -177,7 +139,7 @@ const pdfReportColumns = {
     { header: "Status", keys: ["Status", "status"] }
   ]
 };
-pdfReportColumns.approved = pdfReportColumns.work;
+pdfReportColumns.approved = reportColumns.approved;
 
 const safeValue = (value) => {
   if (value === undefined || value === null || value === "") return "-";
@@ -348,23 +310,22 @@ const addHeader = (doc, { companyName, reportTitle, generatedBy, generatedDateTe
 
 const reportColumnStyles = {
   work: {
-    0: { cellWidth: 14 },
+    0: { cellWidth: 17 },
     1: { cellWidth: 16 },
-    2: { cellWidth: 14 },
-    3: { cellWidth: 46 },
-    4: { cellWidth: 15 },
-    5: { cellWidth: 14 },
-    6: { cellWidth: 14 },
-    7: { cellWidth: 10 },
-    8: { cellWidth: 15 },
-    9: { cellWidth: 15 },
-    10: { cellWidth: 17 },
-    11: { cellWidth: 15 },
-    12: { cellWidth: 16 },
-    13: { cellWidth: 16 },
-    14: { cellWidth: 13 },
-    15: { cellWidth: 13 },
-    16: { cellWidth: 13 }
+    2: { cellWidth: 18 },
+    3: { cellWidth: 21 },
+    4: { cellWidth: 20 },
+    5: { cellWidth: 20 },
+    6: { cellWidth: 20 },
+    7: { cellWidth: 12 },
+    8: { cellWidth: 11 },
+    9: { cellWidth: 18 },
+    10: { cellWidth: 16 },
+    11: { cellWidth: 18 },
+    12: { cellWidth: 17 },
+    13: { cellWidth: 17 },
+    14: { cellWidth: 17 },
+    15: { cellWidth: 15 }
   },
   approved: {
     0: { cellWidth: 24 },
@@ -410,7 +371,7 @@ export const exportReportPdf = async ({
     rowPageBreak: "avoid",
     columnStyles: reportColumnStyles[type] || {},
     styles: {
-      fontSize: compactTable ? 5.2 : headers.length > 9 ? 6.2 : 7.5,
+      fontSize: compactTable ? 5.8 : headers.length > 9 ? 6.2 : 7.5,
       cellPadding: compactTable ? 1.25 : 1.8,
       minCellHeight: 8,
       overflow: "linebreak",
@@ -420,10 +381,10 @@ export const exportReportPdf = async ({
       textColor: PDF_COLORS.text
     },
     headStyles: {
-      fillColor: PDF_COLORS.charcoal,
+      fillColor: ["work", "approved"].includes(type) ? [198, 0, 0] : PDF_COLORS.charcoal,
       textColor: PDF_COLORS.white,
       fontStyle: "bold",
-      fontSize: compactTable ? 5.4 : headers.length > 9 ? 6.3 : 7.8,
+      fontSize: compactTable ? 6 : headers.length > 9 ? 6.3 : 7.8,
       halign: "left"
     },
     alternateRowStyles: { fillColor: PDF_COLORS.surfaceMuted }

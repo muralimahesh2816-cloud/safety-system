@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Menu } from "lucide-react";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -24,6 +24,7 @@ import { IMAGE_PLACEHOLDER_URL } from "./utils/media";
 import { canAccessModule } from "./utils/permissions";
 import useSidebarPreference from "./hooks/useSidebarPreference";
 import { APP_NAME } from "./config/appConfig";
+import { getTopbarVisibility } from "./utils/topbarVisibility";
 
 const moduleTitles = {
   dashboard: "Dashboard",
@@ -59,6 +60,10 @@ const AppContent = () => {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showTimeoutWarning, setShowTimeoutWarning] = useState(false);
   const [countdown, setCountdown] = useState(60);
+  const [topbarVisible, setTopbarVisible] = useState(true);
+  const [topbarInteracting, setTopbarInteracting] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const pageContentRef = useRef(null);
 
   const page = useMemo(() => {
     switch (activeModule) {
@@ -120,6 +125,43 @@ const AppContent = () => {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [mobileSidebarOpen]);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return undefined;
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduceMotion(query.matches);
+    update();
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+
+  useEffect(() => {
+    setTopbarVisible(true);
+  }, [activeModule, mobileSidebarOpen]);
+
+  useEffect(() => {
+    const container = pageContentRef.current;
+    if (!container || activeModule !== "dashboard") return undefined;
+    let previousScrollTop = container.scrollTop;
+    let stopTimer = null;
+    const onScroll = () => {
+      const nextScrollTop = container.scrollTop;
+      const nextVisibility = getTopbarVisibility({
+        previousScrollTop,
+        nextScrollTop,
+        interacting: topbarInteracting
+      });
+      if (nextVisibility !== null) setTopbarVisible(nextVisibility);
+      previousScrollTop = nextScrollTop;
+      if (stopTimer) window.clearTimeout(stopTimer);
+      stopTimer = window.setTimeout(() => setTopbarVisible(true), 180);
+    };
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      container.removeEventListener("scroll", onScroll);
+      if (stopTimer) window.clearTimeout(stopTimer);
+    };
+  }, [activeModule, topbarInteracting]);
 
   useEffect(() => {
     const handleUploadImageError = (event) => {
@@ -271,11 +313,23 @@ const AppContent = () => {
             {showDashboardTopbar ? (
               <motion.div
                 key="enterprise-topbar"
-                initial={{ opacity: 0, y: -18, height: 0 }}
-                animate={{ opacity: 1, y: 0, height: "auto" }}
+                initial={{ opacity: 0, y: -18 }}
+                animate={{ opacity: topbarVisible ? 1 : 0.96, y: topbarVisible ? 0 : -112 }}
                 exit={{ opacity: 0, y: -18, height: 0 }}
-                transition={{ duration: 0.22, ease: "easeOut" }}
+                transition={{ duration: reduceMotion ? 0 : 0.22, ease: "easeOut" }}
                 className="topbar-motion-shell"
+                onMouseEnter={() => {
+                  setTopbarInteracting(true);
+                  setTopbarVisible(true);
+                }}
+                onMouseLeave={() => setTopbarInteracting(false)}
+                onFocusCapture={() => {
+                  setTopbarInteracting(true);
+                  setTopbarVisible(true);
+                }}
+                onBlurCapture={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setTopbarInteracting(false);
+                }}
               >
                 <Topbar
                   user={user}
@@ -290,6 +344,7 @@ const AppContent = () => {
             ) : null}
           </AnimatePresence>
           <div
+            ref={pageContentRef}
             className={`page-content ${showDashboardTopbar ? "page-content-with-floating-topbar" : "page-content-fullscreen"}`}
           >
             {!showDashboardTopbar ? (

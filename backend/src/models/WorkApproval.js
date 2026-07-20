@@ -241,6 +241,18 @@ const workApprovalSchema = new mongoose.Schema(
     createdByName: { type: String, default: "" },
     createdByRole: { type: String, default: "" },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    assignedChecker: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    assignedCheckerName: { type: String, default: "" },
+    assignedCheckerRole: { type: String, default: "" },
+    assignedCheckerAt: Date,
+    assignedRecommender: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    assignedRecommenderName: { type: String, default: "" },
+    assignedRecommenderRole: { type: String, default: "" },
+    assignedRecommenderAt: Date,
+    assignedFinalApprover: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    assignedFinalApproverName: { type: String, default: "" },
+    assignedFinalApproverRole: { type: String, default: "" },
+    assignedFinalApproverAt: Date,
     idempotencyKey: { type: String, trim: true },
     startDate: Date,
     dueDate: Date
@@ -289,6 +301,9 @@ workApprovalSchema.index({ location: 1, workflowStage: 1, createdAt: -1 });
 workApprovalSchema.index({ checkedById: 1, workflowStage: 1, createdAt: -1 });
 workApprovalSchema.index({ recommendedById: 1, workflowStage: 1, createdAt: -1 });
 workApprovalSchema.index({ approvedById: 1, workflowStage: 1, createdAt: -1 });
+workApprovalSchema.index({ assignedChecker: 1, workflowStage: 1, createdAt: -1 });
+workApprovalSchema.index({ assignedRecommender: 1, workflowStage: 1, createdAt: -1 });
+workApprovalSchema.index({ assignedFinalApprover: 1, workflowStage: 1, createdAt: -1 });
 workApprovalSchema.index({ completedAt: -1 });
 workApprovalSchema.index({ idempotencyKey: 1 }, { unique: true, sparse: true });
 

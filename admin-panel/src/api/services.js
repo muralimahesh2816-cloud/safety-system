@@ -872,10 +872,10 @@ export const dashboardService = {
 };
 
 export const userService = {
-  list: async () =>
+  list: async (params = {}) =>
     withLegacyFallback(
       async () => {
-        const response = (await client.get("/users")).data;
+        const response = (await client.get("/users", { params })).data;
         return {
           ...response,
           users: (response.users || []).map((user) => ({
@@ -899,6 +899,12 @@ export const userService = {
         };
       }
     ),
+  eligibleAssignees: async (stage, params = {}) => {
+    const response = (await client.get("/users/eligible-assignees", {
+      params: { ...params, stage }
+    })).data;
+    return response.users || [];
+  },
   create: async (payload) =>
     withLegacyFallback(
       async () => (await client.post("/users", payload)).data,
@@ -1039,6 +1045,10 @@ export const workService = {
   approve: async (id, payload) => {
     const body = typeof payload === "string" ? { approvalRemarks: payload, description: payload } : payload;
     const res = await client.post(`/work-approvals/${id}/approve`, body);
+    return { success: true, work: mapWorkRecord(res.data.work) };
+  },
+  reassign: async (id, stage, payload) => {
+    const res = await client.post(`/work-approvals/${id}/reassign/${stage}`, payload);
     return { success: true, work: mapWorkRecord(res.data.work) };
   },
   returnForCorrection: async (id, payload) => {

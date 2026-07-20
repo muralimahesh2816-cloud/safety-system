@@ -3,8 +3,6 @@ const WorkApproval = require("../models/WorkApproval");
 const Hazard = require("../models/Hazard");
 const Training = require("../models/Training");
 const AuditLog = require("../models/AuditLog");
-const { ROLES } = require("../constants/roles");
-const { env } = require("../config/env");
 const { WORK_STAGES } = require("../constants/work-status");
 
 const monthLabel = (date) =>
@@ -89,24 +87,6 @@ const calculateSafetyScore = ({ totalWork, completedWork, totalHazards, closedHa
   const completionFactor = totalWork === 0 ? 100 : (completedWork / totalWork) * 100;
   const hazardFactor = totalHazards === 0 ? 100 : (closedHazards / totalHazards) * 100;
   return Math.min(100, Math.round(completionFactor * 0.6 + hazardFactor * 0.4));
-};
-
-const WORK_ACTION_ROLES = {
-  check: [
-    ROLES.SAFETY_OFFICER,
-    ROLES.SAFETY_ENGINEER,
-    ROLES.SITE_ENGINEER,
-    ROLES.PROJECT_ENGINEER,
-    ROLES.MAINTENANCE_ENGINEER
-  ],
-  recommend: [ROLES.SAFETY_MANAGER],
-  approve: [ROLES.PROJECT_MANAGER, ROLES.MAINTENANCE_MANAGER]
-};
-
-const userCan = (user, action) => {
-  const role = user?.role;
-  if ([ROLES.ADMIN, ROLES.SUPER_ADMIN].includes(role) && env.workflowAdminOverrideEnabled) return true;
-  return (WORK_ACTION_ROLES[action] || []).includes(role) && user?.permissions?.work?.[action] !== false;
 };
 
 const matchesStage = (values) => ({
@@ -197,10 +177,10 @@ const buildAssignedTasks = async (user = {}) => {
   const checks = [];
   const itemQueries = [];
 
-  if (userCan(user, "check")) {
-    checks.push(["pendingCheck", WorkApproval.countDocuments({ workflowStage: "Pending Check" })]);
+  if (userId) {
+    checks.push(["pendingCheck", WorkApproval.countDocuments({ workflowStage: "Pending Check", assignedChecker: userId })]);
     itemQueries.push(
-      WorkApproval.find({ workflowStage: "Pending Check" })
+      WorkApproval.find({ workflowStage: "Pending Check", assignedChecker: userId })
         .select("title workType location workflowStage priority createdAt")
         .sort({ createdAt: -1 })
         .limit(5)
@@ -209,17 +189,18 @@ const buildAssignedTasks = async (user = {}) => {
     checks.push(["pendingCheck", Promise.resolve(0)]);
   }
 
-  if (userCan(user, "recommend")) {
-    checks.push(["pendingRecommendation", WorkApproval.countDocuments({ workflowStage: "Pending Recommendation" })]);
+  if (userId) {
+    checks.push(["pendingRecommendation", WorkApproval.countDocuments({ workflowStage: "Pending Recommendation", assignedRecommender: userId })]);
   } else {
     checks.push(["pendingRecommendation", Promise.resolve(0)]);
   }
 
-  if (userCan(user, "approve")) {
+  if (userId) {
     checks.push([
       "pendingApproval",
       WorkApproval.countDocuments({
-        workflowStage: { $in: ["Pending Approval", "Pending Final Approval"] }
+        workflowStage: { $in: ["Pending Approval", "Pending Final Approval"] },
+        assignedFinalApprover: userId
       })
     ]);
   } else {
@@ -242,17 +223,20 @@ const buildAssignedTasks = async (user = {}) => {
       : Promise.resolve(0)
   ]);
 
-  if (userCan(user, "recommend")) {
+  if (userId) {
     itemQueries.push(
-      WorkApproval.find({ workflowStage: "Pending Recommendation" })
+      WorkApproval.find({ workflowStage: "Pending Recommendation", assignedRecommender: userId })
         .select("title workType location workflowStage priority createdAt")
         .sort({ createdAt: -1 })
         .limit(5)
     );
   }
-  if (userCan(user, "approve")) {
+  if (userId) {
     itemQueries.push(
-      WorkApproval.find({ workflowStage: { $in: ["Pending Approval", "Pending Final Approval"] } })
+      WorkApproval.find({
+        workflowStage: { $in: ["Pending Approval", "Pending Final Approval"] },
+        assignedFinalApprover: userId
+      })
         .select("title workType location workflowStage priority createdAt")
         .sort({ createdAt: -1 })
         .limit(5)
