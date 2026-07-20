@@ -28,7 +28,7 @@ import {
 } from "../../utils/chainage";
 import WorkCompletionSummaryCard from "../work/WorkCompletionSummaryCard";
 import DirectMediaCapture from "../media/DirectMediaCapture";
-import LocationMapCard from "../location/LocationMapCard";
+import MediaLocationCard from "../media/MediaLocationCard";
 
 const WORKFLOW_STAGES = [
   "Pending Check",
@@ -167,17 +167,16 @@ const ImagePanel = ({ label, tone, item, onOpen }) => (
       ) : null}
     </div>
     {item ? (
-      <button
-        type="button"
-        onClick={onOpen}
-        className="group flex h-56 w-full items-center justify-center overflow-hidden bg-slate-950/70 p-3 sm:h-64"
-      >
-        {item.mediaType === "video" || isVideoUrl(item.url) ? (
-          <video src={item.url} muted playsInline className="h-full w-full rounded-xl object-contain transition duration-300 group-hover:scale-[1.02]" />
-        ) : (
-          <img src={item.url} alt={label} loading="lazy" className="h-full w-full rounded-xl object-contain transition duration-300 group-hover:scale-[1.02]" />
-        )}
-      </button>
+      <div className="p-3">
+        <button type="button" onClick={onOpen} className="group flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-slate-950/70">
+          {item.mediaType === "video" || isVideoUrl(item.url) ? (
+            item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={`${label} video poster`} loading="lazy" className="h-full w-full object-cover" /> : <span className="text-sm text-slate-300">Open video preview</span>
+          ) : (
+            <img src={item.url} alt={label} loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+          )}
+        </button>
+        <div className="mt-3"><MediaLocationCard location={item.location} status={item.location?.permissionStatus} compact /></div>
+      </div>
     ) : (
       <div className="flex h-56 items-center justify-center text-sm text-slate-500 sm:h-64">No Media Available</div>
     )}
@@ -772,7 +771,6 @@ const WorkApprovalDetailsModal = ({
                   </div>
 
                   <DescriptionCard title="Work Description" value={safeWork.description || safeWork.workDescription || safeWork.details} />
-                  <LocationMapCard value={safeWork.geoLocation} defaultAddress={safeWork.location} title="Work Location" readOnly />
                   {safeWork.checkedDescription ? <DescriptionCard title="Review Findings" value={safeWork.checkedDescription} tone="emerald" /> : null}
                   {safeWork.recommendedDescription ? <DescriptionCard title="Recommendation Remarks" value={safeWork.recommendedDescription} tone="emerald" /> : null}
                   {safeWork.approvalDescription ? <DescriptionCard title="Approval Remarks" value={safeWork.approvalDescription} tone="emerald" /> : null}
@@ -829,8 +827,12 @@ const WorkApprovalDetailsModal = ({
                     partialCompletionReason={partialCompletionReason}
                     setPartialCompletionReason={setPartialCompletionReason}
                   />
-                  <ImagePanel label="Before Work Media" tone="text-teal-300" item={beforeMedia[0]} onOpen={() => openMedia(0)} />
-                  <ImagePanel label="After Work Media" tone="text-emerald-300" item={afterMedia[0]} onOpen={() => openMedia(beforeMedia.length)} />
+                  {beforeMedia.length ? beforeMedia.map((item, index) => (
+                    <ImagePanel key={item.id || item.url || index} label={`Before Work Evidence ${index + 1}`} tone="text-teal-300" item={item} onOpen={() => openMedia(index)} />
+                  )) : <ImagePanel label="Before Work Evidence" tone="text-teal-300" />}
+                  {afterMedia.length ? afterMedia.map((item, index) => (
+                    <ImagePanel key={item.id || item.url || index} label={`Completion Evidence ${index + 1}`} tone="text-emerald-300" item={item} onOpen={() => openMedia(beforeMedia.length + index)} />
+                  )) : <ImagePanel label="Completion Evidence" tone="text-emerald-300" />}
                 </div>
               </div>
             </div>

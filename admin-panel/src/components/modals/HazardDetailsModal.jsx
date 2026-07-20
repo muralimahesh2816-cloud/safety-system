@@ -15,7 +15,7 @@ import {
 import { formatDateTime } from "../../utils/format";
 import { getMediaUrl } from "../../utils/media";
 import { exportHazardDetailsPdf } from "../../utils/detailPdfExport";
-import LocationMapCard from "../location/LocationMapCard";
+import MediaLocationCard from "../media/MediaLocationCard";
 
 const valueOrDash = (value) => (value === undefined || value === null || value === "" ? "-" : value);
 
@@ -70,13 +70,16 @@ const ImagePanel = ({ label, tone, item, onOpen }) => (
       ) : null}
     </div>
     {item ? (
-      <button type="button" onClick={onOpen} className="group flex h-56 w-full items-center justify-center overflow-hidden bg-slate-950/70 p-3 sm:h-64">
-        {item.mediaType === "video" || isVideoUrl(item.url) ? (
-          <video src={item.url} muted playsInline className="h-full w-full rounded-xl object-contain transition duration-300 group-hover:scale-[1.02]" />
-        ) : (
-          <img src={item.url} alt={label} loading="lazy" className="h-full w-full rounded-xl object-contain transition duration-300 group-hover:scale-[1.02]" />
-        )}
-      </button>
+      <div className="p-3">
+        <button type="button" onClick={onOpen} className="group flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-slate-950/70">
+          {item.mediaType === "video" || isVideoUrl(item.url) ? (
+            item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={`${label} video poster`} loading="lazy" className="h-full w-full object-cover" /> : <span className="text-sm text-slate-300">Open video preview</span>
+          ) : (
+            <img src={item.url} alt={label} loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+          )}
+        </button>
+        <div className="mt-3"><MediaLocationCard location={item.location} status={item.location?.permissionStatus} compact /></div>
+      </div>
     ) : (
       <div className="flex h-56 items-center justify-center text-sm text-slate-500 sm:h-64">No Media Available</div>
     )}
@@ -203,9 +206,6 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
                   <InfoRow label="Reported By" value={hazard.reportedBy || hazard.createdBy?.name} icon={UserRound} />
                   <InfoRow label="Action Team" value={hazard.action || hazard.actionTeam} icon={UsersRound} />
                   <InfoRow label="Status" value={status} />
-                  <div className="mt-5">
-                    <LocationMapCard value={hazard.geoLocation} defaultAddress={hazard.location} title="Hazard Location" readOnly />
-                  </div>
 
                   <div className="mt-5 rounded-2xl border border-cyan-400/15 bg-cyan-500/[0.06] p-4">
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-200">Description</p>
@@ -245,8 +245,12 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
                 </div>
 
                 <div className="space-y-4">
-                  <ImagePanel label="Before / Evidence Media" tone="text-amber-300" item={evidenceMedia[0]} onOpen={() => openMedia(0)} />
-                  <ImagePanel label="After / Closure Media" tone="text-emerald-300" item={closureMedia[0]} onOpen={() => openMedia(evidenceMedia.length)} />
+                  {evidenceMedia.length ? evidenceMedia.map((item, index) => (
+                    <ImagePanel key={item.id || item.url || index} label={`Initial Evidence ${index + 1}`} tone="text-amber-300" item={item} onOpen={() => openMedia(index)} />
+                  )) : <ImagePanel label="Initial Evidence" tone="text-amber-300" />}
+                  {closureMedia.length ? closureMedia.map((item, index) => (
+                    <ImagePanel key={item.id || item.url || index} label={`Corrective Action Evidence ${index + 1}`} tone="text-emerald-300" item={item} onOpen={() => openMedia(evidenceMedia.length + index)} />
+                  )) : <ImagePanel label="Corrective Action Evidence" tone="text-emerald-300" />}
                 </div>
               </div>
             </div>

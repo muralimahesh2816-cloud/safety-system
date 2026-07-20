@@ -10,7 +10,6 @@ import ErrorBoundary from "../components/common/ErrorBoundary";
 import WorkApprovalDetailsModal from "../components/modals/WorkApprovalDetailsModal";
 import WorkCompletionSummaryCard from "../components/work/WorkCompletionSummaryCard";
 import DirectMediaCapture from "../components/media/DirectMediaCapture";
-import LocationMapCard from "../components/location/LocationMapCard";
 import { workService } from "../api/services";
 import {
   closeLoadingPopup,
@@ -21,7 +20,6 @@ import {
 } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
-import { locationChanged, normalizeRecordLocation } from "../utils/location";
 import {
   getChainageDisplay,
   getChainageFrom,
@@ -160,7 +158,6 @@ const initialForm = {
   workType: "",
   category: "General",
   location: "",
-  geoLocation: null,
   chainageFrom: "",
   chainageTo: "",
   workersCount: "",
@@ -267,7 +264,6 @@ const WorkApprovalsPage = ({ user }) => {
   const [editingWork, setEditingWork] = useState(null);
   const [editForm, setEditForm] = useState(initialForm);
   const [editSaving, setEditSaving] = useState(false);
-  const [locationEditReason, setLocationEditReason] = useState("");
   const submitLockRef = useRef(false);
   const submissionKeyRef = useRef("");
   const workActionLockRef = useRef(false);
@@ -572,7 +568,6 @@ const WorkApprovalsPage = ({ user }) => {
       workType: work.workType || "",
       category: work.category || "General",
       location: work.location || "",
-      geoLocation: normalizeRecordLocation(work),
       chainageFrom: getChainageFrom(work),
       chainageTo: getChainageTo(work),
       workersCount: work.workersCount ? String(work.workersCount) : "",
@@ -582,7 +577,6 @@ const WorkApprovalsPage = ({ user }) => {
       startDate: toDateInputValue(work.startDate),
       dueDate: toDateInputValue(work.dueDate)
     });
-    setLocationEditReason("");
   };
 
   const saveWorkEdit = async (event) => {
@@ -611,10 +605,6 @@ const WorkApprovalsPage = ({ user }) => {
     setEditSaving(true);
     await showLoadingPopup("Uploading Please Wait...", "Saving work approval corrections...");
     try {
-      const hasLocationChange = locationChanged(normalizeRecordLocation(editingWork), editForm.geoLocation);
-      if (hasLocationChange && !locationEditReason.trim()) {
-        throw new Error("Enter a reason for changing the saved location.");
-      }
       const response = await workService.update(id, {
         title: editForm.title,
         workType: editForm.workType,
@@ -630,11 +620,7 @@ const WorkApprovalsPage = ({ user }) => {
         startDate: editForm.startDate,
         dueDate: editForm.dueDate
       });
-      let updatedWork = response.work;
-      if (hasLocationChange) {
-        const locationResponse = await workService.updateLocation(id, editForm.geoLocation, locationEditReason.trim());
-        updatedWork = locationResponse.work;
-      }
+      const updatedWork = response.work;
       setRecords((prev) =>
         prev.map((item) => (getWorkRecordId(item) === id ? updatedWork : item))
       );
@@ -843,18 +829,6 @@ const WorkApprovalsPage = ({ user }) => {
               onChange={(event) => setForm((prev) => ({ ...prev, location: event.target.value }))}
               className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
               required
-            />
-            <LocationMapCard
-              value={form.geoLocation}
-              defaultAddress={form.location}
-              title="Work Location"
-              onChange={(geoLocation) => setForm((prev) => ({
-                ...prev,
-                geoLocation,
-                location: geoLocation.formattedAddress && geoLocation.formattedAddress !== "Address unavailable"
-                  ? geoLocation.formattedAddress
-                  : prev.location
-              }))}
             />
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <label>
@@ -1502,32 +1476,6 @@ const WorkApprovalsPage = ({ user }) => {
                   required
                 />
               </label>
-              <div className="md:col-span-2">
-                <LocationMapCard
-                  value={editForm.geoLocation}
-                  defaultAddress={editForm.location}
-                  title="Edit Work Location"
-                  onChange={(geoLocation) => setEditForm((prev) => ({
-                    ...prev,
-                    geoLocation,
-                    location: geoLocation.formattedAddress && geoLocation.formattedAddress !== "Address unavailable"
-                      ? geoLocation.formattedAddress
-                      : prev.location
-                  }))}
-                />
-              </div>
-              {locationChanged(normalizeRecordLocation(editingWork), editForm.geoLocation) ? (
-                <label className="md:col-span-2">
-                  <span className="mb-1 block text-xs text-slate-300">Location change reason</span>
-                  <textarea
-                    value={locationEditReason}
-                    onChange={(event) => setLocationEditReason(event.target.value)}
-                    rows={2}
-                    className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white"
-                    required
-                  />
-                </label>
-              ) : null}
               <label>
                 <span className="mb-1 block text-xs text-slate-300">Chainage From</span>
                 <input

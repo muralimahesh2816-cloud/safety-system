@@ -57,8 +57,3 @@ npm start
 - Reporting and export (CSV / Excel / PDF client-side)
 - Company profile, branding, and security settings
 - Notification center with unread counts and browser alerts
-# Google Maps location configuration
-
-The Work Approval and Hazard forms load Google Maps only when a location card is expanded. Configure `REACT_APP_GOOGLE_MAPS_API_KEY` and `REACT_APP_GOOGLE_MAP_ID` in the admin-panel environment. Enable Maps JavaScript API and Geocoding API in the Google Cloud project, attach billing, restrict the browser key by the deployed HTTP referrers, restrict it to the Maps JavaScript API, and configure quota alerts. Keep server-side reverse-geocoding credentials separate and never expose them through a `REACT_APP_` variable.
-
-When Maps is unavailable or unconfigured, the UI keeps the address and coordinate fields usable and provides a safe external Google Maps link. Existing records without coordinates continue to render as legacy address-only locations.

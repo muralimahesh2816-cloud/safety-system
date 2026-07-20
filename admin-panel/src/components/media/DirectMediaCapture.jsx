@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Film, ImagePlus, Trash2 } from "lucide-react";
+import { Camera, Eye, Film, ImagePlus, Trash2, X } from "lucide-react";
 import useDeviceLocation, { getLocationMessage, LOCATION_STATUS } from "../../hooks/useDeviceLocation";
 import { createVideoPoster, stampImageFile } from "../../utils/GpsImageStamp";
 import { locationService } from "../../api/services";
@@ -44,6 +44,7 @@ const DirectMediaCapture = ({
   const [includeLocation, setIncludeLocation] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState("");
+  const [viewingItem, setViewingItem] = useState(null);
   const accuracyWarningMeters = Number(process.env.REACT_APP_MAX_ACCEPTABLE_GPS_ACCURACY_METERS || 100);
   const { status, captureLocation } = useDeviceLocation({ accuracyWarningMeters });
 
@@ -262,27 +263,38 @@ const DirectMediaCapture = ({
       </div>
       <p className="mt-2 text-[11px] text-slate-400">Location is requested only after you choose or capture media. It is not tracked in the background.</p>
       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <button type="button" onClick={() => openPicker(photoRef)} disabled={processing} className="inline-flex items-center justify-center gap-2 rounded-xl border border-orange-300/30 bg-orange-500/10 px-3 py-2 text-xs font-semibold text-orange-100 disabled:opacity-50"><Camera size={15} /> Take Photo</button>
-        <button type="button" onClick={() => openPicker(videoRef)} disabled={processing} className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-100 disabled:opacity-50"><Film size={15} /> Record Video</button>
-        <button type="button" onClick={() => openPicker(galleryRef)} disabled={processing} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"><ImagePlus size={15} /> Choose Gallery</button>
+        <button type="button" onClick={() => openPicker(photoRef)} disabled={processing} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-orange-300/30 bg-orange-500/10 px-3 py-2 text-xs font-semibold text-orange-100 disabled:opacity-50"><Camera size={15} /> Take Photo</button>
+        <button type="button" onClick={() => openPicker(videoRef)} disabled={processing} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-100 disabled:opacity-50"><Film size={15} /> Record Video</button>
+        <button type="button" onClick={() => openPicker(galleryRef)} disabled={processing} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"><ImagePlus size={15} /> Choose from Gallery</button>
       </div>
       <input ref={photoRef} type="file" accept="image/*" capture="environment" hidden onChange={(event) => { selectFiles(event.target.files, "camera"); event.target.value = ""; }} />
       <input ref={videoRef} type="file" accept="video/*" capture="environment" hidden onChange={(event) => { selectFiles(event.target.files, "camera"); event.target.value = ""; }} />
       <input ref={galleryRef} type="file" accept="image/*,video/mp4,video/quicktime,video/x-msvideo,video/webm" multiple hidden onChange={(event) => { selectFiles(event.target.files, "gallery"); event.target.value = ""; }} />
-      {processing ? <p className="mt-3 text-xs text-cyan-200">Preparing preview and evidence stamp…</p> : null}
+      {processing ? <p className="mt-3 text-xs text-cyan-200" aria-live="polite">Requesting location and preparing evidence preview…</p> : null}
       {message ? <p className="mt-3 text-xs text-amber-200" role="alert">{message}</p> : null}
       {status !== LOCATION_STATUS.IDLE && status !== LOCATION_STATUS.CAPTURED && !processing ? <p className="mt-2 text-[11px] text-amber-200">{getLocationMessage(status)}</p> : null}
       {items.length ? (
-        <div className={`mt-3 grid gap-3 ${compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"}`}>
+        <div className={`evidence-preview-grid mt-3 ${compact ? "evidence-preview-grid--compact" : ""}`}>
           {items.map((item) => {
             const location = item.metadata.location?.latitude != null ? item.metadata.location : null;
             const gpsStatus = locationStatusFor(item.metadata.location?.permissionStatus, location);
             return (
-              <article key={item.id} className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
-                {item.mediaType === "video" ? <video src={item.previewUrl} controls preload="metadata" poster={item.posterPreviewUrl || undefined} className="h-32 w-full bg-black object-contain" /> : <img src={item.previewUrl} alt={`${label} preview`} className="h-32 w-full object-contain" />}
-                <div className="space-y-1.5 p-3 text-[11px] text-slate-300">
-                  <div className="flex items-center justify-between gap-2"><span className="truncate font-semibold text-white">{item.metadata.originalFileName}</span><span className="rounded-full bg-white/10 px-2 py-0.5 capitalize">{item.captureSource}</span></div>
-                  <p>{item.mediaType} • {formatSize(item.file.size)} • Ready to upload</p>
+              <article key={item.id} className="media-evidence-card min-w-0 overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                <button type="button" className="media-evidence-card__preview" onClick={() => setViewingItem(item)} aria-label={`Preview ${item.metadata.originalFileName}`}>
+                  {item.mediaType === "video" && item.posterPreviewUrl
+                    ? <img src={item.posterPreviewUrl} alt={`Video poster for ${item.metadata.originalFileName}`} />
+                    : item.mediaType === "video"
+                      ? <span><Film size={30} /> Video preview</span>
+                      : <img src={item.previewUrl} alt={`${label}: ${item.metadata.originalFileName}`} />}
+                </button>
+                <div className="min-w-0 space-y-2 p-3 text-[11px] text-slate-300">
+                  <p className="break-words font-semibold leading-5 text-white" title={item.metadata.originalFileName}>{item.metadata.originalFileName}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="rounded-full bg-white/10 px-2 py-1 capitalize">{item.captureSource}</span>
+                    <span className="rounded-full bg-cyan-500/10 px-2 py-1 capitalize text-cyan-100">{item.mediaType}</span>
+                    <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-100">Ready to upload</span>
+                  </div>
+                  <p>{formatSize(item.file.size)}</p>
                   <MediaLocationCard
                     compact
                     location={location}
@@ -290,10 +302,10 @@ const DirectMediaCapture = ({
                     onRetryGps={() => retryLocation(item)}
                     onRefreshAddress={location ? () => refreshAddress(item) : undefined}
                     onRemove={location ? () => removeLocation(item) : undefined}
-                    canRemove
                   />
-                  <div className="flex gap-2 pt-1">
-                    <button type="button" onClick={() => removeItem(item.id)} className="inline-flex items-center gap-1 rounded-lg border border-rose-300/20 px-2 py-1 text-rose-200"><Trash2 size={12} /> Remove</button>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button type="button" onClick={() => setViewingItem(item)} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-white/15 px-3 py-2 text-slate-100"><Eye size={14} /> Preview</button>
+                    <button type="button" onClick={() => removeItem(item.id)} aria-label={`Remove ${item.metadata.originalFileName}`} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-rose-300/20 px-3 py-2 text-rose-200"><Trash2 size={14} /> Remove</button>
                   </div>
                 </div>
               </article>
@@ -301,6 +313,16 @@ const DirectMediaCapture = ({
           })}
         </div>
       ) : <p className="mt-3 text-[11px] text-slate-500">No evidence selected. Desktop browsers may open the standard file picker when native capture is unavailable.</p>}
+      {viewingItem ? (
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/90 p-4" role="dialog" aria-modal="true" aria-label={`Preview ${viewingItem.metadata.originalFileName}`} onClick={() => setViewingItem(null)}>
+          <div className="relative max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-white/15 bg-slate-950 p-3" onClick={(event) => event.stopPropagation()}>
+            <button type="button" onClick={() => setViewingItem(null)} aria-label="Close preview" className="absolute right-4 top-4 z-10 inline-flex h-11 w-11 items-center justify-center rounded-full bg-slate-950/80 text-white"><X size={20} /></button>
+            {viewingItem.mediaType === "video"
+              ? <video src={viewingItem.previewUrl} controls preload="metadata" poster={viewingItem.posterPreviewUrl || undefined} className="max-h-[84vh] w-full object-contain" />
+              : <img src={viewingItem.previewUrl} alt={`${label}: ${viewingItem.metadata.originalFileName}`} className="max-h-[84vh] w-full object-contain" />}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 };
