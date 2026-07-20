@@ -82,7 +82,7 @@ const Topbar = ({ user, onLogout, title, onSelectModule, onToggleSidebar, sideba
   }, [profilePhotoUrl]);
 
   return (
-    <header className="relative z-[80] mb-5 flex items-center justify-between overflow-visible rounded-2xl border border-white/10 bg-slate-950/65 px-3 py-3 backdrop-blur-2xl md:px-5">
+    <header className="brand-topbar relative z-[80] mb-5 flex items-center justify-between overflow-visible rounded-2xl border border-white/10 bg-slate-950/65 px-3 py-3 backdrop-blur-2xl md:px-5">
       <div className="flex items-center gap-3">
         <button
           type="button"
@@ -102,7 +102,8 @@ const Topbar = ({ user, onLogout, title, onSelectModule, onToggleSidebar, sideba
           <div className="relative flex h-16 w-16 items-center justify-center">
             <motion.div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 rounded-full bg-cyan-300/15 blur-xl"
+              className="pointer-events-none absolute inset-0 rounded-full blur-xl"
+              style={{ background: "rgba(var(--brand-primary-rgb), .18)" }}
               animate={
                 logoHovered
                   ? { opacity: [0.25, 0.55, 0.25], scale: [1, 1.1, 1] }
@@ -133,7 +134,7 @@ const Topbar = ({ user, onLogout, title, onSelectModule, onToggleSidebar, sideba
               <img
                 src={topbarLogo}
                 alt={`${APP_NAME} logo`}
-                className="h-12 w-12 object-contain drop-shadow-[0_0_22px_rgba(45,212,191,0.42)]"
+                className="h-12 w-12 object-contain"
               />
             </motion.div>
           </div>

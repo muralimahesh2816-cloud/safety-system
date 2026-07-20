@@ -297,7 +297,7 @@ const ReportsPage = () => {
 
       <GlassCard className="p-5">
         <h3 className="mb-3 text-lg font-semibold text-white">Legacy Report Generator</h3>
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-5">
+        <div className="report-filters grid grid-cols-1 gap-2 md:grid-cols-5">
           <select
             value={type}
             onChange={(event) => setType(event.target.value)}
@@ -336,12 +336,12 @@ const ReportsPage = () => {
             type="button"
             onClick={generateReport}
             disabled={Boolean(busyAction)}
-            className="rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="hse-primary-button rounded-xl px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busyAction === "generate" ? "Generating..." : "Generate Report"}
           </button>
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="report-actions mt-3 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={exportExcel}
@@ -390,7 +390,7 @@ const ReportsPage = () => {
           <div className="max-h-[28rem] overflow-auto">
             <table className="w-full min-w-[980px] table-auto text-left text-xs">
               <thead className="sticky top-0 z-10 bg-slate-950/95 shadow-[0_8px_20px_rgba(0,0,0,.25)] backdrop-blur-xl">
-                <tr className="border-b border-cyan-400/20 text-slate-300">
+                <tr className="border-b border-rose-400/20 text-slate-300">
                   {Object.keys(normalizedReportRows[0] || {}).map((header) => (
                     <th key={header} className="whitespace-nowrap px-4 py-3 font-semibold uppercase tracking-[0.08em]">
                       {header}
@@ -400,7 +400,7 @@ const ReportsPage = () => {
               </thead>
               <tbody>
                 {normalizedReportRows.map((row, idx) => (
-                  <tr key={`row-${idx}`} className="border-b border-white/[0.06] text-slate-200 transition hover:bg-cyan-500/[0.06] odd:bg-white/[0.018]">
+                  <tr key={`row-${idx}`} className="border-b border-white/[0.06] text-slate-200 transition hover:bg-rose-500/[0.06] odd:bg-white/[0.018]">
                     {Object.keys(normalizedReportRows[0] || {}).map((header) => (
                       <td key={`${idx}-${header}`} className="max-w-[260px] px-4 py-3 align-top leading-5">
                         {header === "Status" ? (
@@ -457,7 +457,7 @@ const ReportsPage = () => {
                     <XAxis dataKey="name" stroke="#cbd5e1" />
                     <YAxis stroke="#cbd5e1" />
                     <Tooltip />
-                    <Bar dataKey="value" fill="#14B8A6" radius={[8, 8, 0, 0]} />
+                    <Bar dataKey="value" fill="#9B1400" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </SafeChartContainer>

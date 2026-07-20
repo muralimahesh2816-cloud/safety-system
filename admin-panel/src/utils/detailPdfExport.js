@@ -3,6 +3,7 @@ import autoTable from "jspdf-autotable";
 import companyLogoUrl from "../assets/vertis-logo.svg";
 import { APP_NAME } from "../config/appConfig";
 import { getMediaUrl } from "./media";
+import { addStandardPdfFooters, PDF_COLORS, PDF_LAYOUT } from "./pdfDesign";
 import {
   calculateCompletionPercentage,
   getApprovedChainageFrom,
@@ -108,7 +109,7 @@ const loadLogo = async () => {
 
 const addPageHeader = (doc, reportTitle, logoData) => {
   const width = doc.internal.pageSize.getWidth();
-  doc.setDrawColor(203, 213, 225);
+  doc.setDrawColor(...PDF_COLORS.border);
   doc.setLineWidth(0.3);
   doc.line(14, 34, width - 14, 34);
   doc.setFont("helvetica", "bold");
@@ -121,51 +122,40 @@ const addPageHeader = (doc, reportTitle, logoData) => {
   doc.text(SYSTEM_NAME, 14, 21);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.setTextColor(8, 145, 178);
+  doc.setTextColor(...PDF_COLORS.primary);
   doc.text(reportTitle, 14, 29);
   if (logoData) {
     try {
-      doc.addImage(logoData, undefined, width - 33, 8, 19, 19);
+      const properties = doc.getImageProperties(logoData);
+      const ratio = Math.min(30 / properties.width, 16 / properties.height);
+      const logoWidth = properties.width * ratio;
+      const logoHeight = properties.height * ratio;
+      doc.addImage(logoData, undefined, width - 14 - logoWidth, 9, logoWidth, logoHeight);
     } catch (_error) {
       // Keep PDF generation working if this browser cannot decode the logo.
     }
   }
 };
 
-const addPageFooters = (doc, generatedAt, generatedBy) => {
-  const total = doc.internal.getNumberOfPages();
-  const width = doc.internal.pageSize.getWidth();
-  const height = doc.internal.pageSize.getHeight();
-  for (let page = 1; page <= total; page += 1) {
-    doc.setPage(page);
-    doc.setDrawColor(226, 232, 240);
-    doc.line(14, height - 15, width - 14, height - 15);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`Generated: ${generatedAt} | By: ${generatedBy}`, 14, height - 9);
-    doc.text(`Page ${page} of ${total}`, width - 14, height - 9, { align: "right" });
-  }
-};
-
-const addDetailsTable = (doc, rows, startY = 42) => {
+const addDetailsTable = (doc, rows, startY = 42, didDrawPage) => {
   autoTable(doc, {
     startY,
-    margin: { top: 42, left: 14, right: 14, bottom: 22 },
+    margin: PDF_LAYOUT.margin,
     head: [["Field", "Details"]],
     body: rows.map(([label, value]) => [label, safe(value)]),
     theme: "grid",
     styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak", valign: "top" },
-    headStyles: { fillColor: [15, 23, 42], textColor: [248, 250, 252], fontStyle: "bold" },
+    headStyles: { fillColor: PDF_COLORS.charcoal, textColor: PDF_COLORS.white, fontStyle: "bold" },
     columnStyles: {
       0: { cellWidth: 48, fontStyle: "bold", textColor: [51, 65, 85], fillColor: [241, 245, 249] },
       1: { textColor: [15, 23, 42] }
-    }
+    },
+    didDrawPage
   });
   return doc.lastAutoTable.finalY;
 };
 
-const addDescription = (doc, title, description, startY) => {
+const addDescription = (doc, title, description, startY, onNewPage) => {
   const width = doc.internal.pageSize.getWidth();
   const height = doc.internal.pageSize.getHeight();
   const lines = doc.splitTextToSize(safe(description), width - 34);
@@ -173,13 +163,14 @@ const addDescription = (doc, title, description, startY) => {
   let y = startY + 9;
   if (y + needed > height - 24) {
     doc.addPage();
+    onNewPage?.();
     y = 42;
   }
-  doc.setFillColor(236, 254, 255);
+  doc.setFillColor(...PDF_COLORS.primarySoft);
   doc.roundedRect(14, y, width - 28, needed, 3, 3, "F");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  doc.setTextColor(14, 116, 144);
+  doc.setTextColor(...PDF_COLORS.primary);
   doc.text(title, 18, y + 7);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
@@ -188,7 +179,7 @@ const addDescription = (doc, title, description, startY) => {
   return y + needed;
 };
 
-const addTimeline = (doc, timeline = [], startY) => {
+const addTimeline = (doc, timeline = [], startY, didDrawPage) => {
   if (!timeline.length) return startY;
   const rows = timeline.slice(-12).map((item) => [
     formatDate(item.at || item.createdAt || item.date),
@@ -199,17 +190,19 @@ const addTimeline = (doc, timeline = [], startY) => {
   let y = startY + 9;
   if (y + 45 > pageHeight - 24) {
     doc.addPage();
+    didDrawPage?.();
     y = 42;
   }
   autoTable(doc, {
     startY: y,
-    margin: { top: 42, left: 14, right: 14, bottom: 22 },
+    margin: PDF_LAYOUT.margin,
     head: [["Timeline Date", "Event", "Details"]],
     body: rows,
     theme: "grid",
     styles: { fontSize: 8, cellPadding: 2.5, overflow: "linebreak" },
-    headStyles: { fillColor: [8, 145, 178], textColor: [255, 255, 255] },
-    columnStyles: { 0: { cellWidth: 38 }, 1: { cellWidth: 42 } }
+    headStyles: { fillColor: PDF_COLORS.primary, textColor: PDF_COLORS.white },
+    columnStyles: { 0: { cellWidth: 38 }, 1: { cellWidth: 42 } },
+    didDrawPage
   });
   return doc.lastAutoTable.finalY;
 };
@@ -267,15 +260,16 @@ const addImagePage = async (doc, { label, item, mediaType = "image" }) => {
 };
 
 const finalizePdf = async ({ reportTitle, fileName, detailRows, descriptionTitle, description, timeline, images, save = true }) => {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const doc = new jsPDF({ orientation: "portrait", unit: PDF_LAYOUT.unit, format: PDF_LAYOUT.format });
   const logoData = await loadLogo();
   const generatedAt = new Date().toLocaleString("en-IN");
   const generatedBy = localStorage.getItem("name") || localStorage.getItem("userName") || "Safety user";
+  const drawHeader = () => addPageHeader(doc, reportTitle, logoData);
 
   const officialRows = detailRows.filter(([, value]) => value !== undefined && value !== null && value !== "" && value !== "-");
-  let y = addDetailsTable(doc, officialRows);
-  y = addDescription(doc, descriptionTitle, description, y);
-  addTimeline(doc, timeline, y);
+  let y = addDetailsTable(doc, officialRows, 42, drawHeader);
+  y = addDescription(doc, descriptionTitle, description, y, drawHeader);
+  addTimeline(doc, timeline, y, drawHeader);
 
   for (const image of images) {
     await addImagePage(doc, image);
@@ -286,12 +280,12 @@ const finalizePdf = async ({ reportTitle, fileName, detailRows, descriptionTitle
     doc.setPage(page);
     addPageHeader(doc, reportTitle, logoData);
   }
-  addPageFooters(doc, generatedAt, generatedBy);
+  addStandardPdfFooters(doc, { generatedAt, generatedBy });
   if (save) doc.save(fileName);
   return doc;
 };
 
-export const exportHazardDetailsPdf = async (hazard = {}) => {
+export const exportHazardDetailsPdf = async (hazard = {}, { save = true } = {}) => {
   const evidence = normalizeMedia(hazard.evidenceImages, hazard.beforeImage);
   const closure = normalizeMedia(hazard.closureImages, hazard.afterImage);
   const evidenceVideos = normalizeMedia(hazard.evidenceVideos, hazard.beforeVideo);
@@ -299,6 +293,7 @@ export const exportHazardDetailsPdf = async (hazard = {}) => {
   return finalizePdf({
     reportTitle: "Hazard Details Report",
     fileName: `hazard-details-${hazard._id || Date.now()}.pdf`,
+    save,
     detailRows: [
       ["Report Date", formatDate(hazard.date || hazard.createdAt)],
       ["Category", hazard.category],

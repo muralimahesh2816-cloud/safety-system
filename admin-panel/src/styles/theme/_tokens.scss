@@ -1,0 +1,31 @@
+$brand-primary: #9b1400;
+$brand-charcoal: #151719;
+
+:root {
+  --brand-primary: #9b1400;
+  --brand-primary-rgb: 155, 20, 0;
+  --brand-primary-dark: #741000;
+  --brand-primary-light: #b82510;
+  --brand-primary-soft: #f8e9e6;
+  --brand-accent: #b67352;
+  --brand-charcoal: #151719;
+  --brand-surface: #ffffff;
+  --brand-background: #f4f1ed;
+  --brand-text: #1e2022;
+  --brand-text-on-dark: #fffaf7;
+  --brand-text-muted: #67635f;
+  --brand-border: #ded8d2;
+  --brand-border-strong: #bdb5ae;
+  --brand-success: #27734b;
+  --brand-warning: #a05d08;
+  --brand-danger: #b42318;
+  --portal-background: radial-gradient(circle at 78% 15%, rgba(155,20,0,.17), transparent 34%), linear-gradient(145deg,#0e1012 0%,#1a1c1f 55%,#111315 100%);
+  --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --shadow-card: 0 18px 48px rgba(15,17,19,.18);
+  --shadow-glass: 0 34px 84px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.35);
+  --focus-ring: 0 0 0 4px rgba(155,20,0,.14);
+}

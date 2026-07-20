@@ -13,7 +13,7 @@ import {
   RotateCcw,
   ShieldCheck
 } from "lucide-react";
-import brandMark from "../../assets/topbarlogo.svg";
+import brandLogo from "../../assets/vertis-logo.svg";
 import {
   APP_TITLE,
   ORGANIZATION_NAME,
@@ -302,7 +302,7 @@ const LoginPanel = ({ onLogin, onVerifyOtp, onResendOtp, onAuthenticated }) => {
       <header className="auth-card__header">
         <div className="auth-card__identity">
           <span className="auth-card__logo" aria-hidden="true">
-            <img src={brandMark} alt="" />
+            <img src={brandLogo} alt="Vertis" />
           </span>
           <span>
             <strong>{PORTAL_BRAND_NAME}</strong>

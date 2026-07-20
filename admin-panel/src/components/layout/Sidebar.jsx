@@ -6,12 +6,12 @@ import {
   GraduationCap,
   HeartPulse,
   Settings,
-  ShieldCheck,
   ShieldAlert,
   Users,
   X
 } from "lucide-react";
 import { APP_NAME, NAV_MODULES } from "../../config/appConfig";
+import vertisLogo from "../../assets/vertis-logo.svg";
 import { classNames } from "../../utils/format";
 import { canAccessModule } from "../../utils/permissions";
 
@@ -43,13 +43,13 @@ const Sidebar = ({
     <aside
       aria-label="Primary navigation"
       className={classNames(
-        "flex h-full w-full flex-col border-r border-white/10 bg-slate-950/80 p-4 backdrop-blur-2xl",
+        "brand-sidebar flex h-full w-full flex-col border-r border-white/10 bg-slate-950/80 p-4 backdrop-blur-2xl",
         mobile ? "border-r-0" : ""
       )}
     >
       <div className={classNames("mb-4 flex items-center", compact ? "justify-center" : "justify-between gap-3")}>
         <div className={classNames("flex min-w-0 items-center", compact ? "justify-center" : "gap-2")} title={compact ? APP_NAME : undefined}>
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500/15 text-orange-100"><ShieldCheck size={18} /></span>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1"><img src={vertisLogo} alt="Vertis" className="h-full w-full object-contain" /></span>
           {!compact ? <span className="text-sm font-semibold leading-tight text-white">{APP_NAME}</span> : null}
         </div>
         {mobile ? (
@@ -75,7 +75,7 @@ const Sidebar = ({
                 "group relative flex w-full items-center rounded-2xl text-left transition",
                 compact ? "justify-center px-2 py-3" : "gap-3 px-4 py-3",
                 active
-                  ? "bg-gradient-to-r from-teal-500/40 to-sky-500/40 text-white"
+                  ? "brand-nav-active text-white"
                   : "bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
               )}
               title={compact ? module.label : undefined}
@@ -102,7 +102,7 @@ const Sidebar = ({
             checked={locked}
             onChange={(event) => onLockChange?.(event.target.checked)}
             aria-label="Keep sidebar expanded"
-            className="h-4 w-4 accent-cyan-500"
+            className="brand-lock-input h-4 w-4"
           />
           <span>
             <span className="block font-semibold">Keep sidebar expanded</span>
