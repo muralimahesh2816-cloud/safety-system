@@ -1,13 +1,18 @@
 const mongoose = require("mongoose");
 const ApiError = require("./api-error");
 const { env } = require("../config/env");
-const { normalizeRole, ROLES } = require("../constants/roles");
 
 const locationSchema = new mongoose.Schema(
   {
     latitude: Number,
     longitude: Number,
+    lat: Number,
+    lng: Number,
+    lon: Number,
+    coordinates: [Number],
+    geometry: mongoose.Schema.Types.Mixed,
     accuracyMeters: Number,
+    accuracy: Number,
     altitude: Number,
     altitudeMeters: Number,
     heading: Number,
@@ -19,8 +24,10 @@ const locationSchema = new mongoose.Schema(
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     permissionStatus: { type: String, default: "not_requested" },
     locationSource: { type: String, default: "browser_geolocation" },
+    source: String,
     isVerified: { type: Boolean, default: false },
     formattedAddress: String,
+    address: String,
     addressLine1: String,
     addressLine2: String,
     locality: String,
@@ -81,6 +88,20 @@ const assetSchema = new mongoose.Schema(
     height: Number,
     durationSeconds: Number,
     fileHash: String,
+    latitude: Number,
+    longitude: Number,
+    lat: Number,
+    lng: Number,
+    lon: Number,
+    coordinates: [Number],
+    geoLocation: mongoose.Schema.Types.Mixed,
+    formattedAddress: String,
+    address: String,
+    accuracyMeters: Number,
+    accuracy: Number,
+    capturedAt: Date,
+    source: String,
+    locationSource: String,
     location: locationSchema,
     watermark: watermarkSchema,
     videoOverlay: { type: String, enum: ["player_metadata", "permanent", "none"], default: "none" },
@@ -246,66 +267,165 @@ const mergeMediaMetadata = (assets, metadata, {
     };
   });
 
-const EXACT_LOCATION_ROLES = new Set([
-  ROLES.SUPER_ADMIN,
-  ROLES.ADMIN,
-  ROLES.SAFETY_MANAGER,
-  ROLES.PROJECT_MANAGER,
-  ROLES.MAINTENANCE_MANAGER
-]);
+const toPlainObject = (value) =>
+  value && typeof value.toObject === "function" ? value.toObject() : value;
 
-const canViewExactLocation = (user, record = {}) => {
-  const role = normalizeRole(user?.role);
-  if (EXACT_LOCATION_ROLES.has(role)) return true;
-  const userId = String(user?.id || user?._id || "");
-  return Boolean(userId && [record.createdBy, record.reportedBy, record.assignedTo]
-    .filter(Boolean)
-    .some((value) => String(value?._id || value) === userId));
+const validCoordinates = (latitude, longitude) =>
+  Number.isFinite(latitude) &&
+  Number.isFinite(longitude) &&
+  latitude >= -90 &&
+  latitude <= 90 &&
+  longitude >= -180 &&
+  longitude <= 180;
+
+const coordinatesFrom = (raw = {}) => {
+  const latitude = optionalFinite(raw.latitude ?? raw.lat);
+  const longitude = optionalFinite(raw.longitude ?? raw.lng ?? raw.lon);
+  if (validCoordinates(latitude, longitude)) return { latitude, longitude };
+
+  const geoJsonCoordinates = Array.isArray(raw.coordinates)
+    ? raw.coordinates
+    : Array.isArray(raw.geometry?.coordinates)
+      ? raw.geometry.coordinates
+      : null;
+  if (geoJsonCoordinates?.length >= 2) {
+    const geoLongitude = optionalFinite(geoJsonCoordinates[0]);
+    const geoLatitude = optionalFinite(geoJsonCoordinates[1]);
+    if (validCoordinates(geoLatitude, geoLongitude)) {
+      return { latitude: geoLatitude, longitude: geoLongitude };
+    }
+  }
+  return null;
 };
 
-const redactAssetLocation = (asset) => {
-  if (!asset?.location) return asset;
-  const {
-    latitude,
-    longitude,
-    altitude,
-    altitudeMeters,
-    heading,
-    formattedAddress,
-    addressLine1,
-    addressLine2,
-    locality,
-    subLocality,
-    city,
-    plaza,
-    district,
-    state,
-    postalCode,
-    country,
-    ...limited
-  } = asset.location;
-  return { ...asset, location: { ...limited, recorded: Boolean(latitude !== undefined && longitude !== undefined) } };
+const normalizedDisplaySource = (value, fallback = "") => {
+  const source = String(value || fallback || "").trim().toLowerCase();
+  const allowed = new Set([
+    "device_gps",
+    "browser_geolocation",
+    "map_adjusted",
+    "coordinate_entry",
+    "place_search",
+    "camera",
+    "gallery",
+    "file",
+    "legacy"
+  ]);
+  return allowed.has(source) ? source : "";
 };
 
-const redactRecordLocations = (record, user, mediaFields) => {
-  if (canViewExactLocation(user, record)) return record;
-  const next = { ...record };
-  if (record.geoLocation) {
-    const redacted = redactAssetLocation({ location: record.geoLocation });
-    next.geoLocation = redacted.location;
+const normalizeLocationForDisplay = (rawLocation, fallback = {}) => {
+  const primary = toPlainObject(rawLocation) || {};
+  const secondary = toPlainObject(fallback) || {};
+  const primaryCoordinates = coordinatesFrom(primary);
+  const fallbackCoordinates = primaryCoordinates ? null : coordinatesFrom(secondary);
+  const coordinates = primaryCoordinates || fallbackCoordinates;
+  const legacyGeoCoordinates = coordinates || coordinatesFrom(primary.geoLocation || secondary.geoLocation || {});
+  const formattedAddress = safeLocationText(
+    primary.formattedAddress ||
+    primary.address ||
+    primary.plaza ||
+    secondary.formattedAddress ||
+    secondary.address ||
+    "",
+    500
+  );
+
+  if (!legacyGeoCoordinates && !formattedAddress) return null;
+
+  const accuracyValue = optionalFinite(
+    primary.accuracyMeters ?? primary.accuracy ?? secondary.accuracyMeters ?? secondary.accuracy
+  );
+  const capturedAtValue = primary.capturedAt || primary.timestamp || secondary.capturedAt || secondary.uploadedAt;
+  const capturedAt = capturedAtValue ? new Date(capturedAtValue) : null;
+  const hasCapturedAt = capturedAt && !Number.isNaN(capturedAt.getTime());
+  const source = normalizedDisplaySource(
+    primary.source || primary.locationSource,
+    secondary.source || secondary.locationSource || secondary.captureSource || (fallbackCoordinates ? "legacy" : "")
+  );
+
+  return {
+    formattedAddress: formattedAddress || "Address unavailable",
+    latitude: legacyGeoCoordinates?.latitude ?? null,
+    longitude: legacyGeoCoordinates?.longitude ?? null,
+    accuracyMeters: Number.isFinite(accuracyValue) && accuracyValue > 0 ? accuracyValue : null,
+    capturedAt: hasCapturedAt ? capturedAt.toISOString() : null,
+    source: source || null,
+    status: legacyGeoCoordinates ? "captured" : "address_only"
+  };
+};
+
+const normalizeAssetLocationForDisplay = (asset) => {
+  const plain = toPlainObject(asset) || {};
+  const canonical = toPlainObject(plain.location);
+  const location = normalizeLocationForDisplay(canonical, plain);
+  return {
+    module: plain.module || null,
+    stage: plain.stage || null,
+    mediaType: plain.mediaType || null,
+    captureSource: plain.captureSource || null,
+    url: plain.secureUrl || plain.url || plain.watermarkedUrl || "",
+    secureUrl: plain.secureUrl || plain.url || "",
+    thumbnailUrl: plain.thumbnailUrl || "",
+    watermarkedUrl: plain.watermarkedUrl || "",
+    originalName: plain.originalName || "",
+    originalFileName: plain.originalFileName || plain.originalName || "",
+    mimeType: plain.mimeType || "",
+    size: plain.size ?? plain.sizeBytes ?? null,
+    sizeBytes: plain.sizeBytes ?? plain.size ?? null,
+    width: plain.width ?? null,
+    height: plain.height ?? null,
+    durationSeconds: plain.durationSeconds ?? null,
+    location,
+    watermark: plain.watermark
+      ? {
+          applied: plain.watermark.applied === true,
+          processingStatus: plain.watermark.processingStatus || "not_required"
+        }
+      : null,
+    videoOverlay: plain.videoOverlay || "none",
+    uploadedAt: plain.uploadedAt || null
+  };
+};
+
+const normalizeRecordLocations = (record, mediaFields = []) => {
+  const plain = toPlainObject(record) || {};
+  const next = { ...plain };
+  if (Object.prototype.hasOwnProperty.call(plain, "geoLocation")) {
+    next.geoLocation = normalizeLocationForDisplay(plain.geoLocation);
+  }
+  if (Array.isArray(plain.locationAuditHistory)) {
+    next.locationAuditHistory = plain.locationAuditHistory.map((entry) => {
+      const auditEntry = toPlainObject(entry) || {};
+      return {
+        reason: auditEntry.reason || "",
+        updatedByName: auditEntry.updatedByName || "",
+        updatedByRole: auditEntry.updatedByRole || "",
+        updatedAt: auditEntry.updatedAt || null,
+        previousLocation: normalizeLocationForDisplay(auditEntry.previousLocation),
+        newLocation: normalizeLocationForDisplay(auditEntry.newLocation)
+      };
+    });
   }
   mediaFields.forEach((field) => {
-    next[field] = (record[field] || []).map(redactAssetLocation);
+    next[field] = (plain[field] || []).map(normalizeAssetLocationForDisplay);
   });
   return next;
 };
+
+// Backward-compatible export for callers outside this repository. Authorization is
+// performed by the protected parent-record route; authorized viewers receive the
+// same normalized display fields regardless of role or workflow assignment.
+const redactRecordLocations = (record, _user, mediaFields = []) =>
+  normalizeRecordLocations(record, mediaFields);
 
 module.exports = {
   assetSchema,
   locationSchema,
   normalizeLocation,
+  normalizeLocationForDisplay,
+  normalizeRecordLocations,
   parseMediaMetadata,
   mergeMediaMetadata,
-  redactRecordLocations,
-  canViewExactLocation
+  redactRecordLocations
 };

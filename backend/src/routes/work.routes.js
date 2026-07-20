@@ -40,7 +40,7 @@ const { createMemoryUpload, IMAGE_MIME_TYPES, VIDEO_MIME_TYPES } = require("../u
 const {
   parseMediaMetadata,
   mergeMediaMetadata,
-  redactRecordLocations,
+  normalizeRecordLocations,
   normalizeLocation
 } = require("../utils/media-metadata");
 const { reverseGeocode } = require("../services/location.service");
@@ -748,9 +748,8 @@ const toLegacyWorkRecord = (record, user) => {
     returnedHistory: plain.returnedHistory || [],
     chainageAuditHistory: plain.chainageAuditHistory || []
   };
-  return redactRecordLocations(
+  return normalizeRecordLocations(
     serialized,
-    user,
     ["beforeImages", "afterImages", "beforeVideos", "afterVideos"]
   );
 };

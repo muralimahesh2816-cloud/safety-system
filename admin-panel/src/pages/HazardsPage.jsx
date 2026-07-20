@@ -17,6 +17,7 @@ import {
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
 import { exportHazardDetailsPdf } from "../utils/detailPdfExport";
+import { normalizeEvidenceLocation } from "../utils/location";
 
 const severityWeight = {
   Low: 1,
@@ -61,6 +62,10 @@ const mediaItemsFrom = (items = [], fallback) =>
       url: getMediaUrl(item)
     }))
     .filter((item) => Boolean(item.url));
+const hasRecordedEvidenceLocation = (hazard = {}) =>
+  ["evidenceImages", "evidenceVideos", "closureImages", "closureVideos"].some((field) =>
+    (hazard[field] || []).some((item) => Boolean(normalizeEvidenceLocation(item?.location, item)))
+  );
 
 const formatFileSize = (bytes = 0) => {
   if (!bytes) return "0 KB";
@@ -773,6 +778,9 @@ const HazardsPage = ({ user }) => {
                           }`}>
                             {hazard.status === "Closed" ? "Closed" : "Open"}
                           </span>
+                          {hasRecordedEvidenceLocation(hazard) ? (
+                            <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-100">Location Recorded</span>
+                          ) : null}
                         </div>
                         <p className="mt-2 text-xs text-slate-400">{formatDateTime(hazard.date || hazard.createdAt)}</p>
                       </div>

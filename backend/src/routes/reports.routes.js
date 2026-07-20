@@ -9,7 +9,10 @@ const User = require("../models/User");
 const Training = require("../models/Training");
 const { filterByPeriod, buildCsv } = require("../utils/reporting");
 const { getChainageFrom, getChainageTo } = require("../utils/chainage");
-const { canViewExactLocation, redactRecordLocations } = require("../utils/media-metadata");
+const {
+  normalizeLocationForDisplay,
+  normalizeRecordLocations
+} = require("../utils/media-metadata");
 const logger = require("../utils/logger");
 
 const router = express.Router();
@@ -68,7 +71,7 @@ const normalizeWorkflowStage = (record = {}) => {
   return stage === "Pending Approval" ? "Pending Final Approval" : stage;
 };
 
-const toLegacyWorkRecord = (record, user) => redactRecordLocations({
+const toLegacyWorkRecord = (record) => normalizeRecordLocations({
   _id: record._id,
   approvalNumber: record.approvalNumber || `WA-${String(record._id).slice(-8).toUpperCase()}`,
   date: record.createdAt,
@@ -137,7 +140,7 @@ const toLegacyWorkRecord = (record, user) => redactRecordLocations({
     (record.afterImages?.length || 0) +
     (record.beforeVideos?.length || 0) +
     (record.afterVideos?.length || 0)
-}, user, ["beforeImages", "afterImages", "beforeVideos", "afterVideos"]);
+}, ["beforeImages", "afterImages", "beforeVideos", "afterVideos"]);
 
 const formatCorrectiveActions = (actions = []) =>
   actions
@@ -149,7 +152,7 @@ const formatCorrectiveActions = (actions = []) =>
     .filter(Boolean)
     .join("; ");
 
-const toLegacyHazardRecord = (record, user) => redactRecordLocations({
+const toLegacyHazardRecord = (record) => normalizeRecordLocations({
   _id: record._id,
   date: record.date || record.createdAt,
   createdAt: record.createdAt,
@@ -176,33 +179,37 @@ const toLegacyHazardRecord = (record, user) => redactRecordLocations({
   closureImages: record.closureImages || [],
   evidenceVideos: record.evidenceVideos || [],
   closureVideos: record.closureVideos || []
-}, user, ["evidenceImages", "closureImages", "evidenceVideos", "closureVideos"]);
+}, ["evidenceImages", "closureImages", "evidenceVideos", "closureVideos"]);
 
-const toMediaExportRows = (record, moduleName, user) => {
+const toMediaExportRows = (record, moduleName) => {
   const fields = moduleName === "work"
     ? [["beforeImages", "Before"], ["beforeVideos", "Before"], ["afterImages", "Completion"], ["afterVideos", "Completion"]]
     : [["evidenceImages", "Before"], ["evidenceVideos", "Before"], ["closureImages", "After"], ["closureVideos", "After"]];
-  const exactLocationAllowed = canViewExactLocation(user, record);
-  return fields.flatMap(([field, stage]) => (record[field] || []).map((media) => ({
-    module: `${moduleName}_media`,
-    title: record.title || record.approvalNumber || moduleName,
-    status: record.status,
-    priority: record.priority || record.severity || "",
-    createdAt: record.createdAt,
-    mediaType: media.mediaType || (field.toLowerCase().includes("video") ? "video" : "image"),
-    evidenceStage: stage,
-    captureSource: media.captureSource || "file",
-    capturedAt: media.location?.capturedAt || media.uploadedAt || "",
-    latitude: exactLocationAllowed ? media.location?.latitude ?? "" : "",
-    longitude: exactLocationAllowed ? media.location?.longitude ?? "" : "",
-    accuracyMeters: exactLocationAllowed ? media.location?.accuracyMeters ?? "" : "",
-    formattedAddress: exactLocationAllowed ? media.location?.formattedAddress || media.location?.plaza || "" : "",
-    uploadedBy: media.uploadedBy || "",
-    uploadedAt: media.uploadedAt || "",
-    mediaUrl: media.secureUrl || media.url || "",
-    thumbnailUrl: media.thumbnailUrl || "",
-    watermarkStatus: media.watermark?.processingStatus || "not_required"
-  })));
+  return fields.flatMap(([field, stage]) => (record[field] || []).map((media) => {
+    const location = normalizeLocationForDisplay(media.location, media);
+    return {
+      module: `${moduleName}_media`,
+      title: record.title || record.approvalNumber || moduleName,
+      status: record.status,
+      priority: record.priority || record.severity || "",
+      createdAt: record.createdAt,
+      mediaType: media.mediaType || (field.toLowerCase().includes("video") ? "video" : "image"),
+      evidenceStage: stage,
+      captureSource: media.captureSource || "file",
+      capturedAt: location?.capturedAt || media.uploadedAt || "",
+      latitude: location?.latitude ?? "",
+      longitude: location?.longitude ?? "",
+      accuracyMeters: location?.accuracyMeters ?? "",
+      formattedAddress: location?.formattedAddress || "",
+      locationSource: location?.source || "",
+      locationStatus: location?.status || "not_recorded",
+      uploadedBy: media.uploadedBy || "",
+      uploadedAt: media.uploadedAt || "",
+      mediaUrl: media.secureUrl || media.url || "",
+      thumbnailUrl: media.thumbnailUrl || "",
+      watermarkStatus: media.watermark?.processingStatus || "not_required"
+    };
+  }));
 };
 
 router.get(
@@ -217,7 +224,7 @@ router.get(
       )
       .sort({ createdAt: -1 });
     await audit(req, "report_work_view", "reports", { type: "work", rows: records.length });
-    res.json(records.map((record) => toLegacyWorkRecord(record, req.user)));
+    res.json(records.map((record) => toLegacyWorkRecord(record)));
   })
 );
 
@@ -234,7 +241,7 @@ router.get(
       )
       .sort({ createdAt: -1 });
     await audit(req, "report_hazard_view", "reports", { type: "hazard", rows: records.length });
-    res.json(records.map((record) => toLegacyHazardRecord(record, req.user)));
+    res.json(records.map((record) => toLegacyHazardRecord(record)));
   })
 );
 
@@ -342,8 +349,8 @@ router.get(
     };
     const rows = [
       ...toRows(filtered),
-      ...filtered.work.flatMap((record) => toMediaExportRows(record, "work", req.user)),
-      ...filtered.hazards.flatMap((record) => toMediaExportRows(record, "hazard", req.user))
+      ...filtered.work.flatMap((record) => toMediaExportRows(record, "work")),
+      ...filtered.hazards.flatMap((record) => toMediaExportRows(record, "hazard"))
     ];
     await audit(req, "report_export", "reports", {
       format,

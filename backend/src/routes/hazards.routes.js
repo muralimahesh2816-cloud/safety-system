@@ -20,7 +20,7 @@ const { IMAGE_MIME_TYPES, VIDEO_MIME_TYPES, createMemoryUpload } = require("../u
 const {
   parseMediaMetadata,
   mergeMediaMetadata,
-  redactRecordLocations,
+  normalizeRecordLocations,
   normalizeLocation
 } = require("../utils/media-metadata");
 const { reverseGeocode } = require("../services/location.service");
@@ -112,9 +112,8 @@ const toLegacyHazardRecord = (record, user) => {
         ? plain.reportedBy?.name || plain.reportedByName || ""
         : plain.reportedByName || plain.reportedBy || ""
   };
-  return redactRecordLocations(
+  return normalizeRecordLocations(
     serialized,
-    user,
     ["evidenceImages", "closureImages", "evidenceVideos", "closureVideos"]
   );
 };

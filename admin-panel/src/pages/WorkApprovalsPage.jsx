@@ -21,6 +21,7 @@ import {
 } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
+import { normalizeEvidenceLocation } from "../utils/location";
 import {
   getChainageDisplay,
   getChainageFrom,
@@ -125,6 +126,10 @@ const getCurrentAssignment = (work = {}) => {
     date: work[`${field}At`] || ""
   };
 };
+const hasRecordedEvidenceLocation = (work = {}) =>
+  ["beforeImages", "beforeVideos", "afterImages", "afterVideos"].some((field) =>
+    (work[field] || []).some((item) => Boolean(normalizeEvidenceLocation(item?.location, item)))
+  );
 
 const getApiErrorMessage = (error, fallback = "Request failed") => {
   const data = error?.response?.data;
@@ -1313,6 +1318,9 @@ const WorkApprovalsPage = ({ user }) => {
                             ) : null}
                             <span className="text-[11px] text-slate-400">Workers: {work.workersCount || "-"}</span>
                             <span className="text-[11px] text-slate-400">Media: {work.mediaCount || beforeMediaItems.length + afterMediaItems.length}</span>
+                            {hasRecordedEvidenceLocation(work) ? (
+                              <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-1 text-[11px] font-semibold text-cyan-100">Location Recorded</span>
+                            ) : null}
                           </div>
                           <p className="mt-2 text-xs text-slate-400">{formatDateTime(work.createdAt)}</p>
                         </div>

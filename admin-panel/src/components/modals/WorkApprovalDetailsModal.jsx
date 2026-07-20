@@ -7,9 +7,7 @@ import {
   Clock3,
   Download,
   FileCheck2,
-  Image as ImageIcon,
   MapPin,
-  Maximize2,
   RotateCcw,
   ShieldCheck,
   UploadCloud,
@@ -29,7 +27,7 @@ import {
 import WorkCompletionSummaryCard from "../work/WorkCompletionSummaryCard";
 import RoleBasedUserSelect from "../work/RoleBasedUserSelect";
 import DirectMediaCapture from "../media/DirectMediaCapture";
-import MediaLocationCard from "../media/MediaLocationCard";
+import EvidencePreviewCard from "../media/EvidencePreviewCard";
 
 const WORKFLOW_STAGES = [
   "Pending Check",
@@ -100,8 +98,6 @@ const normalizeMedia = (items = [], fallback) => {
     .filter((item) => Boolean(item.url));
 };
 
-const isVideoUrl = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url);
-
 const statusTone = (status = "Pending Check") => ({
   "Pending Check": "border-cyan-400/40 bg-cyan-500/15 text-cyan-100",
   "Pending Recommendation": "border-violet-400/40 bg-violet-500/15 text-violet-100",
@@ -138,53 +134,6 @@ const DescriptionCard = ({ title, value, tone = "cyan" }) => {
     </div>
   );
 };
-
-const ImagePanel = ({ label, tone, item, onOpen }) => (
-  <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/55 shadow-[0_18px_45px_rgba(0,0,0,.28)]">
-    <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-      <div className="flex items-center gap-2">
-        <ImageIcon size={16} className={tone} />
-        <p className="text-sm font-semibold text-white">{label}</p>
-      </div>
-      {item ? (
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onOpen}
-            className="rounded-xl bg-white/10 p-2 text-slate-100 transition hover:bg-cyan-500/20"
-            aria-label={`Open ${label}`}
-          >
-            <Maximize2 size={15} />
-          </button>
-          <a
-            href={item.url}
-            download
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-xl bg-white/10 p-2 text-slate-100 transition hover:bg-emerald-500/20"
-            aria-label={`Download ${label}`}
-          >
-            <Download size={15} />
-          </a>
-        </div>
-      ) : null}
-    </div>
-    {item ? (
-      <div className="p-3">
-        <button type="button" onClick={onOpen} className="group flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-slate-950/70">
-          {item.mediaType === "video" || isVideoUrl(item.url) ? (
-            item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={`${label} video poster`} loading="lazy" className="h-full w-full object-cover" /> : <span className="text-sm text-slate-300">Open video preview</span>
-          ) : (
-            <img src={item.url} alt={label} loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
-          )}
-        </button>
-        <div className="mt-3"><MediaLocationCard location={item.location} status={item.location?.permissionStatus} compact /></div>
-      </div>
-    ) : (
-      <div className="flex h-56 items-center justify-center text-sm text-slate-500 sm:h-64">No Media Available</div>
-    )}
-  </div>
-);
 
 const WorkflowStep = ({ step }) => {
   const stateClass = step.current
@@ -963,11 +912,11 @@ const WorkApprovalDetailsModal = ({
                     setNextAssigneeId={setNextAssigneeId}
                   />
                   {beforeMedia.length ? beforeMedia.map((item, index) => (
-                    <ImagePanel key={item.id || item.url || index} label={`Before Work Evidence ${index + 1}`} tone="text-teal-300" item={item} onOpen={() => openMedia(index)} />
-                  )) : <ImagePanel label="Before Work Evidence" tone="text-teal-300" />}
+                    <EvidencePreviewCard key={item.id || item.url || index} label={`Before Work Evidence ${index + 1}`} evidenceStage="Before Work" tone="text-teal-300" item={item} onOpen={() => openMedia(index)} />
+                  )) : <EvidencePreviewCard label="Before Work Evidence" evidenceStage="Before Work" tone="text-teal-300" />}
                   {afterMedia.length ? afterMedia.map((item, index) => (
-                    <ImagePanel key={item.id || item.url || index} label={`Completion Evidence ${index + 1}`} tone="text-emerald-300" item={item} onOpen={() => openMedia(beforeMedia.length + index)} />
-                  )) : <ImagePanel label="Completion Evidence" tone="text-emerald-300" />}
+                    <EvidencePreviewCard key={item.id || item.url || index} label={`Completion Evidence ${index + 1}`} evidenceStage="Completion" tone="text-emerald-300" item={item} onOpen={() => openMedia(beforeMedia.length + index)} />
+                  )) : <EvidencePreviewCard label="Completion Evidence" evidenceStage="Completion" tone="text-emerald-300" />}
                 </div>
               </div>
             </div>

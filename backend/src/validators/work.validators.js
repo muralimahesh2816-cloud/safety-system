@@ -51,7 +51,7 @@ const updateWorkSchema = withChainageValidation(z.object({
   priority: z.enum(["Low", "Medium", "High", "Critical"]).optional().default("Medium"),
   startDate: z.string().optional(),
   dueDate: z.string().optional()
-}));
+}).strict());
 
 const workflowActionSchema = z.object({
   level: z.coerce.number().min(1),

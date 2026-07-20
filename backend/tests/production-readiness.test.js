@@ -32,7 +32,8 @@ const {
   parseMediaMetadata,
   mergeMediaMetadata,
   redactRecordLocations,
-  normalizeLocation
+  normalizeLocation,
+  normalizeLocationForDisplay
 } = require("../src/utils/media-metadata");
 const {
   normalizeProviderResponse,
@@ -48,8 +49,10 @@ const {
 const {
   createWorkSchema,
   checkWorkSchema,
-  recommendWorkSchema
+  recommendWorkSchema,
+  updateWorkSchema
 } = require("../src/validators/work.validators");
+const { updateHazardSchema } = require("../src/validators/hazard.validators");
 const WorkApproval = require("../src/models/WorkApproval");
 
 test("supervisor is a creator role without approval-stage authority", () => {
@@ -205,21 +208,57 @@ test("media metadata rejects invalid GPS ranges", () => {
   );
 });
 
-test("exact coordinates are redacted for unrelated roles", () => {
+test("every authorized parent-record viewer receives the same normalized location fields", () => {
   const record = {
     createdBy: "507f1f77bcf86cd799439012",
-    geoLocation: { latitude: 13.34, longitude: 74.7, formattedAddress: "Restricted record address" },
-    beforeImages: [{ location: { latitude: 13.34, longitude: 74.7, accuracyMeters: 20, formattedAddress: "Restricted site address" } }]
+    geoLocation: { latitude: 13.34, longitude: 74.7, formattedAddress: "Record address", placeId: "internal-place" },
+    beforeImages: [{ publicId: "storage-public-id", location: { latitude: 13.34, longitude: 74.7, accuracyMeters: 20, formattedAddress: "Site address", reverseGeocodeProvider: "internal-provider" } }],
+    locationAuditHistory: [{
+      reason: "Correction",
+      updatedBy: "507f1f77bcf86cd799439099",
+      previousLocation: { latitude: 13.33, longitude: 74.69, placeId: "previous-internal-place" },
+      newLocation: { latitude: 13.34, longitude: 74.7, reverseGeocodeProvider: "internal-provider" }
+    }]
   };
-  const redacted = redactRecordLocations(record, {
+  const viewerResult = redactRecordLocations(record, {
     id: "507f1f77bcf86cd799439013",
     role: "viewer"
   }, ["beforeImages"]);
-  assert.equal(redacted.beforeImages[0].location.latitude, undefined);
-  assert.equal(redacted.beforeImages[0].location.formattedAddress, undefined);
-  assert.equal(redacted.beforeImages[0].location.recorded, true);
-  assert.equal(redacted.geoLocation.latitude, undefined);
-  assert.equal(redacted.geoLocation.recorded, true);
+  const adminResult = redactRecordLocations(record, { role: ROLES.ADMIN }, ["beforeImages"]);
+  assert.deepEqual(viewerResult.beforeImages[0].location, adminResult.beforeImages[0].location);
+  assert.equal(viewerResult.beforeImages[0].location.latitude, 13.34);
+  assert.equal(viewerResult.beforeImages[0].location.formattedAddress, "Site address");
+  assert.equal(viewerResult.geoLocation.longitude, 74.7);
+  assert.equal(viewerResult.beforeImages[0].location.reverseGeocodeProvider, undefined);
+  assert.equal(viewerResult.beforeImages[0].publicId, undefined);
+  assert.equal(viewerResult.geoLocation.placeId, undefined);
+  assert.equal(viewerResult.locationAuditHistory[0].updatedBy, undefined);
+  assert.equal(viewerResult.locationAuditHistory[0].newLocation.reverseGeocodeProvider, undefined);
+});
+
+test("display location normalizer supports legacy field names and GeoJSON", () => {
+  const legacy = normalizeLocationForDisplay({
+    lat: 13.494759,
+    lng: 74.719246,
+    address: "Legacy address",
+    accuracy: 18,
+    timestamp: "2026-07-20T10:52:00.000Z"
+  });
+  const geoJson = normalizeLocationForDisplay({
+    type: "Point",
+    coordinates: [74.719246, 13.494759]
+  });
+  assert.equal(legacy.latitude, 13.494759);
+  assert.equal(legacy.longitude, 74.719246);
+  assert.equal(legacy.formattedAddress, "Legacy address");
+  assert.equal(geoJson.latitude, 13.494759);
+  assert.equal(geoJson.longitude, 74.719246);
+  assert.equal(normalizeLocationForDisplay({}), null);
+});
+
+test("generic record updates reject GPS metadata", () => {
+  assert.equal(updateWorkSchema.safeParse({ geoLocation: { latitude: 13, longitude: 74 } }).success, false);
+  assert.equal(updateHazardSchema.safeParse({ latitude: 13, longitude: 74 }).success, false);
 });
 
 test("record locations preserve safe provenance and map preferences", () => {

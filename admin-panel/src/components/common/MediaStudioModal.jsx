@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, Download, Minus, Plus, RotateCw, X } from "lucide-react";
 import { getMediaUrl } from "../../utils/media";
 import { formatDateTime } from "../../utils/format";
-import MediaLocationCard from "../media/MediaLocationCard";
+import EvidenceLocationDetails from "../media/EvidenceLocationDetails";
 
 const isVideo = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url);
 
@@ -145,7 +145,7 @@ const MediaStudioModal = ({
                 </button>
               ) : null}
               {activeIsVideo ? (
-                <video src={url} controls autoPlay poster={activeItem?.thumbnailUrl || undefined} className="max-h-[78vh] w-full object-contain" />
+                <video src={url} controls preload="metadata" poster={activeItem?.thumbnailUrl || undefined} className="max-h-[78vh] w-full object-contain" />
               ) : (
                 <img src={url} alt={displayTitle} className="max-h-[78vh] max-w-full object-contain transition-transform" style={{ transform: `scale(${zoom}) rotate(${rotation}deg)` }} />
               )}
@@ -164,7 +164,7 @@ const MediaStudioModal = ({
                   <p className="font-bold text-white">Safety Management System</p>
                   <p className="mt-1 capitalize">{activeItem.stage || "Evidence"} • {activeItem.captureSource || "file"}</p>
                   <p>{formatDateTime(activeItem.capturedAt || location?.capturedAt || activeItem.uploadedAt)}</p>
-                  <div className="mt-2"><MediaLocationCard location={location} compact /></div>
+                  <div className="mt-2"><EvidenceLocationDetails location={location} readOnly showOpenLocation compact /></div>
                   {activeItem.watermark?.processingStatus ? <p className="mt-1 capitalize text-slate-400">Watermark: {activeItem.watermark.processingStatus.replace(/_/g, " ")}</p> : null}
                 </div>
               ) : null}

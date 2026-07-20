@@ -33,7 +33,7 @@ const updateHazardSchema = z.object({
   location: z.string().trim().min(2).optional(),
   action: z.string().trim().optional().default(""),
   reportedBy: z.string().trim().optional().default("")
-});
+}).strict();
 
 const assignHazardSchema = z.object({
   assignedTo: z.string().min(1)

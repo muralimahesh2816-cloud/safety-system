@@ -69,3 +69,9 @@ Workflow notifications and email are sent directly to the named assignee. Return
 ## Official Work Report
 
 The Work Report PDF and Excel exports share one fixed 16-column schema: Approval No, Date, Work Type, Location, Requested Chainage, Approved Chainage, Completed Chainage, Completion %, Workers, Created By, Created Role, Workflow Stage, Checked By, Recommended By, Approved By, and Status. PDF output is A4 landscape with repeated red headers and page footers; Excel output includes report metadata, applied date range, filters, column widths, and a frozen header row.
+
+## Universal Evidence Location Visibility
+
+Work Approval and Hazard evidence location metadata is included in the existing authenticated record response for every user who passes the parent module's `view` permission. Visibility does not depend on ownership, workflow assignment, or administrator status. The display response is normalized to address, latitude, longitude, accuracy, capture time, source, and status; provider internals, permission errors, place identifiers, storage identifiers, and raw geocoding data are not returned as location details.
+
+Location viewing and editing remain separate. Read-only evidence cards and the full media viewer show location details and a validated Google Maps link without editable coordinate fields or an embedded map. Capture-time retry/removal is available only when explicitly enabled by the capture component. Record-level location corrections continue through the protected Work Approval or Hazard location endpoint, require existing update permission and business-rule eligibility, and always require a reason for the audit trail. Legacy `lat`/`lng`, `latitude`/`longitude`, and GeoJSON coordinate shapes are normalized when records are read.

@@ -299,6 +299,9 @@ const DirectMediaCapture = ({
                     compact
                     location={location}
                     status={gpsStatus}
+                    readOnly={false}
+                    canRetry
+                    canRemove
                     onRetryGps={() => retryLocation(item)}
                     onRefreshAddress={location ? () => refreshAddress(item) : undefined}
                     onRemove={location ? () => removeLocation(item) : undefined}

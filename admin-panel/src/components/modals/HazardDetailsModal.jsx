@@ -4,9 +4,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Download,
-  Image as ImageIcon,
   MapPin,
-  Maximize2,
   ShieldAlert,
   UserRound,
   UsersRound,
@@ -15,7 +13,7 @@ import {
 import { formatDateTime } from "../../utils/format";
 import { getMediaUrl } from "../../utils/media";
 import { exportHazardDetailsPdf } from "../../utils/detailPdfExport";
-import MediaLocationCard from "../media/MediaLocationCard";
+import EvidencePreviewCard from "../media/EvidencePreviewCard";
 
 const valueOrDash = (value) => (value === undefined || value === null || value === "" ? "-" : value);
 
@@ -29,8 +27,6 @@ const normalizeMedia = (items = [], fallback) => {
     }))
     .filter((item) => Boolean(item.url));
 };
-
-const isVideoUrl = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url);
 
 const riskTone = (hazard = {}) => {
   const score = Number(hazard.riskScore || 0);
@@ -48,41 +44,6 @@ const InfoRow = ({ label, value, icon: Icon }) => (
       {label}
     </div>
     <div className="min-w-0 break-words text-sm font-medium leading-5 text-slate-100">{valueOrDash(value)}</div>
-  </div>
-);
-
-const ImagePanel = ({ label, tone, item, onOpen }) => (
-  <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/55 shadow-[0_18px_45px_rgba(0,0,0,.28)]">
-    <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-      <div className="flex items-center gap-2">
-        <ImageIcon size={16} className={tone} />
-        <p className="text-sm font-semibold text-white">{label}</p>
-      </div>
-      {item ? (
-        <div className="flex gap-2">
-          <button type="button" onClick={onOpen} className="rounded-xl bg-white/10 p-2 text-slate-100 transition hover:bg-cyan-500/20" aria-label={`Open ${label}`}>
-            <Maximize2 size={15} />
-          </button>
-          <a href={item.url} download target="_blank" rel="noreferrer" className="rounded-xl bg-white/10 p-2 text-slate-100 transition hover:bg-emerald-500/20" aria-label={`Download ${label}`}>
-            <Download size={15} />
-          </a>
-        </div>
-      ) : null}
-    </div>
-    {item ? (
-      <div className="p-3">
-        <button type="button" onClick={onOpen} className="group flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-slate-950/70">
-          {item.mediaType === "video" || isVideoUrl(item.url) ? (
-            item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={`${label} video poster`} loading="lazy" className="h-full w-full object-cover" /> : <span className="text-sm text-slate-300">Open video preview</span>
-          ) : (
-            <img src={item.url} alt={label} loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
-          )}
-        </button>
-        <div className="mt-3"><MediaLocationCard location={item.location} status={item.location?.permissionStatus} compact /></div>
-      </div>
-    ) : (
-      <div className="flex h-56 items-center justify-center text-sm text-slate-500 sm:h-64">No Media Available</div>
-    )}
   </div>
 );
 
@@ -246,11 +207,11 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
 
                 <div className="space-y-4">
                   {evidenceMedia.length ? evidenceMedia.map((item, index) => (
-                    <ImagePanel key={item.id || item.url || index} label={`Initial Evidence ${index + 1}`} tone="text-amber-300" item={item} onOpen={() => openMedia(index)} />
-                  )) : <ImagePanel label="Initial Evidence" tone="text-amber-300" />}
+                    <EvidencePreviewCard key={item.id || item.url || index} label={`Initial Evidence ${index + 1}`} evidenceStage="Initial Hazard Evidence" tone="text-amber-300" item={item} onOpen={() => openMedia(index)} />
+                  )) : <EvidencePreviewCard label="Initial Evidence" evidenceStage="Initial Hazard Evidence" tone="text-amber-300" />}
                   {closureMedia.length ? closureMedia.map((item, index) => (
-                    <ImagePanel key={item.id || item.url || index} label={`Corrective Action Evidence ${index + 1}`} tone="text-emerald-300" item={item} onOpen={() => openMedia(evidenceMedia.length + index)} />
-                  )) : <ImagePanel label="Corrective Action Evidence" tone="text-emerald-300" />}
+                    <EvidencePreviewCard key={item.id || item.url || index} label={`Corrective Action Evidence ${index + 1}`} evidenceStage="Corrective Action" tone="text-emerald-300" item={item} onOpen={() => openMedia(evidenceMedia.length + index)} />
+                  )) : <EvidencePreviewCard label="Corrective Action Evidence" evidenceStage="Corrective Action" tone="text-emerald-300" />}
                 </div>
               </div>
             </div>

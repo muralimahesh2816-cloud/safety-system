@@ -5,6 +5,13 @@ import { APP_NAME } from "../config/appConfig";
 import { getMediaUrl } from "./media";
 import { addStandardPdfFooters, PDF_COLORS, PDF_LAYOUT } from "./pdfDesign";
 import {
+  formatLocationAccuracy,
+  formatLocationCapturedAt,
+  formatLocationCoordinates,
+  formatLocationSource,
+  normalizeEvidenceLocation
+} from "./location";
+import {
   calculateCompletionPercentage,
   getApprovedChainageFrom,
   getApprovedChainageTo,
@@ -43,11 +50,7 @@ const normalizeMedia = (items = [], fallback) => {
   })).filter((item) => Boolean(item.url));
 };
 
-const mediaLocation = (item = {}) => item.location || {};
-const formatCoordinates = (location = {}) =>
-  Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude))
-    ? `${Number(location.latitude).toFixed(6)}, ${Number(location.longitude).toFixed(6)}`
-    : "";
+const mediaLocation = (item = {}) => normalizeEvidenceLocation(item.location, item);
 
 const formatCorrectiveActions = (actions = []) => {
   if (!actions.length) return "No corrective action recorded.";
@@ -215,13 +218,11 @@ const addImagePage = async (doc, { label, item, mediaType = "image" }) => {
   doc.text(label, 14, 43);
 
   const location = mediaLocation(item);
-  const address = location.formattedAddress && location.formattedAddress !== "Address unavailable"
-    ? location.formattedAddress
-    : (location.recorded ? "Exact location restricted" : "Location not recorded");
-  const coordinates = formatCoordinates(location);
+  const address = location?.formattedAddress || "Location not recorded";
+  const coordinates = formatLocationCoordinates(location);
   const mediaUrl = mediaType === "video" ? getMediaUrl(item.thumbnailUrl || item.url) : item.url;
   const maxWidth = 182;
-  const maxHeight = 182;
+  const maxHeight = 150;
   const frameY = 48;
 
   try {
@@ -255,8 +256,10 @@ const addImagePage = async (doc, { label, item, mediaType = "image" }) => {
   const addressLines = doc.splitTextToSize(address, maxWidth);
   doc.text(addressLines, 14, captionY + 6);
   const coordinateY = captionY + 6 + addressLines.length * 4.2;
-  if (coordinates) doc.text(`${coordinates}${location.accuracyMeters ? ` | Accuracy ±${Math.round(Number(location.accuracyMeters))} m` : ""}`, 14, coordinateY);
-  if (location.capturedAt) doc.text(`Captured: ${formatDate(location.capturedAt)}`, 14, coordinateY + (coordinates ? 5 : 0));
+  doc.text(`Coordinates: ${coordinates}`, 14, coordinateY);
+  doc.text(`Accuracy: ${formatLocationAccuracy(location)}`, 14, coordinateY + 5);
+  doc.text(`Captured: ${formatLocationCapturedAt(location)}`, 14, coordinateY + 10);
+  doc.text(`Capture Source: ${formatLocationSource(location)}`, 14, coordinateY + 15);
 };
 
 const finalizePdf = async ({ reportTitle, fileName, detailRows, descriptionTitle, description, timeline, images, save = true }) => {
@@ -290,8 +293,8 @@ export const exportHazardDetailsPdf = async (hazard = {}, { save = true } = {}) 
   const closure = normalizeMedia(hazard.closureImages, hazard.afterImage);
   const evidenceVideos = normalizeMedia(hazard.evidenceVideos, hazard.beforeVideo);
   const closureVideos = normalizeMedia(hazard.closureVideos, hazard.afterVideo);
-  const primaryLocation = hazard.geoLocation || [...evidence, ...evidenceVideos, ...closure, ...closureVideos]
-    .map(mediaLocation).find((location) => location?.latitude != null || location?.recorded);
+  const primaryLocation = normalizeEvidenceLocation(hazard.geoLocation) || [...evidence, ...evidenceVideos, ...closure, ...closureVideos]
+    .map(mediaLocation).find(Boolean);
   return finalizePdf({
     reportTitle: "Hazard Details Report",
     fileName: `hazard-details-${hazard._id || Date.now()}.pdf`,
@@ -302,9 +305,10 @@ export const exportHazardDetailsPdf = async (hazard = {}, { save = true } = {}) 
       ["Risk Level", `${safe(hazard.severity)} / ${safe(hazard.likelihood)} (Score ${hazard.riskScore || 0})`],
       ["Location", hazard.location],
       ["GPS Address", primaryLocation?.formattedAddress],
-      ["GPS Coordinates", formatCoordinates(primaryLocation)],
-      ["GPS Source", primaryLocation?.locationSource],
-      ["GPS Accuracy", primaryLocation?.accuracyMeters ? `±${Math.round(Number(primaryLocation.accuracyMeters))} m` : ""],
+      ["GPS Coordinates", primaryLocation ? formatLocationCoordinates(primaryLocation) : ""],
+      ["GPS Source", primaryLocation ? formatLocationSource(primaryLocation) : ""],
+      ["GPS Accuracy", primaryLocation ? formatLocationAccuracy(primaryLocation) : ""],
+      ["GPS Captured", primaryLocation ? formatLocationCapturedAt(primaryLocation) : ""],
       ["Plaza", hazard.plaza],
       ["Reported By", hazard.reportedBy || hazard.createdBy],
       ["Action Team", hazard.action || hazard.actionTeam],
@@ -339,7 +343,7 @@ export const exportWorkApprovalDetailsPdf = async (work = {}, { save = true } = 
     ? work.completedAt || work.completionDate || work.updatedAt
     : work.completionDate;
   const allMedia = [...before, ...beforeVideos, ...after, ...afterVideos];
-  const primaryLocation = work.geoLocation || allMedia.map(mediaLocation).find((location) => location?.latitude != null || location?.recorded);
+  const primaryLocation = normalizeEvidenceLocation(work.geoLocation) || allMedia.map(mediaLocation).find(Boolean);
   return finalizePdf({
     reportTitle: "Work Approval Report",
     fileName: `work-approval-details-${work._id || work.id || Date.now()}.pdf`,
@@ -378,9 +382,10 @@ export const exportWorkApprovalDetailsPdf = async (work = {}, { save = true } = 
       ["Completion Date", formatDate(completionDate)],
       ["Completion Description", work.completionDescription],
       ["GPS Address", primaryLocation?.formattedAddress],
-      ["GPS Coordinates", formatCoordinates(primaryLocation)],
-      ["GPS Source", primaryLocation?.locationSource],
-      ["GPS Accuracy", primaryLocation?.accuracyMeters ? `±${Math.round(Number(primaryLocation.accuracyMeters))} m` : ""],
+      ["GPS Coordinates", primaryLocation ? formatLocationCoordinates(primaryLocation) : ""],
+      ["GPS Source", primaryLocation ? formatLocationSource(primaryLocation) : ""],
+      ["GPS Accuracy", primaryLocation ? formatLocationAccuracy(primaryLocation) : ""],
+      ["GPS Captured", primaryLocation ? formatLocationCapturedAt(primaryLocation) : ""],
       ["Before Images", before.length],
       ["Before Videos", beforeVideos.length],
       ["After Images", after.length],
