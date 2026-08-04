@@ -1,3 +1,5 @@
+const { ENTERPRISE_HSE_KEYS } = require("./enterprise-hse");
+
 const ROLES = {
   SUPER_ADMIN: "super_admin",
   ADMIN: "admin",
@@ -78,7 +80,7 @@ const getRoleQueryValues = (roles = []) => {
   ])];
 };
 
-const MODULES = [
+const CORE_MODULES = [
   "dashboard",
   "users",
   "work",
@@ -88,6 +90,8 @@ const MODULES = [
   "settings",
   "notifications"
 ];
+
+const MODULES = [...CORE_MODULES, ...ENTERPRISE_HSE_KEYS];
 
 const createPermissionSet = ({ view, create, update, remove, ...extra }) => ({
   view,
@@ -147,6 +151,12 @@ const manage = () =>
     remove: true
   });
 
+const enterprisePermissions = (factory = operate) =>
+  ENTERPRISE_HSE_KEYS.reduce((permissions, moduleName) => {
+    permissions[moduleName] = factory();
+    return permissions;
+  }, {});
+
 const basePermissions = ({
   users = noAccess(),
   work = workPermissions({ create: true }),
@@ -154,7 +164,8 @@ const basePermissions = ({
   training = readOnly(),
   reports = noAccess(),
   settings = noAccess(),
-  notifications = readOnly()
+  notifications = readOnly(),
+  enterprise = enterprisePermissions(operate)
 } = {}) => ({
   dashboard: readOnly(),
   users,
@@ -163,7 +174,8 @@ const basePermissions = ({
   training,
   reports,
   settings,
-  notifications
+  notifications,
+  ...enterprise
 });
 
 const checkerWork = () =>
@@ -218,7 +230,8 @@ const ROLE_DEFAULT_PERMISSIONS = {
       update: true,
       remove: false
     }),
-    notifications: operate()
+    notifications: operate(),
+    enterprise: enterprisePermissions(manage)
   }),
   [ROLES.EMPLOYEE]: basePermissions(),
   [ROLES.USER]: basePermissions(),
@@ -226,7 +239,8 @@ const ROLE_DEFAULT_PERMISSIONS = {
     work: emptyWorkPermissions(),
     hazards: readOnly(),
     training: readOnly(),
-    reports: readOnly()
+    reports: readOnly(),
+    enterprise: enterprisePermissions(readOnly)
   }),
   [ROLES.SAFETY_OFFICER]: basePermissions({ work: checkerWork() }),
   [ROLES.SAFETY_ENGINEER]: basePermissions({ work: checkerWork() }),
@@ -243,7 +257,8 @@ const ROLE_DEFAULT_PERMISSIONS = {
   }),
   [ROLES.SAFETY_MANAGER]: basePermissions({
     work: recommenderWork(),
-    training: manage()
+    training: manage(),
+    enterprise: enterprisePermissions(manage)
   }),
   [ROLES.SUPERVISOR]: basePermissions()
 };

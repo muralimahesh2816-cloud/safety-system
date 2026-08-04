@@ -38,6 +38,26 @@ const VIDEO_MIME_TYPES = [
   "video/x-matroska"
 ];
 
+const DOCUMENT_MIME_TYPES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/csv",
+  "text/plain"
+];
+
+Object.assign(MIME_EXTENSIONS, {
+  "application/pdf": [".pdf"],
+  "application/msword": [".doc"],
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+  "application/vnd.ms-excel": [".xls"],
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+  "text/csv": [".csv"],
+  "text/plain": [".txt"]
+});
+
 const createMemoryUpload = ({
   allowedMimeTypes = IMAGE_MIME_TYPES,
   maxFileSizeMb = 10,
@@ -72,5 +92,6 @@ const createMemoryUpload = ({
 module.exports = {
   IMAGE_MIME_TYPES,
   VIDEO_MIME_TYPES,
+  DOCUMENT_MIME_TYPES,
   createMemoryUpload
 };

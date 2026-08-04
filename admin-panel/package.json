@@ -25,6 +25,7 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "lint": "eslint src --ext .js,.jsx",
+    "verify:hse-pdf": "node scripts/verify-enterprise-report.cjs",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {

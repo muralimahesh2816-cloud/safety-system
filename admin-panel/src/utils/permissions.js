@@ -1,4 +1,6 @@
-const ACCESS_MODULES = ["dashboard", "work", "hazard", "training", "reports", "users", "settings"];
+import { ENTERPRISE_HSE_KEYS } from "../config/enterpriseHseConfig";
+
+const ACCESS_MODULES = ["dashboard", "work", "hazard", "training", "reports", "users", "settings", ...ENTERPRISE_HSE_KEYS];
 
 const DEFAULT_ROLE_PERMISSIONS = {
   super_admin: {
@@ -156,7 +158,8 @@ const moduleAliases = {
   reports: "reports",
   users: "users",
   health: "settings",
-  settings: "settings"
+  settings: "settings",
+  ...Object.fromEntries(ENTERPRISE_HSE_KEYS.map((key) => [key, key]))
 };
 
 const emptyPermissions = () =>
@@ -167,7 +170,11 @@ const emptyPermissions = () =>
 
 const getDefaultPermissionsForRole = (role = "user") => {
   const defaults = DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.user;
-  return { ...emptyPermissions(), ...defaults };
+  return {
+    ...emptyPermissions(),
+    ...defaults,
+    ...Object.fromEntries(ENTERPRISE_HSE_KEYS.map((key) => [key, true]))
+  };
 };
 
 const toBooleanPermission = (value) => {

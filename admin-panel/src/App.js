@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Menu } from "lucide-react";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -25,6 +25,9 @@ import { canAccessModule } from "./utils/permissions";
 import useSidebarPreference from "./hooks/useSidebarPreference";
 import { APP_NAME } from "./config/appConfig";
 import { getTopbarVisibility } from "./utils/topbarVisibility";
+import { ENTERPRISE_HSE_KEYS, getEnterpriseModule } from "./config/enterpriseHseConfig";
+
+const EnterpriseHsePage = lazy(() => import("./pages/EnterpriseHsePage"));
 
 const moduleTitles = {
   dashboard: "Dashboard",
@@ -35,6 +38,17 @@ const moduleTitles = {
   reports: "Reports",
   health: "System Health",
   settings: "Settings"
+};
+
+ENTERPRISE_HSE_KEYS.forEach((key) => {
+  moduleTitles[key] = getEnterpriseModule(key)?.label || key;
+});
+
+const coreModuleKeys = Object.keys(moduleTitles);
+const moduleFromPath = () => {
+  if (typeof window === "undefined") return "dashboard";
+  const candidate = window.location.pathname.split("/").filter(Boolean)[0] || "dashboard";
+  return coreModuleKeys.includes(candidate) ? candidate : "dashboard";
 };
 
 const ModuleGuard = ({ user, moduleKey, children }) => {
@@ -52,7 +66,7 @@ const ModuleGuard = ({ user, moduleKey, children }) => {
 
 const AppContent = () => {
   const { user, loading, isAuthenticated, login, verifyOtp, resendOtp, logout } = useAuth();
-  const [activeModule, setActiveModule] = useState("dashboard");
+  const [activeModule, setActiveModule] = useState(moduleFromPath);
   const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(30);
   const { sidebarLocked, setSidebarLocked } = useSidebarPreference();
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false);
@@ -64,6 +78,15 @@ const AppContent = () => {
   const [topbarInteracting, setTopbarInteracting] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const pageContentRef = useRef(null);
+
+  const handleModuleNavigation = useCallback((moduleKey, { replace = false } = {}) => {
+    const nextModule = coreModuleKeys.includes(moduleKey) ? moduleKey : "dashboard";
+    setActiveModule(nextModule);
+    const nextPath = nextModule === "dashboard" ? "/dashboard" : `/${nextModule}`;
+    if (window.location.pathname !== nextPath) {
+      window.history[replace ? "replaceState" : "pushState"]({ module: nextModule }, "", nextPath);
+    }
+  }, []);
 
   const page = useMemo(() => {
     switch (activeModule) {
@@ -83,9 +106,23 @@ const AppContent = () => {
         return <SettingsPage user={user} />;
       case "dashboard":
       default:
-        return <DashboardPage onModuleSelect={setActiveModule} />;
+        if (ENTERPRISE_HSE_KEYS.includes(activeModule)) {
+          return (
+            <Suspense fallback={<div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-slate-300">Loading enterprise HSE module...</div>}>
+              <EnterpriseHsePage moduleKey={activeModule} user={user} />
+            </Suspense>
+          );
+        }
+        return <DashboardPage onModuleSelect={handleModuleNavigation} />;
     }
-  }, [activeModule, user]);
+  }, [activeModule, handleModuleNavigation, user]);
+
+  useEffect(() => {
+    const onPopState = () => setActiveModule(moduleFromPath());
+    window.addEventListener("popstate", onPopState);
+    if (window.location.pathname === "/") handleModuleNavigation("dashboard", { replace: true });
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [handleModuleNavigation]);
 
   useEffect(() => {
     document.title = `${isAuthenticated ? moduleTitles[activeModule] : "Login"} | ${APP_NAME}`;
@@ -225,7 +262,7 @@ const AppContent = () => {
   };
 
   const handleModuleSelect = (moduleKey) => {
-    setActiveModule(moduleKey);
+    handleModuleNavigation(moduleKey);
     setMobileSidebarOpen(false);
   };
 

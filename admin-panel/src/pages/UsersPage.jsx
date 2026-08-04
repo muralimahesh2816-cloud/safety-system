@@ -8,6 +8,7 @@ import { ROLE_GROUPS, ROLE_LABELS, ROLES } from "../constants/roles";
 import { closeLoadingPopup, showLoadingPopup, showSuccessPopup, showValidationPopup } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { resolveAssetUrl } from "../utils/media";
+import { ENTERPRISE_HSE_KEYS, getEnterpriseModule } from "../config/enterpriseHseConfig";
 
 const initialForm = {
   name: "",
@@ -27,7 +28,8 @@ const modulePermissionRows = [
   "training",
   "reports",
   "settings",
-  "notifications"
+  "notifications",
+  ...ENTERPRISE_HSE_KEYS
 ];
 
 const UsersPage = ({ currentUser }) => {
@@ -487,13 +489,13 @@ const UsersPage = ({ currentUser }) => {
             <tbody>
               {modulePermissionRows.map((moduleName) => (
                 <tr key={moduleName} className="border-b border-white/5 text-slate-200">
-                  <td className="py-2 pr-3 capitalize">{moduleName}</td>
+                  <td className="py-2 pr-3">{getEnterpriseModule(moduleName)?.label || moduleName.replaceAll("-", " ").replace(/^./, (letter) => letter.toUpperCase())}</td>
                   <td className="py-2 pr-3 text-emerald-300">Full</td>
                   <td className="py-2 pr-3">Manage</td>
-                  <td className="py-2 pr-3">Approve</td>
-                  <td className="py-2 pr-3">Check / Return</td>
-                  <td className="py-2 pr-3">Recommend / Return</td>
-                  <td className="py-2 pr-3">Create / View (no workflow action)</td>
+                  <td className="py-2 pr-3">{ENTERPRISE_HSE_KEYS.includes(moduleName) ? "Create / Update" : "Approve"}</td>
+                  <td className="py-2 pr-3">{ENTERPRISE_HSE_KEYS.includes(moduleName) ? "Create / Update" : "Check / Return"}</td>
+                  <td className="py-2 pr-3">{ENTERPRISE_HSE_KEYS.includes(moduleName) ? "Manage" : "Recommend / Return"}</td>
+                  <td className="py-2 pr-3">{ENTERPRISE_HSE_KEYS.includes(moduleName) ? "Create / Update" : "Create / View (no workflow action)"}</td>
                   <td className="py-2 pr-3">View</td>
                 </tr>
               ))}

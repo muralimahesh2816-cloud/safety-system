@@ -54,6 +54,15 @@ const {
 } = require("../src/validators/work.validators");
 const { updateHazardSchema } = require("../src/validators/hazard.validators");
 const WorkApproval = require("../src/models/WorkApproval");
+const {
+  ENTERPRISE_HSE_MODULES,
+  ENTERPRISE_HSE_KEYS,
+  findHseModule,
+  canTransition
+} = require("../src/constants/enterprise-hse");
+const { HSE_MODELS } = require("../src/models/EnterpriseHseRecord");
+const { toActionPermissions } = require("../src/middleware/permission.middleware");
+const { governanceRules } = require("../src/services/hse-governance.service");
 
 test("supervisor is a creator role without approval-stage authority", () => {
   const workPermissions = ROLE_DEFAULT_PERMISSIONS[ROLES.SUPERVISOR].work;
@@ -63,6 +72,49 @@ test("supervisor is a creator role without approval-stage authority", () => {
   assert.equal(workPermissions.check, false);
   assert.equal(workPermissions.recommend, false);
   assert.equal(workPermissions.approve, false);
+});
+
+test("enterprise HSE registry exposes every phase one and phase two module", () => {
+  assert.equal(ENTERPRISE_HSE_MODULES.filter((module) => module.phase === 1).length, 10);
+  assert.equal(ENTERPRISE_HSE_MODULES.filter((module) => module.phase === 2).length, 10);
+  assert.equal(new Set(ENTERPRISE_HSE_KEYS).size, 20);
+  assert.equal(findHseModule("safety-observations").key, "observations");
+});
+
+test("enterprise HSE modules use separate indexed collections", () => {
+  const collections = ENTERPRISE_HSE_MODULES.map((module) => HSE_MODELS[module.key].collection.name);
+  assert.equal(new Set(collections).size, ENTERPRISE_HSE_MODULES.length);
+  const incidentIndexes = HSE_MODELS.incidents.schema.indexes().map(([definition]) => Object.keys(definition).join(","));
+  assert.equal(incidentIndexes.includes("assignedTo,status,dueDate"), true);
+  assert.equal(incidentIndexes.includes("title,description,site,category,recordId"), true);
+});
+
+test("enterprise workflow transitions are governed and permit suspension is explicit", () => {
+  const incident = findHseModule("incidents");
+  const permit = findHseModule("permits");
+  assert.equal(canTransition(incident, "Reported", "Initial Review"), true);
+  assert.equal(canTransition(incident, "Reported", "Closed"), false);
+  assert.equal(canTransition(permit, "Active", "Suspended"), true);
+  assert.equal(canTransition(permit, "Suspended", "Active"), true);
+});
+
+test("supervisor is an enterprise HSE creator while viewer remains read-only", () => {
+  const supervisor = toActionPermissions({}, ROLES.SUPERVISOR);
+  const viewer = toActionPermissions({}, ROLES.VIEWER);
+  assert.equal(supervisor.incidents.view, true);
+  assert.equal(supervisor.incidents.create, true);
+  assert.equal(supervisor.permits.update, true);
+  assert.equal(viewer.incidents.view, true);
+  assert.equal(viewer.incidents.create, false);
+  assert.equal(viewer.capa.delete, false);
+});
+
+test("HSE governance defines overdue and expiry automation without closing records silently", () => {
+  const rules = governanceRules(new Date("2026-08-04T00:00:00.000Z"));
+  assert.equal(rules.some((rule) => rule.module === "capa" && rule.status === "Overdue"), true);
+  assert.equal(rules.some((rule) => rule.module === "compliance-calendar" && rule.status === "Due Soon"), true);
+  assert.equal(rules.some((rule) => rule.module === "competency-matrix" && rule.status === "Expired"), true);
+  assert.equal(rules.some((rule) => rule.status === "Closed"), false);
 });
 
 test("legacy misspelled manager roles normalize to canonical roles", () => {

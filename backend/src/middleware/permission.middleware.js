@@ -1,4 +1,5 @@
 const { ROLES, ROLE_DEFAULT_PERMISSIONS, normalizeRole } = require("../constants/roles");
+const { ENTERPRISE_HSE_KEYS } = require("../constants/enterprise-hse");
 
 const PAGE_KEYS = [
   "dashboard",
@@ -7,7 +8,8 @@ const PAGE_KEYS = [
   "training",
   "reports",
   "users",
-  "settings"
+  "settings",
+  ...ENTERPRISE_HSE_KEYS
 ];
 
 const normalizeModuleKey = (moduleName = "") => {
@@ -94,7 +96,8 @@ const toActionPermissions = (permissions = {}, role = ROLES.USER) => {
     reports: "reports",
     users: "users",
     settings: "settings",
-    notifications: "notifications"
+    notifications: "notifications",
+    ...Object.fromEntries(ENTERPRISE_HSE_KEYS.map((key) => [key, key]))
   };
 
   const resolved = Object.entries(modules).reduce((acc, [moduleName, pageKey]) => {

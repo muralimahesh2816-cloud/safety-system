@@ -10,6 +10,7 @@ const settingsRoutes = require("./settings.routes");
 const notificationRoutes = require("./notifications.routes");
 const backupRoutes = require("./backup.routes");
 const locationRoutes = require("./location.routes");
+const enterpriseHseRoutes = require("./enterprise-hse.routes");
 
 const router = express.Router();
 
@@ -24,5 +25,6 @@ router.use("/settings", settingsRoutes);
 router.use("/notifications", notificationRoutes);
 router.use("/backup", backupRoutes);
 router.use("/location", locationRoutes);
+router.use("/", enterpriseHseRoutes);
 
 module.exports = router;

@@ -39,6 +39,7 @@ import SafeChartContainer from "../components/common/SafeChartContainer";
 import SectionHeader from "../components/common/SectionHeader";
 import SkeletonBlock from "../components/common/SkeletonBlock";
 import { dashboardService } from "../api/services";
+import { enterpriseHseService } from "../api/enterpriseHse";
 import { mockSummary } from "../data/mock";
 import { formatDateTime } from "../utils/format";
 
@@ -63,17 +64,47 @@ const trendingModules = [
     title: "Training Hub",
     desc: "Access Safety Training Videos, Documents, and Learning Resources ✅",
     bg: "from-sky-500/30 to-indigo-500/20"
+  },
+  {
+    key: "incidents",
+    title: "Report an Incident",
+    desc: "Investigation, root cause, actions, and verification",
+    bg: "from-rose-500/30 to-orange-500/20"
+  },
+  {
+    key: "observations",
+    title: "Record an Observation",
+    desc: "Recognize safe practices and correct unsafe conditions",
+    bg: "from-emerald-500/30 to-teal-500/20"
+  },
+  {
+    key: "permits",
+    title: "Create a Permit",
+    desc: "Control high-risk work from review through close-out",
+    bg: "from-amber-500/30 to-yellow-500/20"
+  },
+  {
+    key: "capa",
+    title: "Assign CAPA",
+    desc: "Set ownership, target dates, and verification evidence",
+    bg: "from-violet-500/30 to-fuchsia-500/20"
   }
 ];
 
 const DashboardPage = ({ onModuleSelect }) => {
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState(mockSummary);
+  const [enterprise, setEnterprise] = useState({ kpis: {}, modules: [], alerts: [] });
 
   const fetchSummary = useCallback(async () => {
     try {
-      const response = await dashboardService.summary();
+      const [response, hseDashboard, hseAlerts] = await Promise.all([
+        dashboardService.summary(),
+        enterpriseHseService.dashboard().catch(() => ({ kpis: {}, modules: [] })),
+        enterpriseHseService.alerts().catch(() => ({ alerts: [] }))
+      ]);
       setSummary(response);
+      setEnterprise({ ...hseDashboard, alerts: hseAlerts.alerts || [] });
     } catch (_error) {
       setSummary(mockSummary);
     } finally {
@@ -105,6 +136,7 @@ const DashboardPage = ({ onModuleSelect }) => {
   const charts = summary.charts || {};
   const alerts = summary.alerts || [];
   const assignedTasks = summary.assignedTasks || { counts: {}, total: 0, items: [] };
+  const hseKpis = enterprise.kpis || {};
   const localActivities = (() => {
     if (typeof window === "undefined") return [];
     try {
@@ -332,6 +364,58 @@ const DashboardPage = ({ onModuleSelect }) => {
           />
         </div>
       )}
+
+      <SectionHeader
+        title="Enterprise HSE Performance"
+        subtitle="Server-calculated incident, observation, action, permit, and expiry indicators"
+      />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
+        <KPIBox title="Incidents - 30 Days" value={hseKpis.incidentsLast30Days || 0} icon={TriangleAlert} backgroundIcon={Siren} gradient="from-rose-500/35 via-red-700/20 to-slate-950/70" accent="text-rose-100" />
+        <KPIBox title="Safe Observation Rate" value={hseKpis.safeObservationRate || 0} hint="Percent" icon={ShieldCheck} backgroundIcon={ClipboardCheck} gradient="from-emerald-500/35 via-teal-700/20 to-slate-950/70" accent="text-emerald-100" delay={0.03} />
+        <KPIBox title="Overdue CAPA" value={hseKpis.overdueCapa || 0} icon={Clock3} backgroundIcon={TriangleAlert} gradient="from-orange-500/35 via-amber-700/20 to-slate-950/70" accent="text-orange-100" delay={0.06} />
+        <KPIBox title="Active Permits" value={hseKpis.activePermits || 0} icon={ClipboardCheck} backgroundIcon={HardHat} gradient="from-cyan-500/35 via-sky-700/20 to-slate-950/70" accent="text-cyan-100" delay={0.09} />
+        <KPIBox title="High-Risk Open" value={hseKpis.highRiskOpen || 0} icon={Siren} backgroundIcon={TriangleAlert} gradient="from-fuchsia-500/30 via-rose-800/20 to-slate-950/70" accent="text-fuchsia-100" delay={0.12} />
+        <KPIBox title="Expiring Items" value={hseKpis.expiringItems || 0} icon={Clock3} backgroundIcon={ClipboardCheck} gradient="from-violet-500/30 via-indigo-800/20 to-slate-950/70" accent="text-violet-100" delay={0.15} />
+        <KPIBox title="Inspection Compliance" value={hseKpis.inspectionComplianceRate || 0} hint="Percent" icon={ClipboardCheck} backgroundIcon={ShieldCheck} gradient="from-teal-500/30 via-emerald-800/20 to-slate-950/70" accent="text-teal-100" delay={0.18} />
+        <KPIBox title="Toolbox Talks" value={hseKpis.toolboxThisMonth || 0} hint="This month" icon={HardHat} backgroundIcon={UsersRound} gradient="from-sky-500/30 via-cyan-800/20 to-slate-950/70" accent="text-sky-100" delay={0.21} />
+        <KPIBox title="PPE Attention" value={hseKpis.ppeDue || 0} icon={HardHat} backgroundIcon={TriangleAlert} gradient="from-amber-500/30 via-yellow-800/20 to-slate-950/70" accent="text-amber-100" delay={0.24} />
+        <KPIBox title="Contractors Expiring" value={hseKpis.contractorExpiring || 0} icon={Construction} backgroundIcon={Clock3} gradient="from-orange-500/30 via-amber-800/20 to-slate-950/70" accent="text-orange-100" delay={0.27} />
+        <KPIBox title="Open Emergencies" value={hseKpis.emergencyOpen || 0} icon={Siren} backgroundIcon={TriangleAlert} gradient="from-red-500/30 via-rose-900/20 to-slate-950/70" accent="text-red-100" delay={0.3} />
+        <KPIBox title="Documents Expiring" value={hseKpis.documentExpiring || 0} icon={ClipboardCheck} backgroundIcon={Clock3} gradient="from-indigo-500/30 via-violet-900/20 to-slate-950/70" accent="text-indigo-100" delay={0.33} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_.65fr]">
+        <GlassCard className="p-5 md:p-6">
+          <h3 className="mb-4 text-lg font-semibold text-white">Module Workload and Overdue Actions</h3>
+          <SafeChartContainer height={320}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={(enterprise.modules || []).filter((item) => item.total > 0).slice(0, 12)} margin={{ left: 4, right: 8, bottom: 70 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="label" stroke="#cbd5e1" angle={-35} textAnchor="end" interval={0} height={90} tick={{ fontSize: 10 }} />
+                <YAxis stroke="#cbd5e1" />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="open" name="Open" fill="#06B6D4" radius={[5, 5, 0, 0]} />
+                <Bar dataKey="overdue" name="Overdue" fill="#F43F5E" radius={[5, 5, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </SafeChartContainer>
+        </GlassCard>
+        <GlassCard className="p-5 md:p-6">
+          <h3 className="text-lg font-semibold text-white">Priority Alerts</h3>
+          <p className="mt-1 text-xs text-slate-400">Overdue, expiring, urgent, and critical records</p>
+          <div className="mt-4 max-h-80 space-y-2 overflow-y-auto pr-1">
+            {(enterprise.alerts || []).slice(0, 12).map((alert) => (
+              <button key={`${alert.module}-${alert._id}`} type="button" onClick={() => onModuleSelect?.(alert.module)} className="w-full rounded-2xl border border-rose-300/15 bg-rose-500/[0.06] p-3 text-left transition hover:bg-rose-500/10">
+                <div className="flex items-start justify-between gap-2"><span className="text-[10px] font-semibold uppercase tracking-wider text-rose-200">{alert.moduleLabel}</span><span className="text-[10px] text-slate-500">{alert.recordId}</span></div>
+                <p className="mt-1 text-sm font-semibold text-white">{alert.title}</p>
+                <p className="mt-1 text-xs text-slate-400">{alert.status} {alert.dueDate ? `- due ${new Date(alert.dueDate).toLocaleDateString("en-IN")}` : ""}</p>
+              </button>
+            ))}
+            {!enterprise.alerts?.length ? <p className="rounded-2xl border border-emerald-300/15 bg-emerald-500/[0.06] p-4 text-sm text-emerald-100">No enterprise HSE alerts require attention.</p> : null}
+          </div>
+        </GlassCard>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <GlassCard className="p-5 md:p-6">

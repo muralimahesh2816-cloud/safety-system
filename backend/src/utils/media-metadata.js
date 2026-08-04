@@ -67,7 +67,7 @@ const watermarkSchema = new mongoose.Schema(
 const assetSchema = new mongoose.Schema(
   {
     id: String,
-    module: { type: String, enum: ["work_approval", "hazard"] },
+    module: { type: String, trim: true, maxlength: 80 },
     stage: { type: String, enum: ["before", "after", "completion"] },
     mediaType: { type: String, enum: ["image", "video"] },
     captureSource: { type: String, enum: ["camera", "gallery", "file"], default: "file" },
