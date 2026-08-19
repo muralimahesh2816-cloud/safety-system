@@ -1,0 +1,35 @@
+EDV IMAGE VERIFICATION TOOL - IMPORT AND USE
+
+Files to import
+1. CEDVApplicationEvents.cls
+2. modEDVVerification.bas
+
+Import steps
+1. Make a backup copy of the original workbook.
+2. Open the .xlsm workbook and enable macros.
+3. Press Alt+F11 to open the Visual Basic Editor.
+4. In the Project Explorer, select the workbook project.
+5. Choose File > Import File and import CEDVApplicationEvents.cls.
+6. Choose File > Import File again and import modEDVVerification.bas.
+7. Choose Debug > Compile VBAProject. No extra reference needs to be enabled.
+8. Save the workbook as an Excel Macro-Enabled Workbook (*.xlsm).
+9. Return to Excel, press Alt+F8, select EDV_Setup, and click Run.
+
+First use
+1. On EDV_Config, click SELECT SERVER FOLDER.
+2. Confirm or change the local output folder.
+3. Click COPY + PREVIEW ALL, or run EDV_Copy_Then_Preview_All from Alt+F8.
+
+Review use
+1. Select any transaction cell on the data sheet.
+2. Open EDV_Config and click REVIEW SELECTED ROW.
+3. Complete the manual verification fields on EDV_Review.
+4. Click SAVE VERIFICATION.
+
+Important
+- Columns A:AA are read-only to the processing macros.
+- All Excel previews link to copied local images; server images are never used as
+  preview sources and are never deleted, renamed, moved, or edited.
+- The tool supports JPG, JPEG, PNG, BMP, TIF, and TIFF by default.
+- Image/vehicle comparison is a manual reviewer decision. The VBA code does not
+  claim to identify or compare vehicles automatically.
