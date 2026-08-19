@@ -19,6 +19,10 @@ const userSchema = new mongoose.Schema(
     mobile: { type: String, default: "" },
     employeeId: { type: String, default: "", trim: true },
     department: { type: String, default: "", trim: true },
+    // Site / toll plaza the employee is primarily attached to. Same field
+    // name/shape as WorkApproval's existing `plaza` string so certificates
+    // and reports can reuse one convention across modules.
+    plaza: { type: String, default: "", trim: true },
     password: { type: String, required: true },
     role: {
       type: String,

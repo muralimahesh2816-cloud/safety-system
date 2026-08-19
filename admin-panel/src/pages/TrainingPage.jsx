@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Award, BookOpen, Download, HardHat, PlayCircle, Trash2 } from "lucide-react";
+import {
+  Award,
+  BookOpen,
+  CheckCircle2,
+  Download,
+  Eye,
+  HardHat,
+  PlayCircle,
+  Printer,
+  ShieldCheck,
+  Trash2
+} from "lucide-react";
 import GlassCard from "../components/common/GlassCard";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import PageHeader from "../components/common/PageHeader";
@@ -14,7 +25,7 @@ import {
 } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl, IMAGE_PLACEHOLDER_URL } from "../utils/media";
-import { exportCertificatePdf } from "../utils/certificatePdf";
+import { downloadCertificatePdf, viewCertificatePdf, printCertificatePdf } from "../utils/certificatePdf";
 
 const baseCategories = ["All", "General", "PPE", "Electrical", "Fire Safety", "Road Safety"];
 
@@ -82,11 +93,26 @@ const safetyGallery = (() => {
 const initialForm = {
   title: "",
   description: "",
-  category: ""
+  category: "",
+  concept: "",
+  trainerName: "",
+  passingScore: "",
+  validityMonths: ""
 };
 
 const normalizeRole = (role = "") =>
   String(role || "").trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_");
+
+// Presentation only — mirrors the backend completion.status enum
+// (assigned/in_progress/completed/failed/expired) from
+// backend/src/models/Training.js.
+const STATUS_BADGES = {
+  assigned: { label: "Assigned", className: "bg-white/15 text-slate-200" },
+  in_progress: { label: "In Progress", className: "bg-amber-500/25 text-amber-100" },
+  completed: { label: "Completed", className: "bg-emerald-500/25 text-emerald-100" },
+  failed: { label: "Failed", className: "bg-rose-500/25 text-rose-100" },
+  expired: { label: "Expired", className: "bg-white/10 text-slate-400" }
+};
 
 const TrainingPage = ({ user }) => {
   const [records, setRecords] = useState([]);
@@ -103,7 +129,9 @@ const TrainingPage = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [imageModal, setImageModal] = useState({ open: false, items: [], index: 0, compare: null });
   const [deletingId, setDeletingId] = useState("");
-  const [downloadingCertId, setDownloadingCertId] = useState("");
+  // "<trainingId or certId>:<action>" while a certificate action is in
+  // flight, so only the button that was clicked shows a busy state.
+  const [busyAction, setBusyAction] = useState("");
   const [uploading, setUploading] = useState(false);
   const uploadLockRef = useRef(false);
   const previewVideoRef = useRef(null);
@@ -201,6 +229,82 @@ const TrainingPage = ({ user }) => {
     return map;
   }, [history]);
 
+  // "Training Completion" summary (spec section 13): one row per training
+  // the user has ever started, merging their progress/assessment status
+  // (history, from GET /training/history/me) with any certificate already
+  // issued for it (certificates, from GET /certificates/mine). A training
+  // with no certificate yet still shows here — that's what lets the
+  // "Generate Certificate" button appear once eligible.
+  const myTrainingCompletions = useMemo(() => {
+    return history.map((item) => {
+      const certificate = certificates.find(
+        (cert) => String(cert.training) === String(item.trainingId || item.id)
+      );
+      return { ...item, certificate: certificate || null };
+    });
+  }, [history, certificates]);
+
+  const busyKey = (id, action) => `${id}:${action}`;
+
+  const generateCertificate = async (item) => {
+    const key = busyKey(item.trainingId, "generate");
+    setBusyAction(key);
+    try {
+      const response = await certificateService.generate({ trainingId: item.trainingId });
+      setCertificates((prev) => [response.certificate, ...prev]);
+      await showSuccessPopup("Certificate Generated");
+    } catch (generateError) {
+      showValidationPopup(
+        generateError?.response?.data?.message || "This training is not yet eligible for a certificate."
+      );
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const downloadCertificate = async (certificate) => {
+    const key = busyKey(certificate._id, "download");
+    setBusyAction(key);
+    try {
+      await downloadCertificatePdf(certificate);
+      certificateService.logAction(certificate._id, "downloaded");
+    } catch (_downloadError) {
+      showValidationPopup("Could not generate the certificate PDF. Please try again.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const viewCertificate = async (certificate) => {
+    const key = busyKey(certificate._id, "view");
+    setBusyAction(key);
+    try {
+      await viewCertificatePdf(certificate);
+      certificateService.logAction(certificate._id, "viewed");
+    } catch (_viewError) {
+      showValidationPopup("Could not open the certificate PDF. Please try again.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const printCertificate = async (certificate) => {
+    const key = busyKey(certificate._id, "print");
+    setBusyAction(key);
+    try {
+      await printCertificatePdf(certificate);
+      certificateService.logAction(certificate._id, "printed");
+    } catch (_printError) {
+      showValidationPopup("Could not open the certificate for printing. Please try again.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const openVerifyPage = (certificate) => {
+    window.open(`${window.location.origin}/verify?code=${certificate.verificationCode}`, "_blank", "noopener,noreferrer");
+  };
+
   const updateProgress = async (record, progress, seconds = 120) => {
     if (!record?._id) return;
     try {
@@ -233,10 +337,14 @@ const TrainingPage = ({ user }) => {
     setUploading(true);
     await showLoadingPopup("Uploading Please Wait...", "Uploading training video...");
     try {
-      await trainingService.create({
-        ...form,
-        video
-      });
+      // passingScore/validityMonths are optional numeric fields on the
+      // backend (zod z.coerce.number().optional()) — sending an empty
+      // string would coerce to NaN and fail validation, so they're only
+      // included when the admin actually filled them in.
+      const payload = { ...form, video };
+      if (!String(payload.passingScore || "").trim()) delete payload.passingScore;
+      if (!String(payload.validityMonths || "").trim()) delete payload.validityMonths;
+      await trainingService.create(payload);
       setForm(initialForm);
       setVideo(null);
       if (videoPreview?.startsWith("blob:")) URL.revokeObjectURL(videoPreview);
@@ -303,17 +411,6 @@ const TrainingPage = ({ user }) => {
     const assets = [videoUrl || imageUrl].filter(Boolean).map((url) => ({ url }));
     if (!assets.length) return;
     setImageModal({ open: true, items: assets, index: 0, compare: null });
-  };
-
-  const downloadCertificate = async (certificate) => {
-    setDownloadingCertId(certificate._id || certificate.certificateNumber);
-    try {
-      await exportCertificatePdf(certificate);
-    } catch (_downloadError) {
-      showValidationPopup("Could not generate the certificate PDF. Please try again.");
-    } finally {
-      setDownloadingCertId("");
-    }
   };
 
   return (
@@ -557,6 +654,37 @@ const TrainingPage = ({ user }) => {
                 required
               />
               <input
+                value={form.concept}
+                onChange={(event) => setForm((prev) => ({ ...prev, concept: event.target.value }))}
+                placeholder="Training Concept (optional, shown on certificates)"
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
+              />
+              <input
+                value={form.trainerName}
+                onChange={(event) => setForm((prev) => ({ ...prev, trainerName: event.target.value }))}
+                placeholder="Trainer Name (optional)"
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={form.passingScore}
+                  onChange={(event) => setForm((prev) => ({ ...prev, passingScore: event.target.value }))}
+                  placeholder="Passing Score % (optional)"
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
+                />
+                <input
+                  type="number"
+                  min="1"
+                  value={form.validityMonths}
+                  onChange={(event) => setForm((prev) => ({ ...prev, validityMonths: event.target.value }))}
+                  placeholder="Certificate Validity (months, optional)"
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
+                />
+              </div>
+              <input
                 type="file"
                 accept="video/*"
                 onChange={(event) => {
@@ -587,38 +715,98 @@ const TrainingPage = ({ user }) => {
 
         <GlassCard className="p-5">
           <h3 className="mb-2 flex items-center gap-2 text-lg font-semibold text-white">
-            <Award size={18} className="text-[#f0a69b]" aria-hidden="true" /> My Certificates
+            <Award size={18} className="text-[#f0a69b]" aria-hidden="true" /> Training Completion &amp; Certificates
           </h3>
           <p className="mb-3 text-[11px] text-slate-400">
-            Issued automatically when you complete a training module. Each certificate carries a unique
-            reference number and a verification code that can be checked on the portal's public verify page.
+            Once a training reaches 100% and meets any configured passing score, you can generate a certificate.
+            Every certificate carries a unique reference number and a verification code checkable on the portal's
+            public verify page.
           </p>
           <div className="space-y-2">
-            {certificates.length === 0 ? (
-              <p className="text-xs text-slate-300">No certificates yet — complete a training module to earn one.</p>
+            {myTrainingCompletions.length === 0 ? (
+              <p className="text-xs text-slate-300">
+                No training started yet — open a training module above to begin.
+              </p>
             ) : (
-              certificates.map((certificate) => {
-                const certId = certificate._id || certificate.certificateNumber;
+              myTrainingCompletions.map((item) => {
+                const { certificate } = item;
+                const certId = certificate?._id;
+                const statusBadge = STATUS_BADGES[item.status] || STATUS_BADGES.assigned;
+                const canGenerate = item.status === "completed" && !certificate;
                 return (
                   <div
-                    key={certId}
+                    key={item.trainingId || item.id}
                     className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 p-3"
                   >
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-medium text-white">{certificate.trainingTitle}</p>
-                      <p className="mt-0.5 text-[11px] text-slate-300">
-                        {certificate.certificateNumber} - Completed {formatDateTime(certificate.completedAt)}
-                      </p>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-white">{item.title}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-300">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusBadge.className}`}>
+                          {statusBadge.label}
+                        </span>
+                        <span>{item.progress || 0}% complete</span>
+                        <span>Score: {item.assessmentScore ?? "Not Available"}</span>
+                        {certificate ? (
+                          <span>
+                            {certificate.certificateNumber} - Completed {formatDateTime(certificate.completedAt)}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => downloadCertificate(certificate)}
-                      disabled={downloadingCertId === certId}
-                      className="hse-primary-button inline-flex min-h-9 shrink-0 items-center gap-1.5 px-3 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Download size={13} aria-hidden="true" />
-                      {downloadingCertId === certId ? "Preparing..." : "Download PDF"}
-                    </button>
+
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      {canGenerate ? (
+                        <button
+                          type="button"
+                          onClick={() => generateCertificate(item)}
+                          disabled={busyAction === busyKey(item.trainingId, "generate")}
+                          className="hse-primary-button inline-flex min-h-9 items-center gap-1.5 px-3 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <ShieldCheck size={13} aria-hidden="true" />
+                          {busyAction === busyKey(item.trainingId, "generate") ? "Generating..." : "Generate Certificate"}
+                        </button>
+                      ) : null}
+
+                      {certificate ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => viewCertificate(certificate)}
+                            disabled={busyAction === busyKey(certId, "view")}
+                            title="View"
+                            className="inline-flex min-h-9 items-center gap-1 rounded-xl border border-white/15 bg-white/10 px-2.5 text-[11px] text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Eye size={13} aria-hidden="true" /> View
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => downloadCertificate(certificate)}
+                            disabled={busyAction === busyKey(certId, "download")}
+                            className="hse-primary-button inline-flex min-h-9 items-center gap-1.5 px-3 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Download size={13} aria-hidden="true" />
+                            {busyAction === busyKey(certId, "download") ? "Preparing..." : "Download"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => printCertificate(certificate)}
+                            disabled={busyAction === busyKey(certId, "print")}
+                            title="Print"
+                            className="inline-flex min-h-9 items-center gap-1 rounded-xl border border-white/15 bg-white/10 px-2.5 text-[11px] text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Printer size={13} aria-hidden="true" /> Print
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openVerifyPage(certificate)}
+                            title="Verify"
+                            className="inline-flex min-h-9 items-center gap-1 rounded-xl border border-white/15 bg-white/10 px-2.5 text-[11px] text-slate-100"
+                          >
+                            <CheckCircle2 size={13} aria-hidden="true" /> Verify
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 );
               })

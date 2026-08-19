@@ -1275,7 +1275,11 @@ export const trainingService = {
     withLegacyFallback(
       async () => (await client.get("/training/certificates/me")).data,
       async () => ({ success: true, certificates: [] })
-    )
+    ),
+  // Trainer / Safety Manager / Admin only — records an employee's
+  // assessment score for a training (backend-enforced role check).
+  recordAssessment: async (trainingId, userId, score) =>
+    (await client.post(`/training/${trainingId}/assessment`, { userId, score })).data
 };
 
 export const reportService = {
@@ -1482,6 +1486,26 @@ export const certificateService = {
       async () => (await client.get("/certificates/mine")).data,
       async () => ({ success: true, certificates: [] })
     ),
+  // Certificate history — Safety Manager/Admin see everything, a Trainer
+  // sees only their own trainings' certificates (backend-enforced).
+  list: async (params = {}) => (await client.get("/certificates", { params })).data,
+  // Backend re-validates eligibility on every call — there is no
+  // frontend-only bypass, so these are called directly (no legacy
+  // fallback: a 400 "not eligible" response must reach the caller as a
+  // real error, not be masked by a fake success).
+  generate: async ({ trainingId, userId }) =>
+    (await client.post("/certificates/generate", { trainingId, userId })).data,
+  revoke: async (id, reason) => (await client.post(`/certificates/${id}/revoke`, { reason })).data,
+  send: async (id) => (await client.post(`/certificates/${id}/send`)).data,
+  // Best-effort audit trail for client-only actions (view/download/print).
+  // Failures are swallowed — this must never block the user's download.
+  logAction: async (id, action) => {
+    try {
+      await client.post(`/certificates/${id}/log-action`, { action });
+    } catch (_error) {
+      // non-critical
+    }
+  },
   // Public — no auth required, used by the standalone /verify page a
   // certificate's verification code / link resolves to.
   verify: async (code) =>

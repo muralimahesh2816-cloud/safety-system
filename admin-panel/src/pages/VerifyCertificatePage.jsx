@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ShieldCheck, ShieldX, Loader2 } from "lucide-react";
+import { ShieldCheck, ShieldX, ShieldAlert, Loader2 } from "lucide-react";
 import { certificateService } from "../api/services";
 import { APP_NAME } from "../config/appConfig";
 import "../styles/login/login.scss";
@@ -16,6 +16,31 @@ const formatDate = (value) => {
   return Number.isNaN(date.getTime())
     ? "-"
     : new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "long", year: "numeric" }).format(date);
+};
+
+// Only the minimum fields the spec allows on the public verification page
+// (section 9): certificate number, status, employee name, training name,
+// completion date, and who issued it. No employee ID, department, plaza,
+// assessment score, or any other internal detail is ever requested or
+// rendered here — the backend's GET /certificates/verify/:code response
+// already omits them (see backend/src/routes/certificates.routes.js), and
+// this page does not add its own network calls that could leak more.
+const STATUS_PRESENTATION = {
+  VALID: {
+    tone: { borderColor: "#bfe3cd", background: "#eefaf1", color: "#1c6b3f" },
+    icon: ShieldCheck,
+    heading: "Valid certificate"
+  },
+  REVOKED: {
+    tone: { borderColor: "#f3c6c6", background: "#fdecec", color: "#9b1400" },
+    icon: ShieldX,
+    heading: "Certificate revoked"
+  },
+  EXPIRED: {
+    tone: { borderColor: "#f3ddb3", background: "#fdf6e6", color: "#8a6a1f" },
+    icon: ShieldAlert,
+    heading: "Certificate expired"
+  }
 };
 
 /**
@@ -41,11 +66,11 @@ const VerifyCertificatePage = () => {
       .then((response) => {
         if (cancelled) return;
         setResult(response);
-        setStatus(response?.valid ? "valid" : "invalid");
+        setStatus(response?.certificate ? "found" : "not-found");
       })
       .catch(() => {
         if (cancelled) return;
-        setStatus("invalid");
+        setStatus("not-found");
       });
     return () => {
       cancelled = true;
@@ -61,6 +86,10 @@ const VerifyCertificatePage = () => {
     window.history.replaceState({}, "", url);
     setCode(trimmed);
   };
+
+  const certificate = result?.certificate;
+  const presentation = certificate ? STATUS_PRESENTATION[certificate.status] : null;
+  const StatusIcon = presentation?.icon;
 
   return (
     <main className="corporate-login" aria-label="Certificate verification">
@@ -99,21 +128,32 @@ const VerifyCertificatePage = () => {
               </div>
             ) : null}
 
-            {status === "valid" && result?.certificate ? (
-              <div className="auth-status" style={{ borderColor: "#bfe3cd", background: "#eefaf1", color: "#1c6b3f" }}>
-                <ShieldCheck size={18} aria-hidden="true" />
-                <span>
-                  <strong>Valid certificate.</strong> Issued to {result.certificate.userName} for{" "}
-                  {result.certificate.trainingTitle}, completed {formatDate(result.certificate.completedAt)}.
-                  {result.certificate.expiresAt ? ` Valid until ${formatDate(result.certificate.expiresAt)}.` : ""}
+            {status === "found" && certificate && presentation ? (
+              <div className="auth-status" style={{ ...presentation.tone, flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <StatusIcon size={18} aria-hidden="true" />
+                  <strong>{presentation.heading}</strong>
+                </span>
+                <span style={{ fontSize: 12 }}>
+                  Certificate Number: {certificate.certificateNumber}
+                  <br />
+                  Status: {certificate.status}
+                  <br />
+                  Employee: {certificate.userName}
+                  <br />
+                  Training: {certificate.trainingTitle}
+                  <br />
+                  Completion Date: {formatDate(certificate.completedAt)}
+                  <br />
+                  Issued By: {certificate.issuedBy}
                 </span>
               </div>
             ) : null}
 
-            {status === "invalid" ? (
+            {status === "not-found" ? (
               <div className="auth-status auth-status--error">
                 <ShieldX size={18} aria-hidden="true" />
-                <span>No active certificate matches this code. Check the code and try again.</span>
+                <span>No certificate matches this code. Check the code and try again.</span>
               </div>
             ) : null}
           </div>

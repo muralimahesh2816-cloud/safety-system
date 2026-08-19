@@ -5,8 +5,7 @@ const authMiddleware = require("../middleware/auth.middleware");
 const { authorizePermission, authorizeRoles } = require("../middleware/rbac.middleware");
 const audit = require("../middleware/audit.middleware");
 const Training = require("../models/Training");
-const { issueCertificateForCompletion } = require("../services/certificate.service");
-const { createTrainingSchema, progressSchema } = require("../validators/training.validators");
+const { createTrainingSchema, progressSchema, assessmentScoreSchema } = require("../validators/training.validators");
 const { uploadAsset } = require("../utils/uploads");
 const { IMAGE_MIME_TYPES, VIDEO_MIME_TYPES, createMemoryUpload } = require("../utils/multer");
 const User = require("../models/User");
@@ -115,6 +114,8 @@ router.post(
     const payload = parsed.data;
     const training = await Training.create({
       ...payload,
+      // Empty-string form fields must not be cast to ObjectId.
+      trainer: payload.trainer || null,
       tags: typeof payload.tags === "string" ? payload.tags.split(",").map((tag) => tag.trim()) : [],
       thumbnail,
       video,
@@ -159,6 +160,26 @@ router.delete(
   })
 );
 
+// Derives the richer Assigned/In Progress/Completed/Failed lifecycle
+// status alongside the existing isCompleted boolean (kept for backward
+// compatibility — see the completionSchema comment in models/Training.js).
+// A completion only becomes "failed" once an assessment score has actually
+// been recorded and misses the training's passingScore; reaching 100%
+// progress with no score yet (or no passingScore configured) is
+// "completed" and certificate-eligible.
+const computeCompletionStatus = (training, progress, assessmentScore) => {
+  if (progress >= 100) {
+    const hasPassingScore = training.passingScore !== null && training.passingScore !== undefined;
+    const hasScore = assessmentScore !== null && assessmentScore !== undefined;
+    if (hasPassingScore && hasScore && Number(assessmentScore) < Number(training.passingScore)) {
+      return "failed";
+    }
+    return "completed";
+  }
+  if (progress > 0) return "in_progress";
+  return "assigned";
+};
+
 router.patch(
   "/:id/progress",
   authMiddleware,
@@ -182,47 +203,81 @@ router.patch(
       seconds: parsed.data.seconds
     };
 
-    let justCompletedAt = null;
-
     if (existingIndex >= 0) {
-      training.completions[existingIndex].progress = parsed.data.progress;
-      training.completions[existingIndex].isCompleted = completed;
-      if (completed && !training.completions[existingIndex].completedAt) {
-        justCompletedAt = new Date();
-        training.completions[existingIndex].completedAt = justCompletedAt;
-        training.completions[existingIndex].certificateUrl = `/certificates/${training._id}-${req.user.id}.pdf`;
+      const completion = training.completions[existingIndex];
+      completion.progress = parsed.data.progress;
+      completion.isCompleted = completed;
+      if (completed && !completion.completedAt) {
+        completion.completedAt = new Date();
       }
-      training.completions[existingIndex].watchHistory.push(watchEntry);
+      completion.status = computeCompletionStatus(training, parsed.data.progress, completion.assessmentScore);
+      completion.watchHistory.push(watchEntry);
     } else {
-      justCompletedAt = completed ? new Date() : null;
+      const completedAt = completed ? new Date() : null;
       training.completions.push({
         user: req.user.id,
         progress: parsed.data.progress,
         isCompleted: completed,
-        completedAt: justCompletedAt,
-        certificateUrl: completed ? `/certificates/${training._id}-${req.user.id}.pdf` : "",
+        status: computeCompletionStatus(training, parsed.data.progress, null),
+        completedAt,
+        // plaza is left blank here (default) and resolved from the live
+        // User.plaza at certificate-issuance time instead — see
+        // certificate.service.js#issueCertificateForCompletion.
         watchHistory: [watchEntry]
       });
     }
 
     await training.save();
 
-    if (justCompletedAt) {
-      // First time this user has completed this training — issue their
-      // certificate. Idempotent, so a retry or a race with another
-      // request for the same completion is safe.
-      await issueCertificateForCompletion({
-        trainingId: training._id,
-        trainingTitle: training.title,
-        trainingCategory: training.category,
-        userId: req.user.id,
-        userName: req.user.name,
-        completedAt: justCompletedAt
-      });
-    }
-
+    // Certificates are no longer auto-issued here. Reaching 100% only
+    // marks the completion eligible; the employee (or a Safety
+    // Manager/Admin on their behalf) must explicitly request the
+    // certificate via POST /certificates/generate, which re-validates
+    // eligibility server-side. See routes/certificates.routes.js.
     await audit(req, "progress_update", "training", parsed.data, training._id);
     res.json({ success: true, training });
+  })
+);
+
+// Records an employee's assessment score against a training, and
+// recomputes their completion status/eligibility. Restricted to the
+// training's assigned trainer or a Safety Manager/Admin/Super Admin — an
+// employee cannot self-report their own score.
+router.post(
+  "/:id/assessment",
+  authMiddleware,
+  asyncHandler(async (req, res) => {
+    const parsed = assessmentScoreSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ApiError(400, "Validation failed", parsed.error.flatten());
+    }
+
+    const training = await Training.findById(req.params.id);
+    if (!training) throw new ApiError(404, "Training record not found");
+
+    const isTrainer = training.trainer && String(training.trainer) === req.user.id;
+    const isManager = ["safety_manager", "admin", "super_admin"].includes(req.user.role);
+    if (!isTrainer && !isManager) {
+      throw new ApiError(403, "Only the assigned trainer or a Safety Manager/Admin can record an assessment score", null, "PERMISSION_DENIED");
+    }
+
+    const completion = training.completions.find(
+      (item) => item.user?.toString() === parsed.data.userId
+    );
+    if (!completion) throw new ApiError(404, "This employee has no completion record for this training");
+
+    completion.assessmentScore = parsed.data.score;
+    completion.status = computeCompletionStatus(training, completion.progress, parsed.data.score);
+    await training.save();
+
+    await audit(
+      req,
+      "training_assessment_recorded",
+      "training",
+      { userId: parsed.data.userId, score: parsed.data.score },
+      training._id
+    );
+    res.json({ success: true, completion });
   })
 );
 
@@ -233,7 +288,9 @@ router.get(
   asyncHandler(async (req, res) => {
     const records = await Training.find({
       "completions.user": req.user.id
-    }).select("title category completions thumbnail");
+    })
+      .select("title category concept completions thumbnail trainerName passingScore durationMinutes")
+      .populate("trainer", "name");
 
     const history = records.map((record) => {
       const completion = record.completions.find(
@@ -241,10 +298,18 @@ router.get(
       );
       return {
         id: record._id,
+        trainingId: record._id,
         title: record.title,
         category: record.category,
+        concept: record.concept || "",
         thumbnail: record.thumbnail,
+        trainerName: record.trainer?.name || record.trainerName || "",
+        durationMinutes: record.durationMinutes ?? null,
+        passingScore: record.passingScore ?? null,
         progress: completion?.progress || 0,
+        isCompleted: completion?.isCompleted || false,
+        status: completion?.status || "assigned",
+        assessmentScore: completion?.assessmentScore ?? null,
         completedAt: completion?.completedAt || null,
         watchHistory: completion?.watchHistory || []
       };

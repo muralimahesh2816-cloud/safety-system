@@ -40,9 +40,21 @@ const certificateSignatorySchema = z.object({
   title: z.string().trim().min(2).max(160).optional().default("Authorized Signatory - HSE Department")
 });
 
+const certificateNumberFormatSchema = z.object({
+  certificateNumberPrefix: z
+    .string()
+    .trim()
+    .min(2)
+    .max(40)
+    .regex(/^[A-Z0-9-]+$/, "Use only uppercase letters, numbers, and hyphens")
+    .optional()
+    .default("UTPL-HSE-TRN")
+});
+
 module.exports = {
   profileSchema,
   brandingSchema,
   securitySchema,
-  certificateSignatorySchema
+  certificateSignatorySchema,
+  certificateNumberFormatSchema
 };

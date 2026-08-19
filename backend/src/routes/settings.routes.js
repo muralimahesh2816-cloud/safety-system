@@ -6,7 +6,13 @@ const validate = require("../middleware/validate.middleware");
 const audit = require("../middleware/audit.middleware");
 const ApiError = require("../utils/api-error");
 const CompanySettings = require("../models/CompanySettings");
-const { profileSchema, brandingSchema, securitySchema, certificateSignatorySchema } = require("../validators/settings.validators");
+const {
+  profileSchema,
+  brandingSchema,
+  securitySchema,
+  certificateSignatorySchema,
+  certificateNumberFormatSchema
+} = require("../validators/settings.validators");
 const { uploadAsset } = require("../utils/uploads");
 const { createMemoryUpload } = require("../utils/multer");
 
@@ -97,6 +103,21 @@ router.put(
     settings.updatedBy = req.user.id;
     await settings.save();
     await audit(req, "update_certificate_signatory", "settings", req.body, settings._id);
+    res.json({ success: true, settings });
+  })
+);
+
+router.put(
+  "/certificate-number-format",
+  authMiddleware,
+  authorizePermission("settings", "update"),
+  validate(certificateNumberFormatSchema),
+  asyncHandler(async (req, res) => {
+    const settings = await ensureSettings();
+    settings.certificateNumberPrefix = req.body.certificateNumberPrefix;
+    settings.updatedBy = req.user.id;
+    await settings.save();
+    await audit(req, "update_certificate_number_format", "settings", req.body, settings._id);
     res.json({ success: true, settings });
   })
 );

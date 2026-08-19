@@ -41,6 +41,10 @@ const companySettingsSchema = new mongoose.Schema(
       name: { type: String, default: "" },
       title: { type: String, default: "Authorized Signatory - HSE Department" }
     },
+    // Configurable prefix for auto-generated certificate numbers, e.g.
+    // "UTPL-HSE-TRN" -> "UTPL-HSE-TRN-2026-000001". See
+    // services/certificate.service.js#buildCertificateNumber.
+    certificateNumberPrefix: { type: String, default: "UTPL-HSE-TRN" },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
   },
   { timestamps: true }
