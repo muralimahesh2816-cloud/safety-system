@@ -5,6 +5,7 @@ const authMiddleware = require("../middleware/auth.middleware");
 const { authorizePermission, authorizeRoles } = require("../middleware/rbac.middleware");
 const audit = require("../middleware/audit.middleware");
 const Training = require("../models/Training");
+const { issueCertificateForCompletion } = require("../services/certificate.service");
 const { createTrainingSchema, progressSchema } = require("../validators/training.validators");
 const { uploadAsset } = require("../utils/uploads");
 const { IMAGE_MIME_TYPES, VIDEO_MIME_TYPES, createMemoryUpload } = require("../utils/multer");
@@ -181,26 +182,45 @@ router.patch(
       seconds: parsed.data.seconds
     };
 
+    let justCompletedAt = null;
+
     if (existingIndex >= 0) {
       training.completions[existingIndex].progress = parsed.data.progress;
       training.completions[existingIndex].isCompleted = completed;
       if (completed && !training.completions[existingIndex].completedAt) {
-        training.completions[existingIndex].completedAt = new Date();
+        justCompletedAt = new Date();
+        training.completions[existingIndex].completedAt = justCompletedAt;
         training.completions[existingIndex].certificateUrl = `/certificates/${training._id}-${req.user.id}.pdf`;
       }
       training.completions[existingIndex].watchHistory.push(watchEntry);
     } else {
+      justCompletedAt = completed ? new Date() : null;
       training.completions.push({
         user: req.user.id,
         progress: parsed.data.progress,
         isCompleted: completed,
-        completedAt: completed ? new Date() : null,
+        completedAt: justCompletedAt,
         certificateUrl: completed ? `/certificates/${training._id}-${req.user.id}.pdf` : "",
         watchHistory: [watchEntry]
       });
     }
 
     await training.save();
+
+    if (justCompletedAt) {
+      // First time this user has completed this training — issue their
+      // certificate. Idempotent, so a retry or a race with another
+      // request for the same completion is safe.
+      await issueCertificateForCompletion({
+        trainingId: training._id,
+        trainingTitle: training.title,
+        trainingCategory: training.category,
+        userId: req.user.id,
+        userName: req.user.name,
+        completedAt: justCompletedAt
+      });
+    }
+
     await audit(req, "progress_update", "training", parsed.data, training._id);
     res.json({ success: true, training });
   })

@@ -35,8 +35,14 @@ const securitySchema = z.object({
   twoFactorAuthentication: z.boolean().optional().default(false)
 });
 
+const certificateSignatorySchema = z.object({
+  name: z.string().trim().max(120).optional().default(""),
+  title: z.string().trim().min(2).max(160).optional().default("Authorized Signatory - HSE Department")
+});
+
 module.exports = {
   profileSchema,
   brandingSchema,
-  securitySchema
+  securitySchema,
+  certificateSignatorySchema
 };

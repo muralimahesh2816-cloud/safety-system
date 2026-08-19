@@ -307,7 +307,7 @@ const UsersPage = ({ currentUser }) => {
             <div className="flex gap-2">
               <button
                 type="submit"
-                className="flex-1 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex-1 rounded-xl hse-primary-button px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={!canManageUsers || savingUser}
               >
                 {savingUser ? "Uploading..." : editId ? "Update User" : "Create User"}

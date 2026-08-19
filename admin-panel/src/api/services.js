@@ -1475,3 +1475,18 @@ export const notificationService = {
   markRead: async (id) => (await client.patch(`/notifications/${id}/read`)).data,
   markAllRead: async () => (await client.patch("/notifications/read-all")).data
 };
+
+export const certificateService = {
+  mine: async () =>
+    withLegacyFallback(
+      async () => (await client.get("/certificates/mine")).data,
+      async () => ({ success: true, certificates: [] })
+    ),
+  // Public — no auth required, used by the standalone /verify page a
+  // certificate's verification code / link resolves to.
+  verify: async (code) =>
+    withLegacyFallback(
+      async () => (await client.get(`/certificates/verify/${encodeURIComponent(code)}`)).data,
+      async () => ({ success: true, valid: false })
+    )
+};

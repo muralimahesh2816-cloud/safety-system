@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { BookOpen, HardHat, PlayCircle, Trash2 } from "lucide-react";
+import { Award, BookOpen, Download, HardHat, PlayCircle, Trash2 } from "lucide-react";
 import GlassCard from "../components/common/GlassCard";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import PageHeader from "../components/common/PageHeader";
-import { trainingService } from "../api/services";
+import { certificateService, trainingService } from "../api/services";
 import {
   closeLoadingPopup,
   showConfirmPopup,
@@ -14,6 +14,7 @@ import {
 } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
 import { getMediaUrl, IMAGE_PLACEHOLDER_URL } from "../utils/media";
+import { exportCertificatePdf } from "../utils/certificatePdf";
 
 const baseCategories = ["All", "General", "PPE", "Electrical", "Fire Safety", "Road Safety"];
 
@@ -102,6 +103,7 @@ const TrainingPage = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [imageModal, setImageModal] = useState({ open: false, items: [], index: 0, compare: null });
   const [deletingId, setDeletingId] = useState("");
+  const [downloadingCertId, setDownloadingCertId] = useState("");
   const [uploading, setUploading] = useState(false);
   const uploadLockRef = useRef(false);
   const previewVideoRef = useRef(null);
@@ -117,7 +119,7 @@ const TrainingPage = ({ user }) => {
       const [listRes, historyRes, certRes] = await Promise.all([
         trainingService.list(),
         trainingService.history(),
-        trainingService.certificates()
+        certificateService.mine()
       ]);
       const list = listRes.records || [];
       setRecords(list);
@@ -301,6 +303,17 @@ const TrainingPage = ({ user }) => {
     const assets = [videoUrl || imageUrl].filter(Boolean).map((url) => ({ url }));
     if (!assets.length) return;
     setImageModal({ open: true, items: assets, index: 0, compare: null });
+  };
+
+  const downloadCertificate = async (certificate) => {
+    setDownloadingCertId(certificate._id || certificate.certificateNumber);
+    try {
+      await exportCertificatePdf(certificate);
+    } catch (_downloadError) {
+      showValidationPopup("Could not generate the certificate PDF. Please try again.");
+    } finally {
+      setDownloadingCertId("");
+    }
   };
 
   return (
@@ -564,7 +577,7 @@ const TrainingPage = ({ user }) => {
               <button
                 type="submit"
                 disabled={uploading}
-                className="w-full rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-xl hse-primary-button px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {uploading ? "Uploading..." : "Upload Training"}
               </button>
@@ -573,22 +586,42 @@ const TrainingPage = ({ user }) => {
         ) : null}
 
         <GlassCard className="p-5">
-          <h3 className="mb-2 text-lg font-semibold text-white">Certificates</h3>
+          <h3 className="mb-2 flex items-center gap-2 text-lg font-semibold text-white">
+            <Award size={18} className="text-[#f0a69b]" aria-hidden="true" /> My Certificates
+          </h3>
+          <p className="mb-3 text-[11px] text-slate-400">
+            Issued automatically when you complete a training module. Each certificate carries a unique
+            reference number and a verification code that can be checked on the portal's public verify page.
+          </p>
           <div className="space-y-2">
             {certificates.length === 0 ? (
-              <p className="text-xs text-slate-300">No certificates yet.</p>
+              <p className="text-xs text-slate-300">No certificates yet — complete a training module to earn one.</p>
             ) : (
-              certificates.map((certificate) => (
-                <div
-                  key={`${certificate.trainingId}-${certificate.completedAt}`}
-                  className="rounded-xl border border-white/10 bg-white/5 p-2.5"
-                >
-                  <p className="text-xs font-medium text-white">{certificate.title}</p>
-                  <p className="text-[11px] text-slate-300">
-                    Completed: {formatDateTime(certificate.completedAt)}
-                  </p>
-                </div>
-              ))
+              certificates.map((certificate) => {
+                const certId = certificate._id || certificate.certificateNumber;
+                return (
+                  <div
+                    key={certId}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-medium text-white">{certificate.trainingTitle}</p>
+                      <p className="mt-0.5 text-[11px] text-slate-300">
+                        {certificate.certificateNumber} - Completed {formatDateTime(certificate.completedAt)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => downloadCertificate(certificate)}
+                      disabled={downloadingCertId === certId}
+                      className="hse-primary-button inline-flex min-h-9 shrink-0 items-center gap-1.5 px-3 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Download size={13} aria-hidden="true" />
+                      {downloadingCertId === certId ? "Preparing..." : "Download PDF"}
+                    </button>
+                  </div>
+                );
+              })
             )}
           </div>
         </GlassCard>

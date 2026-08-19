@@ -20,7 +20,7 @@ import { reportService, trainingService } from "../api/services";
 import { closeLoadingPopup, showLoadingPopup, showSuccessPopup } from "../utils/alerts";
 import { exportReportPdf, normalizeReportRowsByType } from "../utils/pdfExport";
 import companyLogo from "../assets/vertis-logo.svg";
-import { APP_NAME } from "../config/appConfig";
+import { APP_NAME, ORGANIZATION_NAME } from "../config/appConfig";
 
 const periods = ["daily", "weekly", "monthly", "yearly"];
 const reportTypes = [
@@ -33,7 +33,7 @@ const reportTypes = [
 ];
 
 const plazaOptions = ["", "Sasthan Plaza", "Hejamadi Plaza", "Talapady Plaza", "Site"];
-const companyName = "Udupi Tollway Pvt Ltd";
+const companyName = ORGANIZATION_NAME;
 
 const reportTitleMap = {
   work: "Work Report",

@@ -976,7 +976,7 @@ const WorkApprovalsPage = ({ user }) => {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-3 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-xl hse-primary-button px-3 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? `Uploading${uploadProgress ? ` ${uploadProgress}%` : "..."}` : "Submit Work"}
             </button>
@@ -1641,7 +1641,7 @@ const WorkApprovalsPage = ({ user }) => {
               <button
                 type="submit"
                 disabled={editSaving}
-                className="rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-xl hse-primary-button px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {editSaving ? "Saving..." : "Save Changes"}
               </button>

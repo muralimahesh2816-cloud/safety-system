@@ -11,6 +11,7 @@ const notificationRoutes = require("./notifications.routes");
 const backupRoutes = require("./backup.routes");
 const locationRoutes = require("./location.routes");
 const enterpriseHseRoutes = require("./enterprise-hse.routes");
+const certificateRoutes = require("./certificates.routes");
 
 const router = express.Router();
 
@@ -20,6 +21,7 @@ router.use("/users", userRoutes);
 router.use("/work-approvals", workRoutes);
 router.use("/hazards", hazardRoutes);
 router.use("/training", trainingRoutes);
+router.use("/certificates", certificateRoutes);
 router.use("/reports", reportRoutes);
 router.use("/settings", settingsRoutes);
 router.use("/notifications", notificationRoutes);

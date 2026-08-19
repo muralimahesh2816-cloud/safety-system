@@ -581,7 +581,7 @@ const ActionPanel = ({
             overrideReason,
             ...(nextAssignment ? { [nextAssignment.optionKey]: nextAssigneeId } : {})
           })}
-          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-500 to-teal-500 px-4 py-3 text-sm font-black uppercase tracking-[0.16em] text-white shadow-[0_20px_45px_rgba(8,145,178,.2)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl hse-primary-button px-4 py-3 text-sm font-black uppercase tracking-[0.16em] text-white shadow-[0_20px_45px_rgba(8,145,178,.2)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Icon size={16} />
           {currentAction.button}

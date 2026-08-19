@@ -33,6 +33,14 @@ const companySettingsSchema = new mongoose.Schema(
       loginAttempts: { type: Number, default: 5 },
       twoFactorAuthentication: { type: Boolean, default: false }
     },
+    // Printed on the signature line of training-completion certificates
+    // (see services/certificate.service.js). Name is left blank by default
+    // rather than guessing a real person's identity; the title-only
+    // placeholder prints on its own until an admin fills this in here.
+    certificateSignatory: {
+      name: { type: String, default: "" },
+      title: { type: String, default: "Authorized Signatory - HSE Department" }
+    },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
   },
   { timestamps: true }

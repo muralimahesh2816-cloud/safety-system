@@ -6,7 +6,7 @@ const validate = require("../middleware/validate.middleware");
 const audit = require("../middleware/audit.middleware");
 const ApiError = require("../utils/api-error");
 const CompanySettings = require("../models/CompanySettings");
-const { profileSchema, brandingSchema, securitySchema } = require("../validators/settings.validators");
+const { profileSchema, brandingSchema, securitySchema, certificateSignatorySchema } = require("../validators/settings.validators");
 const { uploadAsset } = require("../utils/uploads");
 const { createMemoryUpload } = require("../utils/multer");
 
@@ -79,6 +79,24 @@ router.put(
     settings.updatedBy = req.user.id;
     await settings.save();
     await audit(req, "update_security", "settings", req.body, settings._id);
+    res.json({ success: true, settings });
+  })
+);
+
+router.put(
+  "/certificate-signatory",
+  authMiddleware,
+  authorizePermission("settings", "update"),
+  validate(certificateSignatorySchema),
+  asyncHandler(async (req, res) => {
+    const settings = await ensureSettings();
+    settings.certificateSignatory = {
+      ...settings.certificateSignatory,
+      ...req.body
+    };
+    settings.updatedBy = req.user.id;
+    await settings.save();
+    await audit(req, "update_certificate_signatory", "settings", req.body, settings._id);
     res.json({ success: true, settings });
   })
 );

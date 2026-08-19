@@ -208,7 +208,9 @@ const SettingsPage = ({ user }) => {
               type="button"
               onClick={() => setActiveTab(tab.key)}
               className={`rounded-xl px-3 py-1.5 text-xs ${
-                activeTab === tab.key ? "bg-teal-500/30 text-teal-100" : "bg-white/10 text-slate-300"
+                activeTab === tab.key
+                  ? "bg-[rgba(var(--brand-primary-rgb),0.3)] text-[#ffd9d3]"
+                  : "bg-white/10 text-slate-300"
               }`}
             >
               {tab.label}
@@ -279,7 +281,7 @@ const SettingsPage = ({ user }) => {
             type="button"
             onClick={saveSecurity}
             disabled={savingAction === "security"}
-            className="mt-4 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-4 rounded-xl hse-primary-button px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             {savingAction === "security" ? "Saving..." : "Save Security Settings"}
           </button>
@@ -312,7 +314,7 @@ const SettingsPage = ({ user }) => {
             type="button"
             onClick={saveNotifications}
             disabled={savingAction === "notifications"}
-            className="mt-4 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-4 rounded-xl hse-primary-button px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             {savingAction === "notifications" ? "Saving..." : "Save Notification Settings"}
           </button>
@@ -382,7 +384,7 @@ const SettingsPage = ({ user }) => {
               type="button"
               onClick={saveTheme}
               disabled={savingAction === "theme"}
-              className="rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-xl hse-primary-button px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               {savingAction === "theme" ? "Saving..." : "Save Theme Settings"}
             </button>

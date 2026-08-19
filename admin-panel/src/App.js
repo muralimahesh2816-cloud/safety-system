@@ -11,6 +11,7 @@ import ParticleBackground from "./components/common/ParticleBackground";
 import SafetyLogo from "./components/brand/SafetyLogo";
 import MomentumSafetyBackground from "./components/visuals/MomentumSafetyBackground";
 import LoginPage from "./pages/LoginPage";
+import VerifyCertificatePage from "./pages/VerifyCertificatePage";
 import DashboardPage from "./pages/DashboardPage";
 import WorkApprovalsPage from "./pages/WorkApprovalsPage";
 import HazardsPage from "./pages/HazardsPage";
@@ -438,7 +439,7 @@ const AppContent = () => {
                   setShowTimeoutWarning(false);
                   setCountdown(60);
                 }}
-                className="mt-6 rounded-2xl bg-gradient-to-r from-teal-500 to-cyan-500 px-5 py-3 text-sm font-semibold text-white"
+                className="mt-6 rounded-2xl hse-primary-button px-5 py-3 text-sm font-semibold text-white"
               >
                 Continue Session
               </button>
@@ -450,13 +451,24 @@ const AppContent = () => {
   );
 };
 
+// The certificate-verification page is public (no login) and reached by
+// scanning/typing a code from a printed certificate, so it's handled here
+// before AuthProvider ever mounts — no auth machinery runs for a visitor
+// who was never asked to sign in.
+const isVerifyRoute = () =>
+  typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/verify";
+
 const App = () => (
   <ErrorBoundary>
-    <ThemeProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </ThemeProvider>
+    {isVerifyRoute() ? (
+      <VerifyCertificatePage />
+    ) : (
+      <ThemeProvider>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </ThemeProvider>
+    )}
   </ErrorBoundary>
 );
 
