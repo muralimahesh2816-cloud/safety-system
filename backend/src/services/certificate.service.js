@@ -29,27 +29,48 @@ const resolveCertificateSettings = async () => {
  * The frontend also hides the "Generate Certificate" button when this
  * would fail, but that's a UX convenience only: every generation request
  * re-runs this check server-side, so there is no frontend-only bypass.
+ *
+ * A training only requires an assessment when its `passingScore` was
+ * explicitly configured (Case A). Everything else — including every
+ * legacy training record created before this field existed — falls
+ * through to Case B ("no assessment configured") and is never blocked on
+ * a missing score. Each failure carries a stable `code` so the frontend
+ * can show a distinct, accurate message per case (spec: never show a
+ * generic "fill required fields" error for a real business-rule reason).
  */
 const checkCertificateEligibility = ({ training, completion }) => {
   if (!training || !completion) {
-    return { eligible: false, reason: "No training completion record found for this user." };
+    return {
+      eligible: false,
+      code: "NO_COMPLETION",
+      reason: "No training completion record found for this user."
+    };
   }
   if (!completion.isCompleted || Number(completion.progress || 0) < 100) {
-    return { eligible: false, reason: "Training is not yet completed." };
+    return {
+      eligible: false,
+      code: "NOT_COMPLETED",
+      reason: "Certificate cannot be issued because this training is not completed."
+    };
   }
   const hasPassingScore = training.passingScore !== null && training.passingScore !== undefined;
   if (hasPassingScore) {
     if (completion.assessmentScore === null || completion.assessmentScore === undefined) {
-      return { eligible: false, reason: "An assessment score is required before a certificate can be issued." };
+      return {
+        eligible: false,
+        code: "SCORE_REQUIRED",
+        reason: "An assessment is configured for this training, but no score is available yet."
+      };
     }
     if (Number(completion.assessmentScore) < Number(training.passingScore)) {
       return {
         eligible: false,
-        reason: `Assessment score (${completion.assessmentScore}) is below the required passing score (${training.passingScore}).`
+        code: "SCORE_FAILED",
+        reason: `Certificate cannot be issued because the assessment score (${completion.assessmentScore}%) is below the required passing score (${training.passingScore}%).`
       };
     }
   }
-  return { eligible: true, reason: "" };
+  return { eligible: true, code: "ELIGIBLE", reason: "" };
 };
 
 const resolveResult = ({ training, completion }) => {

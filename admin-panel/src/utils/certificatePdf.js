@@ -139,6 +139,50 @@ export const buildCertificateDoc = async (certificate) => {
   doc.setDrawColor(...PDF_COLORS.border);
   doc.rect(15, 15, width - 30, height - 30);
 
+  // Corner accent geometry + a seal medallion — the structural elements
+  // (diagonal corner bands, circular badge) from the reference certificate
+  // image, reproduced in the system's own brand palette rather than the
+  // reference's unrelated navy/gold scheme (see utils/pdfDesign.js —
+  // PDF_COLORS.primary is the same brand red used everywhere else in this
+  // app, including the login page and dashboard).
+  // Sized and positioned to stay clear of the centered header text and
+  // the footer signature blocks (which are inset from the right edge
+  // specifically to leave this corner clear — see signBlockWidth/
+  // trainerSignX/managerSignX below).
+  const GOLD = [201, 162, 39];
+  doc.setFillColor(...PDF_COLORS.primary);
+  doc.triangle(15, 15, 37, 15, 15, 34, "F");
+  doc.setFillColor(...GOLD);
+  doc.triangle(15, 15, 28, 15, 15, 24, "F");
+  doc.setFillColor(...PDF_COLORS.charcoal);
+  doc.triangle(width - 15, height - 15, width - 37, height - 15, width - 15, height - 34, "F");
+  doc.setFillColor(...GOLD);
+  doc.triangle(width - 15, height - 15, width - 28, height - 15, width - 15, height - 24, "F");
+
+  // Seal medallion (top-right) — concentric circles + a checkmark, with
+  // two short ribbon tails beneath, echoing the reference certificate's
+  // badge without reproducing its exact artwork.
+  const sealX = width - 34;
+  const sealY = 34;
+  doc.setFillColor(...PDF_COLORS.primary);
+  doc.circle(sealX, sealY, 11, "F");
+  doc.setDrawColor(...GOLD);
+  doc.setLineWidth(0.9);
+  doc.circle(sealX, sealY, 8.7);
+  doc.setDrawColor(...PDF_COLORS.white);
+  doc.setLineWidth(1.3);
+  doc.lines(
+    [
+      [3.2, 3.4],
+      [5.4, -6.6]
+    ],
+    sealX - 4.2,
+    sealY + 1.2
+  );
+  doc.setFillColor(...GOLD);
+  doc.triangle(sealX - 5, sealY + 10, sealX - 1.5, sealY + 18, sealX - 1.5, sealY + 9, "F");
+  doc.triangle(sealX + 5, sealY + 10, sealX + 1.5, sealY + 18, sealX + 1.5, sealY + 9, "F");
+
   const logoData = await loadLogoDataUrl();
   let cursorY = 24;
   if (logoData) {
@@ -242,9 +286,12 @@ export const buildCertificateDoc = async (certificate) => {
   const verifyOrigin = typeof window !== "undefined" ? window.location.origin : "";
   doc.text(`Verify: ${verifyOrigin}/verify?code=${certificate.verificationCode || ""}`, 22, footerY + 8.5);
 
-  const signBlockWidth = 58;
-  const trainerSignX = width - 2 * signBlockWidth - 14;
-  const managerSignX = width - signBlockWidth - 20;
+  const signBlockWidth = 54;
+  // Inset well past the right margin (vs. a plain margin) so the manager
+  // signature block never overlaps the bottom-right corner accent
+  // triangle drawn near the top of this function.
+  const managerSignX = width - signBlockWidth - 42;
+  const trainerSignX = managerSignX - signBlockWidth - 10;
 
   [
     { x: trainerSignX, name: displayValue(certificate.trainerName), title: "Trainer" },

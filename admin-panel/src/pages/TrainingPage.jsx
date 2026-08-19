@@ -20,6 +20,7 @@ import {
   closeLoadingPopup,
   showConfirmPopup,
   showLoadingPopup,
+  showNumberInputPopup,
   showSuccessPopup,
   showValidationPopup
 } from "../utils/alerts";
@@ -96,6 +97,7 @@ const initialForm = {
   category: "",
   concept: "",
   trainerName: "",
+  requiresAssessment: false,
   passingScore: "",
   validityMonths: ""
 };
@@ -106,6 +108,17 @@ const normalizeRole = (role = "") =>
 // Presentation only — mirrors the backend completion.status enum
 // (assigned/in_progress/completed/failed/expired) from
 // backend/src/models/Training.js.
+// Maps the backend's checkCertificateEligibility() error `code` (see
+// backend/src/services/certificate.service.js) to a distinct popup title,
+// so a real ineligibility reason never reads as a generic
+// "fill required fields" validation error.
+const CERTIFICATE_ERROR_TITLES = {
+  NO_COMPLETION: "Training Not Started",
+  NOT_COMPLETED: "Training Not Completed",
+  SCORE_REQUIRED: "Assessment Score Required",
+  SCORE_FAILED: "Assessment Not Passed"
+};
+
 const STATUS_BADGES = {
   assigned: { label: "Assigned", className: "bg-white/15 text-slate-200" },
   in_progress: { label: "In Progress", className: "bg-amber-500/25 text-amber-100" },
@@ -251,11 +264,50 @@ const TrainingPage = ({ user }) => {
     setBusyAction(key);
     try {
       const response = await certificateService.generate({ trainingId: item.trainingId });
-      setCertificates((prev) => [response.certificate, ...prev]);
-      await showSuccessPopup("Certificate Generated");
+      setCertificates((prev) => [response.certificate, ...prev.filter((cert) => cert._id !== response.certificate._id)]);
+      if (response.alreadyExisted) {
+        await showSuccessPopup("Certificate Already Exists", "Use View or Download below to access it.");
+      } else {
+        await showSuccessPopup("Certificate Generated Successfully");
+      }
     } catch (generateError) {
+      const code = generateError?.response?.data?.code;
+      const message = generateError?.response?.data?.message || "This training is not yet eligible for a certificate.";
+      showValidationPopup(message, CERTIFICATE_ERROR_TITLES[code] || "Certificate Not Eligible");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const recordAssessmentScore = async (item) => {
+    const score = await showNumberInputPopup({
+      title: "Record Assessment Score",
+      text: `${item.title} — passing score is ${item.passingScore}%.`,
+      inputLabel: "Score (%)",
+      min: 0,
+      max: 100
+    });
+    if (score === null) return;
+    const key = busyKey(item.trainingId, "score");
+    setBusyAction(key);
+    try {
+      await trainingService.recordAssessment(item.trainingId, user.id, score);
+      setHistory((prev) =>
+        prev.map((historyItem) =>
+          historyItem.trainingId === item.trainingId
+            ? {
+                ...historyItem,
+                assessmentScore: score,
+                status: item.passingScore !== null && score < item.passingScore ? "failed" : "completed"
+              }
+            : historyItem
+        )
+      );
+      await showSuccessPopup("Assessment Score Recorded");
+    } catch (scoreError) {
       showValidationPopup(
-        generateError?.response?.data?.message || "This training is not yet eligible for a certificate."
+        scoreError?.response?.data?.message || "Could not record the assessment score.",
+        "Could Not Save Score"
       );
     } finally {
       setBusyAction("");
@@ -340,9 +392,16 @@ const TrainingPage = ({ user }) => {
       // passingScore/validityMonths are optional numeric fields on the
       // backend (zod z.coerce.number().optional()) — sending an empty
       // string would coerce to NaN and fail validation, so they're only
-      // included when the admin actually filled them in.
+      // included when actually set. passingScore is additionally gated by
+      // the "requires a passing assessment score" checkbox — this is what
+      // prevents a training from silently ending up assessment-gated
+      // (which then blocks Generate Certificate until a score is
+      // recorded) just because a number was left in the field.
       const payload = { ...form, video };
-      if (!String(payload.passingScore || "").trim()) delete payload.passingScore;
+      if (!payload.requiresAssessment || !String(payload.passingScore || "").trim()) {
+        delete payload.passingScore;
+      }
+      delete payload.requiresAssessment;
       if (!String(payload.validityMonths || "").trim()) delete payload.validityMonths;
       await trainingService.create(payload);
       setForm(initialForm);
@@ -665,25 +724,40 @@ const TrainingPage = ({ user }) => {
                 placeholder="Trainer Name (optional)"
                 className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
               />
-              <div className="grid grid-cols-2 gap-2">
+              <label className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={form.requiresAssessment}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      requiresAssessment: event.target.checked,
+                      passingScore: event.target.checked ? prev.passingScore : ""
+                    }))
+                  }
+                />
+                This training requires a passing assessment score before a certificate can be issued
+              </label>
+              {form.requiresAssessment ? (
                 <input
                   type="number"
                   min="0"
                   max="100"
                   value={form.passingScore}
                   onChange={(event) => setForm((prev) => ({ ...prev, passingScore: event.target.value }))}
-                  placeholder="Passing Score % (optional)"
+                  placeholder="Passing Score % (required)"
                   className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
+                  required
                 />
-                <input
-                  type="number"
-                  min="1"
-                  value={form.validityMonths}
-                  onChange={(event) => setForm((prev) => ({ ...prev, validityMonths: event.target.value }))}
-                  placeholder="Certificate Validity (months, optional)"
-                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
-                />
-              </div>
+              ) : null}
+              <input
+                type="number"
+                min="1"
+                value={form.validityMonths}
+                onChange={(event) => setForm((prev) => ({ ...prev, validityMonths: event.target.value }))}
+                placeholder="Certificate Validity (months, optional)"
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
+              />
               <input
                 type="file"
                 accept="video/*"
@@ -732,7 +806,20 @@ const TrainingPage = ({ user }) => {
                 const { certificate } = item;
                 const certId = certificate?._id;
                 const statusBadge = STATUS_BADGES[item.status] || STATUS_BADGES.assigned;
-                const canGenerate = item.status === "completed" && !certificate;
+                // Case A (assessment configured) vs Case B (no assessment
+                // — spec section 1): a training only ever needs a score
+                // when it has a passingScore configured. Everything else,
+                // including every legacy record, is Case B and is never
+                // blocked on a missing score.
+                const hasAssessment = item.passingScore !== null && item.passingScore !== undefined;
+                const scorePending = hasAssessment && (item.assessmentScore === null || item.assessmentScore === undefined);
+                const canGenerate = item.status === "completed" && !certificate && !scorePending;
+                let assessmentLine = "Assessment: Not Applicable";
+                if (hasAssessment) {
+                  assessmentLine = scorePending
+                    ? `Assessment: Pending (passing score ${item.passingScore}%)`
+                    : `Assessment: ${item.assessmentScore}% (passing ${item.passingScore}%)`;
+                }
                 return (
                   <div
                     key={item.trainingId || item.id}
@@ -745,16 +832,39 @@ const TrainingPage = ({ user }) => {
                           {statusBadge.label}
                         </span>
                         <span>{item.progress || 0}% complete</span>
-                        <span>Score: {item.assessmentScore ?? "Not Available"}</span>
+                        <span>{assessmentLine}</span>
                         {certificate ? (
                           <span>
                             {certificate.certificateNumber} - Completed {formatDateTime(certificate.completedAt)}
                           </span>
                         ) : null}
                       </div>
+                      {item.status === "failed" ? (
+                        <p className="mt-1 text-[11px] text-rose-300">
+                          Certificate cannot be issued because the assessment score is below the passing requirement.
+                        </p>
+                      ) : null}
+                      {scorePending ? (
+                        <p className="mt-1 text-[11px] text-amber-200">
+                          {canManageConcepts
+                            ? "An assessment is configured for this training, but no score is available yet."
+                            : "An assessment is configured for this training — your trainer needs to record a score before a certificate can be issued."}
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      {scorePending && canManageConcepts ? (
+                        <button
+                          type="button"
+                          onClick={() => recordAssessmentScore(item)}
+                          disabled={busyAction === busyKey(item.trainingId, "score")}
+                          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 text-[11px] font-semibold text-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {busyAction === busyKey(item.trainingId, "score") ? "Saving..." : "Record Score"}
+                        </button>
+                      ) : null}
+
                       {canGenerate ? (
                         <button
                           type="button"

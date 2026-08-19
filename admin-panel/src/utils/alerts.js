@@ -174,3 +174,54 @@ export const showConfirmPopup = async ({
 
   return Boolean(result.isConfirmed);
 };
+
+/**
+ * A single-number-input prompt, e.g. for recording an assessment score.
+ * Returns the entered number, or null if the user cancelled.
+ */
+export const showNumberInputPopup = async ({
+  title = "Enter a value",
+  text = "",
+  inputLabel = "",
+  min = 0,
+  max = 100,
+  confirmText = "Save"
+} = {}) => {
+  const Swal = await ensureSweetAlert();
+  if (!Swal) {
+    const raw = window.prompt(`${title}${text ? `\n${text}` : ""}`);
+    if (raw === null || raw.trim() === "") return null;
+    const parsed = Number(raw);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  const result = await Swal.fire({
+    icon: "question",
+    title,
+    text,
+    input: "number",
+    inputLabel,
+    inputAttributes: { min, max, step: "1" },
+    showCancelButton: true,
+    confirmButtonText: confirmText,
+    cancelButtonText: "Cancel",
+    reverseButtons: true,
+    backdrop: "rgba(2, 6, 23, 0.72)",
+    customClass: {
+      popup: "hse-swal-popup",
+      title: "hse-swal-title",
+      htmlContainer: "hse-swal-text"
+    },
+    showClass: { popup: "hse-swal-show" },
+    hideClass: { popup: "hse-swal-hide" },
+    inputValidator: (value) => {
+      if (value === "" || value === null || value === undefined) return "A score is required";
+      const numeric = Number(value);
+      if (Number.isNaN(numeric) || numeric < min || numeric > max) return `Enter a number between ${min} and ${max}`;
+      return null;
+    }
+  });
+
+  if (!result.isConfirmed) return null;
+  return Number(result.value);
+};

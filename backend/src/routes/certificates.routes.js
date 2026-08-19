@@ -114,10 +114,21 @@ router.post(
     const targetUser = await User.findById(targetUserId);
     if (!targetUser) throw new ApiError(404, "Employee record not found");
 
+    // Already issued? Say so distinctly rather than silently re-returning
+    // it under a "Certificate Generated" success message — the frontend
+    // shows "Certificate already exists" + a View action for this case
+    // (spec section 20), not a duplicate "generated" toast. Issuance
+    // itself is still idempotent either way (unique training+user index).
+    const existing = await Certificate.findOne({ training: training._id, user: targetUser._id });
+    if (existing) {
+      res.json({ success: true, alreadyExisted: true, certificate: toCertificateView(existing) });
+      return;
+    }
+
     const completion = findCompletion(training, targetUserId);
     const eligibility = checkCertificateEligibility({ training, completion });
     if (!eligibility.eligible) {
-      throw new ApiError(400, eligibility.reason || "Not eligible for a certificate", null, "CERTIFICATE_NOT_ELIGIBLE");
+      throw new ApiError(400, eligibility.reason || "Not eligible for a certificate", null, eligibility.code || "CERTIFICATE_NOT_ELIGIBLE");
     }
 
     const generatedByUser = await User.findById(req.user.id).select("name");
@@ -136,7 +147,7 @@ router.post(
       { trainingId, targetUserId, certificateNumber: certificate.certificateNumber },
       certificate._id
     );
-    res.status(201).json({ success: true, certificate: toCertificateView(certificate) });
+    res.status(201).json({ success: true, alreadyExisted: false, certificate: toCertificateView(certificate) });
   })
 );
 

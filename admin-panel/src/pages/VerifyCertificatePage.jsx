@@ -99,6 +99,12 @@ const VerifyCertificatePage = () => {
       </div>
       <section className="corporate-login__content" style={{ alignItems: "center" }} aria-label="Verify a certificate">
         <div className="auth-card" style={{ textAlign: "center" }}>
+          <a
+            href="/"
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 14, fontSize: 12, color: "#8a8580", textDecoration: "none" }}
+          >
+            ← Back to Sign In
+          </a>
           <h2 style={{ marginBottom: 4 }}>Certificate Verification</h2>
           <p className="auth-card__description">
             Confirm the authenticity of a {APP_NAME} training-completion certificate using the code printed on it.
