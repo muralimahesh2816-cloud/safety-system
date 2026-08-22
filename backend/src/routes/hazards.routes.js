@@ -30,7 +30,8 @@ const {
   escapeRegex,
   getPagination,
   buildPaginationMeta,
-  hasPagination
+  hasPagination,
+  UNPAGINATED_MAX
 } = require("../utils/pagination");
 
 const router = express.Router();
@@ -144,6 +145,10 @@ router.get(
       .sort({ createdAt: -1 });
     if (shouldPaginate) {
       query = query.skip(pagination.skip).limit(pagination.limit);
+    } else {
+      // A caller that sent no pagination parameters still gets one response,
+      // but never an unbounded one — see UNPAGINATED_MAX in utils/pagination.
+      query = query.limit(UNPAGINATED_MAX);
     }
 
     const [records, total] = await Promise.all([
@@ -155,7 +160,7 @@ router.get(
       records: records.map((record) => toLegacyHazardRecord(record, req.user)),
       pagination: shouldPaginate
         ? buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total })
-        : { total, unpaginated: true }
+        : { total, unpaginated: true, limit: UNPAGINATED_MAX, capped: total > UNPAGINATED_MAX }
     });
   })
 );

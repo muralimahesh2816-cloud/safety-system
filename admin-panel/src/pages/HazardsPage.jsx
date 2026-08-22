@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ShieldAlert } from "lucide-react";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import GlassCard from "../components/common/GlassCard";
+import EmptyState from "../components/common/EmptyState";
+import StatusBadge from "../components/common/StatusBadge";
+import { ListSkeleton } from "../components/common/Skeletons";
 import PageHeader from "../components/common/PageHeader";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import SafeChartContainer from "../components/common/SafeChartContainer";
@@ -18,6 +22,8 @@ import { formatDateTime } from "../utils/format";
 import { getMediaUrl } from "../utils/media";
 import { exportHazardDetailsPdf } from "../utils/detailPdfExport";
 import { normalizeEvidenceLocation } from "../utils/location";
+
+const HAZARD_PAGE_SIZE = 25;
 
 const severityWeight = {
   Low: 1,
@@ -133,6 +139,8 @@ const HazardsPage = ({ user }) => {
   const [closurePreviewMap, setClosurePreviewMap] = useState({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [pagination, setPagination] = useState(null);
   const [modal, setModal] = useState({ open: false, items: [], index: 0, compare: null });
   const [selectedHazard, setSelectedHazard] = useState(null);
   const [statusFilter, setStatusFilter] = useState("All");
@@ -159,16 +167,24 @@ const HazardsPage = ({ user }) => {
     [form.severity, form.likelihood]
   );
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
+  // Hazards are fetched a page at a time. The list endpoint used to return the
+  // entire collection — including every record's full evidence and closure
+  // media arrays — which grew without bound as the site accumulated reports.
+  const fetchAll = useCallback(async ({ page = 1, append = false } = {}) => {
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     setError("");
     try {
-      const hazardRes = await hazardService.list();
-      setRecords(hazardRes.records || []);
+      const hazardRes = await hazardService.list({ page, limit: HAZARD_PAGE_SIZE });
+      setRecords((previous) =>
+        append ? [...previous, ...(hazardRes.records || [])] : hazardRes.records || []
+      );
+      setPagination(hazardRes.pagination || null);
     } catch (fetchError) {
       setError(fetchError?.response?.data?.message || "Unable to fetch hazards");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
@@ -606,7 +622,11 @@ const HazardsPage = ({ user }) => {
             <div>
               <h3 className="text-lg font-semibold text-white">Hazard Log</h3>
               <p className="text-xs text-slate-400">
-                Showing {filteredRecords.length} of {records.length} hazards
+                Showing {filteredRecords.length} of {records.length} loaded
+                {pagination?.total && pagination.total > records.length
+                  ? ` (${pagination.total} total)`
+                  : ""}{" "}
+                hazards
               </p>
             </div>
             <button
@@ -709,7 +729,10 @@ const HazardsPage = ({ user }) => {
           </div>
           ) : null}
           {loading ? (
-            <p className="text-sm text-slate-300">Loading hazards...</p>
+            <div role="status" aria-live="polite" aria-busy="true">
+              <span className="sr-only">Loading hazards</span>
+              <ListSkeleton rows={4} />
+            </div>
           ) : (
             <div className={`module-list-scroll space-y-4 xl:overflow-y-auto xl:pr-1 ${filtersVisible ? "xl:max-h-[calc(100vh-270px)]" : "xl:max-h-[calc(100vh-190px)]"}`}>
               {filteredRecords.map((hazard) => {
@@ -731,12 +754,22 @@ const HazardsPage = ({ user }) => {
                     className="rounded-2xl border border-white/12 bg-white/5 p-4 transition duration-300 hover:border-cyan-300/30 hover:bg-white/[0.075] hover:shadow-[0_20px_50px_rgba(8,145,178,.12)]"
                   >
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-slate-950/45 px-3 py-2">
-                      <span
-                        className={`text-xs font-semibold ${
-                          hazard.status === "Closed" ? "text-emerald-300" : "text-rose-300"
-                        }`}
-                      >
-                        {statusSinceText}
+                      <span className="flex flex-wrap items-center gap-2">
+                        <StatusBadge status={hazard.status || "Open"} />
+                        {hazard.severity ? (
+                          <StatusBadge
+                            status={hazard.severity}
+                            label={`${hazard.severity} severity`}
+                            tone={
+                              ["Critical", "High"].includes(hazard.severity)
+                                ? "critical"
+                                : hazard.severity === "Medium"
+                                ? "pending"
+                                : "neutral"
+                            }
+                          />
+                        ) : null}
+                        <span className="text-xs font-semibold text-slate-300">{statusSinceText}</span>
                       </span>
                       <span className="text-[11px] text-slate-400">
                         Last updated: {formatDateTime(hazard.updatedAt || hazard.createdAt)}
@@ -998,10 +1031,30 @@ const HazardsPage = ({ user }) => {
                   </div>
                 );
               })}
+              {pagination?.hasNextPage ? (
+                <div className="flex justify-center pt-2">
+                  <button
+                    type="button"
+                    disabled={loadingMore}
+                    onClick={() => fetchAll({ page: pagination.page + 1, append: true })}
+                    className="min-h-11 rounded-xl border border-white/15 bg-white/[0.07] px-5 text-xs font-semibold text-slate-100 transition hover:bg-white/[0.13] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loadingMore
+                      ? "Loading..."
+                      : `Load More (${records.length} of ${pagination.total})`}
+                  </button>
+                </div>
+              ) : null}
               {filteredRecords.length === 0 ? (
-                <p className="text-sm text-slate-300">
-                  No hazards found for the selected filter.
-                </p>
+                <EmptyState
+                  icon={ShieldAlert}
+                  title={records.length === 0 ? "No hazards reported" : "No hazards match these filters"}
+                  message={
+                    records.length === 0
+                      ? "Nothing has been reported yet. Use the form above to record the first hazard or near miss."
+                      : "No hazard matches the selected status, severity, category or plaza."
+                  }
+                />
               ) : null}
             </div>
           )}

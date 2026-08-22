@@ -14,7 +14,8 @@ const {
   escapeRegex,
   getPagination,
   buildPaginationMeta,
-  hasPagination
+  hasPagination,
+  UNPAGINATED_MAX
 } = require("../utils/pagination");
 
 const router = express.Router();
@@ -23,6 +24,41 @@ const upload = createMemoryUpload({
   maxFileSizeMb: 100,
   maxFiles: 2
 });
+
+
+/**
+ * Shapes one training for a *list* response.
+ *
+ * A Training document embeds a `completions` entry for every user who ever
+ * opened it, each with its own `watchHistory` array. Serialising all of that
+ * for every record meant the training list grew with the size of the workforce
+ * multiplied by their viewing history — on a mature site the single largest
+ * response the portal produced, and none of it was usable by the caller, who
+ * can only act on their own progress.
+ *
+ * The list therefore carries:
+ *   - `completions`   : only the requesting user's entry (kept as an array so
+ *                       existing clients that iterate it keep working),
+ *   - `completedCount`: how many people have completed it, which is the only
+ *                       aggregate the reports module actually needed,
+ *   - `myCompletion`  : the same entry, named for new code.
+ * The full array is still available on the per-record detail routes.
+ */
+const toTrainingListItem = (record, userId) => {
+  const completions = record.completions || [];
+  const mine = completions.find((item) => String(item.user) === String(userId)) || null;
+  const trimmedMine = mine
+    ? { ...mine, watchHistory: undefined, watchCount: (mine.watchHistory || []).length }
+    : null;
+
+  return {
+    ...record,
+    completions: trimmedMine ? [trimmedMine] : [],
+    myCompletion: trimmedMine,
+    completedCount: completions.filter((item) => item.isCompleted).length,
+    enrolledCount: completions.length
+  };
+};
 
 router.get(
   "/",
@@ -56,9 +92,13 @@ router.get(
     const pagination = getPagination(req.query);
     let findQuery = Training.find(query)
       .populate("createdBy", "name role")
-      .sort({ createdAt: -1 });
+      .populate("trainer", "name")
+      .sort({ createdAt: -1 })
+      .lean();
     if (shouldPaginate) {
       findQuery = findQuery.skip(pagination.skip).limit(pagination.limit);
+    } else {
+      findQuery = findQuery.limit(UNPAGINATED_MAX);
     }
 
     const [records, total] = await Promise.all([
@@ -67,10 +107,10 @@ router.get(
     ]);
     res.json({
       success: true,
-      records,
+      records: records.map((record) => toTrainingListItem(record, req.user.id)),
       pagination: shouldPaginate
         ? buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total })
-        : { total, unpaginated: true }
+        : { total, unpaginated: true, limit: UNPAGINATED_MAX, capped: total > UNPAGINATED_MAX }
     });
   })
 );
@@ -286,16 +326,27 @@ router.get(
   authMiddleware,
   authorizePermission("training", "view"),
   asyncHandler(async (req, res) => {
+    // `completions.$` projects only the matching (i.e. this user's) subdocument
+    // instead of shipping the whole array back and filtering it in JS.
     const records = await Training.find({
       "completions.user": req.user.id
     })
-      .select("title category concept completions thumbnail trainerName passingScore durationMinutes")
-      .populate("trainer", "name");
+      .select({
+        title: 1,
+        category: 1,
+        concept: 1,
+        thumbnail: 1,
+        trainerName: 1,
+        trainer: 1,
+        passingScore: 1,
+        durationMinutes: 1,
+        "completions.$": 1
+      })
+      .populate("trainer", "name")
+      .lean();
 
     const history = records.map((record) => {
-      const completion = record.completions.find(
-        (item) => item.user?.toString() === req.user.id
-      );
+      const completion = (record.completions || [])[0];
       return {
         id: record._id,
         trainingId: record._id,

@@ -1,5 +1,4 @@
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import { loadPdfKit } from "./lazyVendor";
 import companyLogoUrl from "../assets/vertis-logo.svg";
 import { APP_NAME } from "../config/appConfig";
 import { getMediaUrl } from "./media";
@@ -20,6 +19,11 @@ import {
   isPostApprovalStage,
   normalizeWorkStage
 } from "./chainage";
+
+// Resolved lazily by finalizePdf() so the ~350kB jsPDF bundle stays out of the
+// main chunk; the synchronous table helpers below read them from module scope.
+let jsPDF;
+let autoTable;
 
 const COMPANY_NAME = "Udupi Tollway Pvt Ltd";
 const SYSTEM_NAME = APP_NAME;
@@ -263,6 +267,10 @@ const addImagePage = async (doc, { label, item, mediaType = "image" }) => {
 };
 
 const finalizePdf = async ({ reportTitle, fileName, detailRows, descriptionTitle, description, timeline, images, save = true }) => {
+  // jsPDF/autotable are code-split — see utils/lazyVendor.js. The resolved
+  // handles are stored module-side so the synchronous table helpers below
+  // (addDetailsTable / addTimeline) keep their existing signatures.
+  ({ jsPDF, autoTable } = await loadPdfKit());
   const doc = new jsPDF({ orientation: "portrait", unit: PDF_LAYOUT.unit, format: PDF_LAYOUT.format });
   const logoData = await loadLogo();
   const generatedAt = new Date().toLocaleString("en-IN");

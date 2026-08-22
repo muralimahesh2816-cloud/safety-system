@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { saveAs } from "file-saver";
-import * as XLSX from "xlsx";
 import {
   Bar,
   BarChart,
@@ -19,6 +17,7 @@ import PageHeader from "../components/common/PageHeader";
 import { reportService, trainingService } from "../api/services";
 import { closeLoadingPopup, showLoadingPopup, showSuccessPopup } from "../utils/alerts";
 import { exportReportPdf, normalizeReportRowsByType } from "../utils/pdfExport";
+import { loadFileSaver, loadXlsx } from "../utils/lazyVendor";
 import companyLogo from "../assets/vertis-logo.svg";
 import { APP_NAME, ORGANIZATION_NAME } from "../config/appConfig";
 
@@ -126,7 +125,11 @@ const ReportsPage = () => {
             "Training Team",
           Category: item.category || "General",
           Duration: item.durationMinutes ? `${item.durationMinutes} min` : "-",
-          Completions: (item.completions || []).filter((entry) => entry.isCompleted).length,
+          // The list endpoint now returns an aggregate count and only the
+          // caller's own completion entry (see toTrainingListItem on the
+          // backend); the array form is the pre-upgrade fallback.
+          Completions:
+            item.completedCount ?? (item.completions || []).filter((entry) => entry.isCompleted).length,
           "Uploaded Date": item.createdAt || "-",
           Status: item.isPublished === false ? "Draft" : item.status || "Published"
         }));
@@ -176,6 +179,8 @@ const ReportsPage = () => {
       } catch (_error) {
         // Keep the simple local storage fallback.
       }
+      // SheetJS is code-split — see utils/lazyVendor.js.
+      const XLSX = await loadXlsx();
       const normalized = normalizedReportRows;
       const headers = Object.keys(normalized[0] || {});
       const rows = normalized.map((row) => headers.map((header) => row[header] ?? "-"));
@@ -244,6 +249,7 @@ const ReportsPage = () => {
       } catch (_error) {
         // Keep the simple local storage fallback.
       }
+      const [XLSX, saveAs] = await Promise.all([loadXlsx(), loadFileSaver()]);
       const normalized = normalizedReportRows;
       const headers = Object.keys(normalized[0] || {});
       const rows = normalized.map((row) => headers.map((header) => row[header] ?? "-"));

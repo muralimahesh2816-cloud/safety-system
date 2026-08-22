@@ -40,8 +40,22 @@ import SectionHeader from "../components/common/SectionHeader";
 import SkeletonBlock from "../components/common/SkeletonBlock";
 import { dashboardService } from "../api/services";
 import { enterpriseHseService } from "../api/enterpriseHse";
-import { mockSummary } from "../data/mock";
 import { formatDateTime } from "../utils/format";
+
+const REFRESH_INTERVAL_MS = 60000;
+
+// The dashboard used to seed itself from a hard-coded demo dataset (186 users,
+// 26 open hazards, ...) and fall back to it whenever the summary API failed.
+// On a live safety portal that renders invented figures as real KPIs, so the
+// starting state is now an honest empty shape and a failed refresh keeps the
+// last real snapshot plus a visible warning.
+const EMPTY_SUMMARY = Object.freeze({
+  kpis: {},
+  charts: { workStatus: [], hazardStatus: [], monthlyTrend: [], userActivity: [], safetyPerformanceScore: 0 },
+  assignedTasks: { counts: {}, total: 0, items: [] },
+  alerts: [],
+  activities: []
+});
 
 const workColors = ["#F59E0B", "#22C55E", "#06B6D4", "#F43F5E"];
 const hazardColor = "#2dd4bf";
@@ -62,7 +76,7 @@ const trendingModules = [
   {
     key: "training",
     title: "Training Hub",
-    desc: "Access Safety Training Videos, Documents, and Learning Resources ✅",
+    desc: "Safety training videos, documents, assessments, and certificates",
     bg: "from-sky-500/30 to-indigo-500/20"
   },
   {
@@ -93,10 +107,13 @@ const trendingModules = [
 
 const DashboardPage = ({ onModuleSelect }) => {
   const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState(mockSummary);
+  const [loadError, setLoadError] = useState("");
+  const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [enterprise, setEnterprise] = useState({ kpis: {}, modules: [], alerts: [] });
 
   const fetchSummary = useCallback(async () => {
+    // Three summary endpoints, all server-aggregated. The dashboard never
+    // downloads module records — see the guard in dashboardService.summary().
     try {
       const [response, hseDashboard, hseAlerts] = await Promise.all([
         dashboardService.summary(),
@@ -105,8 +122,10 @@ const DashboardPage = ({ onModuleSelect }) => {
       ]);
       setSummary(response);
       setEnterprise({ ...hseDashboard, alerts: hseAlerts.alerts || [] });
+      setLoadError("");
     } catch (_error) {
-      setSummary(mockSummary);
+      // Keep the last good snapshot on screen rather than blanking the page.
+      setLoadError("Live figures are temporarily unavailable. Showing the last known snapshot.");
     } finally {
       setLoading(false);
     }
@@ -114,21 +133,47 @@ const DashboardPage = ({ onModuleSelect }) => {
 
   useEffect(() => {
     let active = true;
-    const safeFetch = async () => {
-      try {
-        if (!active || document.hidden) return;
-        await fetchSummary();
-      } catch (_error) {
-        if (!active) return;
-        // Dashboard silently falls back to latest known snapshot.
-      }
+    let poll = null;
+
+    // Only the recurring poll is gated on visibility. The first load must always
+    // run: a dashboard opened in a background tab (restored session, middle-click
+    // from a notification, second monitor) otherwise sat on skeletons until the
+    // user happened to focus it.
+    const safeFetch = async ({ force = false } = {}) => {
+      if (!active) return;
+      if (document.hidden && !force) return;
+      await fetchSummary();
     };
 
-    safeFetch();
-    const poll = setInterval(safeFetch, 30000);
+    // Refresh on a 60s cadence rather than 30s, and only while the tab is
+    // actually visible — a background tab used to keep three aggregation
+    // queries running against MongoDB every 30 seconds per open session.
+    const startPolling = () => {
+      if (poll) return;
+      poll = setInterval(safeFetch, REFRESH_INTERVAL_MS);
+    };
+    const stopPolling = () => {
+      if (!poll) return;
+      clearInterval(poll);
+      poll = null;
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        stopPolling();
+        return;
+      }
+      safeFetch();
+      startPolling();
+    };
+
+    safeFetch({ force: true });
+    startPolling();
+    document.addEventListener("visibilitychange", onVisibility);
+
     return () => {
       active = false;
-      clearInterval(poll);
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [fetchSummary]);
 
@@ -137,7 +182,10 @@ const DashboardPage = ({ onModuleSelect }) => {
   const alerts = summary.alerts || [];
   const assignedTasks = summary.assignedTasks || { counts: {}, total: 0, items: [] };
   const hseKpis = enterprise.kpis || {};
-  const localActivities = (() => {
+  // Read once on mount. This used to run `JSON.parse(localStorage...)` on every
+  // render and hand a fresh array to the memo below, so `compactActivities`
+  // re-sorted the whole list on each render of the page.
+  const localActivities = useMemo(() => {
     if (typeof window === "undefined") return [];
     try {
       const raw = JSON.parse(localStorage.getItem("hse_local_activities") || "[]");
@@ -145,7 +193,7 @@ const DashboardPage = ({ onModuleSelect }) => {
     } catch (_error) {
       return [];
     }
-  })();
+  }, []);
 
   const compactActivities = useMemo(() => {
     const merged = [...(summary.activities || []), ...localActivities];
@@ -167,12 +215,10 @@ const DashboardPage = ({ onModuleSelect }) => {
       <motion.section
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-[2rem] border border-white/15 bg-gradient-to-r from-slate-900/90 via-teal-900/40 to-sky-900/40 p-6 md:p-10"
+        className="dashboard-hero relative overflow-hidden rounded-[2rem] border border-white/12 p-6 md:p-10"
       >
-        <div className="absolute -right-14 -top-20 h-52 w-52 rounded-full bg-teal-400/40 blur-3xl" />
-        <div className="absolute -bottom-20 left-20 h-44 w-44 rounded-full bg-cyan-400/30 blur-3xl" />
         <div className="relative z-10">
-          <p className="text-xs uppercase tracking-[0.3em] text-teal-200">HSE Intelligence Hub</p>
+          <p className="brand-accent-text text-xs uppercase tracking-[0.3em]">HSE Intelligence Hub</p>
           <h1 className="mt-3 max-w-3xl font-display text-3xl font-semibold leading-tight text-white md:text-5xl">
             Command Center for Safety Compliance, Operations, and Risk Governance
           </h1>
@@ -184,9 +230,19 @@ const DashboardPage = ({ onModuleSelect }) => {
       </motion.section>
 
       <SectionHeader
-        title="Real-Time KPI Dashboard"
-        subtitle="Live operational and safety metrics across enterprise modules"
+        title="Operations &amp; Safety KPIs"
+        subtitle="Live work approval, hazard, training and user metrics"
       />
+
+      {loadError ? (
+        <div
+          role="status"
+          className="flex items-start gap-2.5 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-100"
+        >
+          <TriangleAlert size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>{loadError}</span>
+        </div>
+      ) : null}
 
       {alerts.length > 0 ? (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
@@ -631,13 +687,11 @@ const DashboardPage = ({ onModuleSelect }) => {
             transition={{ delay: 0.05 * index }}
             whileHover={{ y: -5, scale: 1.01 }}
             onClick={() => onModuleSelect(module.key)}
-            className={`relative overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-br ${module.bg} p-6 text-left`}
+            className="enterprise-card enterprise-card--interactive relative overflow-hidden rounded-3xl border border-white/12 bg-slate-950/55 p-6 text-left"
           >
-            <div className="absolute -right-10 -top-10 h-24 w-24 rounded-full bg-white/10 blur-2xl" />
-            <h4 className="relative z-10 font-display text-xl font-semibold text-white">
-              {module.title}
-            </h4>
-            <p className="relative z-10 mt-2 text-sm text-slate-200">{module.desc}</p>
+            <span className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${module.bg}`} aria-hidden="true" />
+            <h4 className="relative z-10 font-display text-lg font-semibold text-white">{module.title}</h4>
+            <p className="relative z-10 mt-2 text-sm leading-relaxed text-slate-300">{module.desc}</p>
           </motion.button>
         ))}
       </div>

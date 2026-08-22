@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Clock3, Eye, ImagePlus, Pencil, RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
+import { ClipboardCheck, Clock3, Eye, ImagePlus, Pencil, RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import GlassCard from "../components/common/GlassCard";
+import EmptyState from "../components/common/EmptyState";
+import StatusBadge from "../components/common/StatusBadge";
+import WorkflowProgress from "../components/work/WorkflowProgress";
+import { ListSkeleton } from "../components/common/Skeletons";
 import PageHeader from "../components/common/PageHeader";
 import MediaStudioModal from "../components/common/MediaStudioModal";
 import SafeChartContainer from "../components/common/SafeChartContainer";
@@ -236,15 +240,6 @@ const getWorkStatusSinceText = (work = {}) => {
       : statusEvent?.at || work.updatedAt || createdAt;
   return `${status} since ${formatElapsedDuration(changedAt)}`;
 };
-const getStageBadgeClass = (stage = "Pending Check") => ({
-  "Pending Check": "border-cyan-400/30 bg-cyan-500/10 text-cyan-100",
-  "Pending Recommendation": "border-violet-400/30 bg-violet-500/10 text-violet-100",
-  "Pending Final Approval": "border-amber-400/30 bg-amber-500/10 text-amber-100",
-  Approved: "border-sky-400/30 bg-sky-500/10 text-sky-100",
-  "Partially Completed": "border-lime-400/30 bg-lime-500/10 text-lime-100",
-  Completed: "border-emerald-400/30 bg-emerald-500/10 text-emerald-100",
-  "Returned for Correction": "border-rose-400/30 bg-rose-500/10 text-rose-100"
-}[stage] || statusColors.Pending.badge);
 const getWorkReporterName = (work = {}) =>
   work.createdByName || work.reportedBy || work.createdBy?.name || work.submittedBy?.name || "";
 const getApprovedByName = (work = {}) => work.approvedByName || work.approvedBy || "";
@@ -1202,7 +1197,10 @@ const WorkApprovalsPage = ({ user }) => {
             ) : null}
           </AnimatePresence>
           {loading ? (
-            <p className="text-sm text-slate-300">Loading work approvals...</p>
+            <div role="status" aria-live="polite" aria-busy="true">
+              <span className="sr-only">Loading work approvals</span>
+              <ListSkeleton rows={4} />
+            </div>
           ) : (
             <div className={`module-list-scroll space-y-4 xl:overflow-y-auto xl:pr-1 ${filtersVisible ? "xl:max-h-[calc(100vh-270px)]" : "xl:max-h-[calc(100vh-165px)]"}`}>
               {filteredRecords.map((work) => {
@@ -1269,6 +1267,13 @@ const WorkApprovalsPage = ({ user }) => {
                         Last updated: {formatDateTime(work.updatedAt || work.createdAt)}
                       </span>
                     </div>
+
+                    {/* Where this record sits in the approval chain. Read-only —
+                        it reflects the stage the backend has already recorded
+                        and never influences what actions are offered. */}
+                    <div className="mb-3 rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2.5">
+                      <WorkflowProgress stage={workflowStage} />
+                    </div>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="flex min-w-0 flex-1 gap-3">
                         <button
@@ -1306,15 +1311,15 @@ const WorkApprovalsPage = ({ user }) => {
                             </p>
                           ) : null}
                           <div className="mt-2 flex flex-wrap items-center gap-2">
+                            {/* Stage is always shown, including once complete —
+                                a card that dropped its status badge on
+                                completion left "Completed" indistinguishable
+                                from a record whose stage failed to load. */}
+                            <StatusBadge status={workflowStage} />
                             {!workCompleted ? (
-                              <>
-                                <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getStageBadgeClass(workflowStage)}`}>
-                                  {workflowStage}
-                                </span>
-                                <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-100">
-                                  {actionRequired}
-                                </span>
-                              </>
+                              <span className="rounded-full border border-white/15 bg-white/[0.07] px-2.5 py-1 text-[11px] font-semibold text-slate-200">
+                                {actionRequired}
+                              </span>
                             ) : null}
                             <span className="text-[11px] text-slate-400">Workers: {work.workersCount || "-"}</span>
                             <span className="text-[11px] text-slate-400">Media: {work.mediaCount || beforeMediaItems.length + afterMediaItems.length}</span>
@@ -1468,9 +1473,29 @@ const WorkApprovalsPage = ({ user }) => {
                 );
               })}
               {filteredRecords.length === 0 ? (
-                <p className="text-sm text-slate-300">
-                  No work approval records available for the selected filter.
-                </p>
+                <EmptyState
+                  icon={ClipboardCheck}
+                  title="No work approvals to show"
+                  message={
+                    statusFilter !== "All" || queueFilter !== "all"
+                      ? "No records match the selected queue and status. Clear the filters to see everything you have access to."
+                      : "Nothing has been submitted yet. Use the form above to raise the first work approval."
+                  }
+                  action={
+                    statusFilter !== "All" || queueFilter !== "all" ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStatusFilter("All");
+                          setQueueFilter("all");
+                        }}
+                        className="inline-flex min-h-10 items-center rounded-xl border border-white/15 bg-white/[0.07] px-4 text-xs font-semibold text-slate-100 transition hover:bg-white/[0.13]"
+                      >
+                        Clear filters
+                      </button>
+                    ) : null
+                  }
+                />
               ) : null}
               {pagination?.hasNextPage ? (
                 <div className="flex justify-center pt-2">

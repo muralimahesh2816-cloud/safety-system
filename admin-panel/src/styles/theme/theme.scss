@@ -1,4 +1,5 @@
 @use "tokens";
+@use "components";
 
 body { background: var(--brand-background); color: var(--brand-text); }
 
@@ -46,9 +47,26 @@ body { background: var(--brand-background); color: var(--brand-text); }
 
 :focus-visible { outline-color: var(--brand-primary-light); }
 
+// Global reduced-motion guard.
+//
+// The React layer already checks `prefers-reduced-motion` (hooks/useReducedMotion
+// + animation/motion.js), but that only covers components that opted in. This
+// blanket rule is the safety net for CSS keyframes and transitions anywhere in
+// the app, including third-party markup: animations are cut to a single frame
+// rather than removed outright, so any state that is only reachable at the end
+// of an animation still resolves.
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; }
-  .momentum-safety-bg__mark { animation: none; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .momentum-safety-bg__mark,
+  .particle-dot { animation: none !important; }
 }
 
 @page { size: A4 portrait; margin: 12mm; }

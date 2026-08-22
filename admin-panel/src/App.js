@@ -12,14 +12,7 @@ import SafetyLogo from "./components/brand/SafetyLogo";
 import MomentumSafetyBackground from "./components/visuals/MomentumSafetyBackground";
 import LoginPage from "./pages/LoginPage";
 import VerifyCertificatePage from "./pages/VerifyCertificatePage";
-import DashboardPage from "./pages/DashboardPage";
-import WorkApprovalsPage from "./pages/WorkApprovalsPage";
-import HazardsPage from "./pages/HazardsPage";
-import TrainingPage from "./pages/TrainingPage";
-import UsersPage from "./pages/UsersPage";
-import ReportsPage from "./pages/ReportsPage";
-import SystemHealthPage from "./pages/SystemHealthPage";
-import SettingsPage from "./pages/SettingsPage";
+import ModuleSkeleton from "./components/common/ModuleSkeleton";
 import { settingsService } from "./api/services";
 import { IMAGE_PLACEHOLDER_URL } from "./utils/media";
 import { canAccessModule } from "./utils/permissions";
@@ -28,6 +21,17 @@ import { APP_NAME } from "./config/appConfig";
 import { getTopbarVisibility } from "./utils/topbarVisibility";
 import { ENTERPRISE_HSE_KEYS, getEnterpriseModule } from "./config/enterpriseHseConfig";
 
+// Every business module is code-split. Only the shell, the login screen and
+// whichever module the user actually opens are downloaded, which is what keeps
+// the initial load and the login -> dashboard hand-off fast.
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const WorkApprovalsPage = lazy(() => import("./pages/WorkApprovalsPage"));
+const HazardsPage = lazy(() => import("./pages/HazardsPage"));
+const TrainingPage = lazy(() => import("./pages/TrainingPage"));
+const UsersPage = lazy(() => import("./pages/UsersPage"));
+const ReportsPage = lazy(() => import("./pages/ReportsPage"));
+const SystemHealthPage = lazy(() => import("./pages/SystemHealthPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const EnterpriseHsePage = lazy(() => import("./pages/EnterpriseHsePage"));
 
 const moduleTitles = {
@@ -44,6 +48,11 @@ const moduleTitles = {
 ENTERPRISE_HSE_KEYS.forEach((key) => {
   moduleTitles[key] = getEnterpriseModule(key)?.label || key;
 });
+
+// Rail = icon-only resting width; expanded = full labels. Shared between the
+// layout box and the animated panel so the two can never drift apart.
+const SIDEBAR_WIDTH_RAIL = 80;
+const SIDEBAR_WIDTH_EXPANDED = 280;
 
 const coreModuleKeys = Object.keys(moduleTitles);
 const moduleFromPath = () => {
@@ -79,6 +88,8 @@ const AppContent = () => {
   const [topbarInteracting, setTopbarInteracting] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const pageContentRef = useRef(null);
+  const lastActivityRef = useRef(Date.now());
+  const countdownTimerRef = useRef(null);
 
   const handleModuleNavigation = useCallback((moduleKey, { replace = false } = {}) => {
     const nextModule = coreModuleKeys.includes(moduleKey) ? moduleKey : "dashboard";
@@ -108,11 +119,7 @@ const AppContent = () => {
       case "dashboard":
       default:
         if (ENTERPRISE_HSE_KEYS.includes(activeModule)) {
-          return (
-            <Suspense fallback={<div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-slate-300">Loading enterprise HSE module...</div>}>
-              <EnterpriseHsePage moduleKey={activeModule} user={user} />
-            </Suspense>
-          );
+          return <EnterpriseHsePage moduleKey={activeModule} user={user} />;
         }
         return <DashboardPage onModuleSelect={handleModuleNavigation} />;
     }
@@ -129,19 +136,31 @@ const AppContent = () => {
     document.title = `${isAuthenticated ? moduleTitles[activeModule] : "Login"} | ${APP_NAME}`;
   }, [activeModule, isAuthenticated]);
 
+  // Session-timeout setting.
+  //
+  // Keyed on the user's id, not the `user` object. AuthProvider replaces that
+  // object at least twice during startup (stored snapshot, then the /auth/me
+  // response), and depending on its identity meant this effect re-ran and
+  // re-fetched /settings on every one of those swaps — for the same user, to
+  // read a single number.
+  const userId = user?.id || user?._id || "";
   useEffect(() => {
-    const fetchTimeout = async () => {
-      if (!user) return;
+    if (!userId) return undefined;
+    let active = true;
+    (async () => {
       try {
         const response = await settingsService.get();
+        if (!active) return;
         const timeout = response?.settings?.security?.sessionTimeout;
         if (timeout) setSessionTimeoutMinutes(timeout);
       } catch (_error) {
-        setSessionTimeoutMinutes(30);
+        if (active) setSessionTimeoutMinutes(30);
       }
+    })();
+    return () => {
+      active = false;
     };
-    fetchTimeout();
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") {
@@ -216,47 +235,72 @@ const AppContent = () => {
     return () => window.removeEventListener("error", handleUploadImageError, true);
   }, []);
 
+  // Idle-session watchdog.
+  //
+  // This previously re-armed two timers and pushed two setState calls on every
+  // single `mousemove` and `scroll` event — hundreds of times a second while
+  // the user works, which is exactly the "everything gets sluggish after
+  // login" symptom. Activity is now recorded into a ref (no render, no timer
+  // churn) and a single 15s interval decides whether the idle threshold has
+  // actually been crossed. All listeners are passive so they never block
+  // scrolling.
   useEffect(() => {
-    let inactivityTimer = null;
-    let countdownTimer = null;
     const timeoutMs = sessionTimeoutMinutes * 60 * 1000;
+    const ACTIVITY_EVENTS = ["mousemove", "keydown", "click", "scroll", "touchstart", "wheel"];
+    const CHECK_INTERVAL_MS = 15000;
 
-    const clearTimers = () => {
-      if (inactivityTimer) clearTimeout(inactivityTimer);
-      if (countdownTimer) clearInterval(countdownTimer);
+    lastActivityRef.current = Date.now();
+
+    const markActive = () => {
+      lastActivityRef.current = Date.now();
     };
 
-    const schedule = () => {
-      clearTimers();
-      setShowTimeoutWarning(false);
-      setCountdown(60);
-      inactivityTimer = setTimeout(() => {
-        setShowTimeoutWarning(true);
-        let remaining = 60;
-        countdownTimer = setInterval(() => {
-          remaining -= 1;
-          setCountdown(remaining);
-          if (remaining <= 0) {
-            clearTimers();
-            logout();
-          }
-        }, 1000);
-      }, timeoutMs);
+    const beginCountdown = () => {
+      if (countdownTimerRef.current) return;
+      setShowTimeoutWarning(true);
+      let remaining = 60;
+      setCountdown(remaining);
+      countdownTimerRef.current = setInterval(() => {
+        remaining -= 1;
+        setCountdown(remaining);
+        if (remaining <= 0) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+          logout();
+        }
+      }, 1000);
     };
 
-    const listener = () => schedule();
-    ["mousemove", "keydown", "click", "scroll", "touchstart"].forEach((eventName) =>
-      window.addEventListener(eventName, listener)
+    const poll = setInterval(() => {
+      // Once the warning is up the countdown owns the session: only an
+      // explicit "Continue Session" clears it, not incidental mouse motion.
+      if (countdownTimerRef.current) return;
+      if (Date.now() - lastActivityRef.current >= timeoutMs) beginCountdown();
+    }, CHECK_INTERVAL_MS);
+
+    ACTIVITY_EVENTS.forEach((eventName) =>
+      window.addEventListener(eventName, markActive, { passive: true })
     );
-    schedule();
 
     return () => {
-      clearTimers();
-      ["mousemove", "keydown", "click", "scroll", "touchstart"].forEach((eventName) =>
-        window.removeEventListener(eventName, listener)
-      );
+      clearInterval(poll);
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+      ACTIVITY_EVENTS.forEach((eventName) => window.removeEventListener(eventName, markActive));
     };
   }, [logout, sessionTimeoutMinutes]);
+
+  const continueSession = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    lastActivityRef.current = Date.now();
+    setShowTimeoutWarning(false);
+    setCountdown(60);
+  }, []);
 
   const handleSidebarToggle = () => {
     setMobileSidebarOpen((previous) => !previous);
@@ -292,10 +336,21 @@ const AppContent = () => {
       <ParticleBackground />
       <MomentumSafetyBackground intensity="low" />
       <div className="relative z-10 app-layout">
-        <motion.aside
-          animate={{ width: sidebarCollapsed ? 80 : 280 }}
-          transition={{ duration: 0.22, ease: "easeOut" }}
-          className="hidden h-full shrink-0 overflow-hidden md:block"
+        {/*
+          Two nested elements on purpose.
+
+          The outer div is the only thing in the flex layout, and its width
+          changes solely when the user locks or unlocks the sidebar — a
+          deliberate, rare action. The inner panel is absolutely positioned, so
+          hover-expanding it animates *over* the page instead of resizing the
+          layout box: previously the aside itself animated from 80px to 280px,
+          which forced a full reflow of the main content, every chart and every
+          table on every frame of the hover transition. That is what made the
+          page visibly shudder when the pointer crossed the sidebar.
+        */}
+        <div
+          className="relative hidden h-full shrink-0 md:block"
+          style={{ width: sidebarLocked ? SIDEBAR_WIDTH_EXPANDED : SIDEBAR_WIDTH_RAIL }}
           onMouseEnter={() => hoverCapable && setSidebarHoverExpanded(true)}
           onMouseLeave={() => setSidebarHoverExpanded(false)}
           onFocusCapture={() => setSidebarHoverExpanded(true)}
@@ -303,15 +358,23 @@ const AppContent = () => {
             if (!event.currentTarget.contains(event.relatedTarget)) setSidebarHoverExpanded(false);
           }}
         >
-          <Sidebar
-            user={user}
-            collapsed={sidebarCollapsed}
-            activeModule={activeModule}
-            locked={sidebarLocked}
-            onLockChange={setSidebarLocked}
-            onSelectModule={handleModuleSelect}
-          />
-        </motion.aside>
+          <motion.aside
+            animate={{ width: sidebarCollapsed ? SIDEBAR_WIDTH_RAIL : SIDEBAR_WIDTH_EXPANDED }}
+            transition={{ duration: reduceMotion ? 0 : 0.2, ease: [0.22, 0.75, 0.25, 1] }}
+            className={`absolute inset-y-0 left-0 z-50 overflow-hidden ${
+              sidebarExpanded && !sidebarLocked ? "shadow-[18px_0_48px_rgba(2,6,23,.55)]" : ""
+            }`}
+          >
+            <Sidebar
+              user={user}
+              collapsed={sidebarCollapsed}
+              activeModule={activeModule}
+              locked={sidebarLocked}
+              onLockChange={setSidebarLocked}
+              onSelectModule={handleModuleSelect}
+            />
+          </motion.aside>
+        </div>
 
         <AnimatePresence>
           {mobileSidebarOpen ? (
@@ -377,6 +440,7 @@ const AppContent = () => {
                   navigationOpen={mobileSidebarOpen}
                   title={moduleTitles[activeModule]}
                   onSelectModule={handleModuleSelect}
+                  reduceMotion={reduceMotion}
                 />
               </motion.div>
             ) : null}
@@ -398,17 +462,33 @@ const AppContent = () => {
               </button>
             ) : null}
             <ModuleGuard user={user} moduleKey={activeModule}>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeModule}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.24 }}
-                >
+              {/*
+                Enter-only transition, deliberately not `AnimatePresence
+                mode="wait"`.
+
+                With a wait-mode exit animation the outgoing page had to finish
+                animating before the incoming one mounted — which meant the new
+                module's code-split chunk was not even *requested* until 240ms
+                after the click, adding that delay to every navigation. Worse,
+                framer-motion drives exits with requestAnimationFrame, which
+                does not run in a background tab: a click in a hidden or
+                backgrounded tab left the exit animation permanently
+                incomplete and the page stuck on the previous module.
+
+                Keying the container on the module gives the same fade-and-lift
+                on arrival, starts the chunk fetch immediately, and cannot
+                stall.
+              */}
+              <motion.div
+                key={activeModule}
+                initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.22, 0.75, 0.25, 1] }}
+              >
+                <Suspense fallback={<ModuleSkeleton label={moduleTitles[activeModule]} />}>
                   {page}
-                </motion.div>
-              </AnimatePresence>
+                </Suspense>
+              </motion.div>
             </ModuleGuard>
           </div>
         </main>
@@ -435,10 +515,7 @@ const AppContent = () => {
               </p>
               <button
                 type="button"
-                onClick={() => {
-                  setShowTimeoutWarning(false);
-                  setCountdown(60);
-                }}
+                onClick={continueSession}
                 className="mt-6 rounded-2xl hse-primary-button px-5 py-3 text-sm font-semibold text-white"
               >
                 Continue Session

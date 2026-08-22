@@ -1,0 +1,441 @@
+// Portal design-system components.
+//
+// One place for the surfaces, dialogs and states shared by every module, so
+// pages stop re-declaring the same borders, shadows and hover rules inline.
+
+/* ---------------------------------------------------------------- dialogs */
+
+.hse-dialog-open {
+  overflow: hidden;
+}
+
+.hse-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(4, 6, 10, .72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: hse-dialog-overlay-in 160ms ease-out both;
+}
+
+.hse-dialog-overlay[data-state="closing"] {
+  animation: hse-dialog-overlay-out 150ms ease-in both;
+}
+
+.hse-dialog {
+  position: relative;
+  width: min(100%, 27rem);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(180deg, rgba(30, 33, 37, .97), rgba(20, 22, 25, .97));
+  padding: 1.9rem 1.6rem 1.5rem;
+  color: #f4f1ee;
+  text-align: center;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .55);
+  animation: hse-dialog-in 220ms cubic-bezier(.2, .75, .25, 1) both;
+}
+
+.hse-dialog-overlay[data-state="closing"] .hse-dialog {
+  animation: hse-dialog-out 150ms ease-in both;
+}
+
+.hse-dialog__icon {
+  display: inline-flex;
+  width: 3.4rem;
+  height: 3.4rem;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+  border-radius: 50%;
+  animation: hse-dialog-icon-pop 320ms cubic-bezier(.2, .9, .3, 1.15) both 60ms;
+
+  svg { width: 1.6rem; height: 1.6rem; }
+}
+
+.hse-dialog__icon--success { background: rgba(39, 115, 75, .18); color: #4ade80; box-shadow: 0 0 0 .55rem rgba(39, 115, 75, .1); }
+.hse-dialog__icon--warning { background: rgba(160, 93, 8, .2); color: #fbbf24; box-shadow: 0 0 0 .55rem rgba(160, 93, 8, .1); }
+.hse-dialog__icon--error   { background: rgba(180, 35, 24, .2); color: #fb7185; box-shadow: 0 0 0 .55rem rgba(180, 35, 24, .1); }
+.hse-dialog__icon--question,
+.hse-dialog__icon--info    { background: rgba(56, 189, 248, .16); color: #7dd3fc; box-shadow: 0 0 0 .55rem rgba(56, 189, 248, .08); }
+
+.hse-dialog__spinner {
+  display: inline-block;
+  width: 2.6rem;
+  height: 2.6rem;
+  margin-bottom: 1rem;
+  border: 3px solid rgba(255, 255, 255, .16);
+  border-top-color: var(--brand-primary-light);
+  border-radius: 50%;
+  animation: hse-dialog-spin 850ms linear infinite;
+}
+
+.hse-dialog__title {
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1.35;
+}
+
+.hse-dialog__text {
+  margin: .65rem 0 0;
+  color: #b9b4af;
+  font-size: .82rem;
+  line-height: 1.6;
+}
+
+.hse-dialog__field {
+  display: block;
+  margin-top: 1.15rem;
+  text-align: left;
+
+  > span {
+    display: block;
+    margin-bottom: .4rem;
+    color: #cbc6c1;
+    font-size: .72rem;
+    font-weight: 600;
+  }
+}
+
+.hse-dialog__input {
+  width: 100%;
+  min-height: 2.9rem;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: var(--radius-md);
+  background: rgba(10, 12, 14, .7);
+  padding: 0 .85rem;
+  color: #fff;
+  font: inherit;
+  font-size: .9rem;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+
+  &:focus {
+    border-color: var(--brand-primary-light);
+    box-shadow: 0 0 0 4px rgba(var(--brand-primary-rgb), .18);
+  }
+}
+
+.hse-dialog__error {
+  margin: .5rem 0 0;
+  color: #fb7185;
+  font-size: .7rem;
+  text-align: left;
+}
+
+.hse-dialog__actions {
+  display: flex;
+  gap: .6rem;
+  margin-top: 1.4rem;
+}
+
+.hse-dialog__button {
+  flex: 1;
+  min-height: 2.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 0 .9rem;
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 160ms ease, background 160ms ease, transform 120ms ease;
+
+  &:hover { transform: translateY(-1px); }
+  &:focus-visible { outline: 3px solid rgba(var(--brand-primary-rgb), .4); outline-offset: 2px; }
+}
+
+.hse-dialog__button--primary {
+  border-color: var(--brand-primary-dark);
+  background: linear-gradient(135deg, var(--brand-primary-light), var(--brand-primary));
+  color: #fff;
+
+  &:hover { filter: brightness(1.08); }
+}
+
+.hse-dialog__button--secondary {
+  border-color: rgba(255, 255, 255, .18);
+  background: rgba(255, 255, 255, .07);
+  color: #ded9d4;
+
+  &:hover { background: rgba(255, 255, 255, .12); }
+}
+
+.hse-dialog__timer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, var(--brand-primary-light), #4ade80);
+  animation: hse-dialog-timer linear forwards;
+}
+
+@keyframes hse-dialog-overlay-in  { from { opacity: 0; } }
+@keyframes hse-dialog-overlay-out { to   { opacity: 0; } }
+@keyframes hse-dialog-in  { from { opacity: 0; transform: translateY(14px) scale(.97); } }
+@keyframes hse-dialog-out { to   { opacity: 0; transform: translateY(8px) scale(.98); } }
+@keyframes hse-dialog-icon-pop { from { opacity: 0; transform: scale(.5); } }
+@keyframes hse-dialog-spin { to { transform: rotate(360deg); } }
+@keyframes hse-dialog-timer { to { transform: scaleX(0); } }
+
+/* -------------------------------------------------------- enterprise card */
+
+.enterprise-card {
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.enterprise-card--interactive {
+  cursor: pointer;
+
+  &:hover {
+    border-color: rgba(var(--brand-primary-rgb), .45);
+    box-shadow: 0 20px 52px rgba(2, 6, 23, .42);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--brand-primary-light);
+    outline-offset: 3px;
+  }
+}
+
+/* ----------------------------------------------------------- status chips */
+
+.hse-status {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: .2rem .55rem;
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+// Status is never communicated by colour alone — each chip also carries a
+// glyph and its own label text (WCAG 1.4.1).
+.hse-status__dot { width: .4rem; height: .4rem; border-radius: 999px; background: currentColor; }
+
+.hse-status--neutral  { border-color: rgba(148,163,184,.32); background: rgba(148,163,184,.12); color: #cbd5e1; }
+.hse-status--info     { border-color: rgba(56,189,248,.34);  background: rgba(56,189,248,.12);  color: #bae6fd; }
+.hse-status--pending  { border-color: rgba(245,158,11,.36);  background: rgba(245,158,11,.13);  color: #fcd34d; }
+.hse-status--progress { border-color: rgba(129,140,248,.34); background: rgba(129,140,248,.12); color: #c7d2fe; }
+.hse-status--success  { border-color: rgba(34,197,94,.34);   background: rgba(34,197,94,.12);   color: #86efac; }
+.hse-status--critical { border-color: rgba(244,63,94,.36);   background: rgba(244,63,94,.13);   color: #fda4af; }
+
+/* --------------------------------------------------- workflow progression */
+
+.hse-workflow {
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  gap: .25rem;
+  padding-bottom: .35rem;
+  scrollbar-width: thin;
+}
+
+.hse-workflow__step {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  gap: .45rem;
+  padding: 0 .25rem;
+  text-align: center;
+}
+
+.hse-workflow__marker {
+  display: inline-flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid rgba(255, 255, 255, .18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .05);
+  color: #94a3b8;
+  font-size: .68rem;
+  font-weight: 700;
+  transition: transform 200ms ease, border-color 200ms ease, background 200ms ease;
+
+  svg { width: .85rem; height: .85rem; }
+}
+
+.hse-workflow__step[data-state="done"] .hse-workflow__marker {
+  border-color: rgba(34, 197, 94, .55);
+  background: rgba(34, 197, 94, .18);
+  color: #86efac;
+}
+
+.hse-workflow__step[data-state="current"] .hse-workflow__marker {
+  border-color: var(--brand-primary-light);
+  background: rgba(var(--brand-primary-rgb), .3);
+  color: #fff;
+  transform: scale(1.12);
+  box-shadow: 0 0 0 5px rgba(var(--brand-primary-rgb), .16);
+}
+
+.hse-workflow__step[data-state="returned"] .hse-workflow__marker {
+  border-color: rgba(244, 63, 94, .55);
+  background: rgba(244, 63, 94, .18);
+  color: #fda4af;
+}
+
+.hse-workflow__label {
+  font-size: .62rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #94a3b8;
+  overflow-wrap: anywhere;
+}
+
+.hse-workflow__step[data-state="current"] .hse-workflow__label { color: #fff; }
+.hse-workflow__step[data-state="done"] .hse-workflow__label { color: #cbd5e1; }
+
+.hse-workflow__connector {
+  position: absolute;
+  top: .85rem;
+  left: calc(50% + 1.1rem);
+  right: calc(-50% + 1.1rem);
+  height: 1.5px;
+  background: rgba(255, 255, 255, .12);
+}
+
+.hse-workflow__step[data-state="done"] .hse-workflow__connector { background: rgba(34, 197, 94, .45); }
+
+/* ---------------------------------------------------------------- utility */
+
+// Applied to the app shell while a module transition is running so heavy
+// translucent surfaces don't get re-blurred mid-animation.
+.hse-transitioning .enterprise-card { will-change: transform; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hse-dialog-overlay,
+  .hse-dialog,
+  .hse-dialog__icon,
+  .hse-dialog__timer { animation: none !important; }
+
+  .hse-dialog__spinner { animation-duration: 2s; }
+
+  .enterprise-card,
+  .hse-workflow__marker,
+  .hse-dialog__button { transition: none !important; }
+}
+
+/* --------------------------------------------------------- brand momentum */
+
+.brand-accent-text { color: var(--brand-accent-soft, #f0a69b); }
+
+.brand-momentum-mark__halo,
+.brand-momentum-mark__ring {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+}
+
+.brand-momentum-mark__halo {
+  inset: 0;
+  background: radial-gradient(circle, rgba(var(--brand-primary-rgb), .28), transparent 68%);
+  opacity: .55;
+  transition: opacity 260ms ease, transform 260ms ease;
+}
+
+.brand-momentum-mark__ring {
+  inset: 14%;
+  border: 1px solid rgba(255, 255, 255, .22);
+  background: rgba(255, 255, 255, .05);
+  opacity: .45;
+  transition: opacity 260ms ease, transform 260ms ease;
+}
+
+.brand-momentum-mark__image {
+  transition: transform 320ms cubic-bezier(.2, .75, .25, 1);
+}
+
+// Motion is opt-in on hover only — nothing animates while the pointer is
+// elsewhere, so the compositor stays idle for the rest of the session.
+.brand-momentum-mark--active {
+  .brand-momentum-mark__halo { opacity: .9; transform: scale(1.08); }
+  .brand-momentum-mark__ring { opacity: .7; transform: scale(1.05); }
+  .brand-momentum-mark__image { animation: brand-momentum-spin 7s linear infinite; }
+}
+
+@keyframes brand-momentum-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-momentum-mark--active .brand-momentum-mark__image { animation: none; }
+}
+
+/* ------------------------------------------------------------- sidebar */
+
+.brand-sidebar {
+  // The panel is 280px wide even while the rail shows 80px of it, so its
+  // contents never re-wrap mid-transition.
+  width: 280px;
+  max-width: 280px;
+}
+
+.brand-nav-item {
+  background: rgba(255, 255, 255, .035);
+  transition: background-color 160ms ease, color 160ms ease;
+
+  &:focus-visible {
+    outline: 2px solid var(--brand-primary-light);
+    outline-offset: 2px;
+  }
+}
+
+// Collapsed rail: labels stay mounted so expanding costs a repaint rather than
+// a re-render of the whole nav.
+//
+// This must be the clip-based visually-hidden technique, NOT `opacity: 0` or
+// `visibility: hidden`: Chrome drops zero-opacity subtrees from the
+// accessibility tree, which would leave every collapsed nav button with no
+// accessible name at all. Clipping keeps the label as the button's name for
+// screen readers while removing it visually.
+.brand-nav-item__label--hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.sidebar-tooltip {
+  white-space: nowrap;
+  box-shadow: 0 12px 30px rgba(2, 6, 23, .5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-nav-item,
+  .sidebar-tooltip { transition: none !important; }
+}
+
+/* ----------------------------------------------------------- dashboard */
+
+// Brand-derived hero. Uses the corporate primary rather than the teal/sky
+// gradient the page previously carried, which read as a different product to
+// the Momentum mark sitting directly above it.
+.dashboard-hero {
+  background:
+    radial-gradient(120% 140% at 88% -20%, rgba(var(--brand-primary-rgb), .38), transparent 62%),
+    radial-gradient(90% 120% at 8% 120%, rgba(182, 115, 82, .18), transparent 60%),
+    linear-gradient(135deg, #12151a 0%, #1b1f24 58%, #14171b 100%);
+}

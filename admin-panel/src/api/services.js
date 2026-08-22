@@ -79,197 +79,6 @@ const getLegacyUserFromStorage = () => {
   };
 };
 
-const getLocalActivities = () => {
-  if (typeof window === "undefined") return [];
-  return safeJsonParse(localStorage.getItem("hse_local_activities"), []) || [];
-};
-
-const toMonthKey = (value) => {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  return `${d.getFullYear()}-${d.getMonth() + 1}`;
-};
-
-const monthShort = (value) =>
-  new Intl.DateTimeFormat("en-US", {
-    month: "short"
-  }).format(value);
-
-const buildDashboardSummaryFallback = ({
-  workRecords = [],
-  hazardRecords = [],
-  users = [],
-  trainingRecords = []
-}) => {
-  const totalWorkApprovals = workRecords.length;
-  const pendingWork = workRecords.filter((item) => String(item.status || item.workflowStage || "").startsWith("Pending") || !item.status).length;
-  const approvedWork = workRecords.filter((item) => item.status === "Approved").length;
-  const completedWork = workRecords.filter((item) => normalizeWorkStage(item) === "Completed").length;
-  const partiallyCompletedWork = workRecords.filter((item) => normalizeWorkStage(item) === "Partially Completed").length;
-  const pendingCheck = workRecords.filter((item) => normalizeWorkStage(item) === "Pending Check").length;
-  const pendingRecommendation = workRecords.filter((item) => normalizeWorkStage(item) === "Pending Recommendation").length;
-  const pendingFinalApproval = workRecords.filter((item) => normalizeWorkStage(item) === "Pending Final Approval").length;
-  const workInProgress = workRecords.filter((item) => normalizeWorkStage(item) === "Work In Progress").length;
-  const returnedForCorrection = workRecords.filter((item) => normalizeWorkStage(item) === "Returned for Correction").length;
-  const rejectedWork = workRecords.filter((item) => ["Rejected", "Returned for Correction"].includes(item.status)).length;
-
-  const totalHazards = hazardRecords.length;
-  const openHazards = hazardRecords.filter((item) => item.status === "Open" || !item.status).length;
-  const closedHazards = hazardRecords.filter((item) => item.status === "Closed").length;
-  const inProgressHazards = hazardRecords.filter((item) => item.status === "In Progress").length;
-
-  const totalUsers = users.length;
-  const activeUsers = users.filter((item) => !item.status || item.status === "active").length;
-  const trainingCount = trainingRecords.length;
-
-  const monthlyBucket = [];
-  const indexMap = new Map();
-  const now = new Date();
-  for (let i = 5; i >= 0; i -= 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
-    indexMap.set(key, monthlyBucket.length);
-    monthlyBucket.push({
-      month: monthShort(d),
-      work: 0,
-      hazards: 0,
-      trainingCompletions: 0,
-      _key: key
-    });
-  }
-
-  workRecords.forEach((item) => {
-    const idx = indexMap.get(toMonthKey(item.createdAt || item.date));
-    if (idx !== undefined) monthlyBucket[idx].work += 1;
-  });
-
-  hazardRecords.forEach((item) => {
-    const idx = indexMap.get(toMonthKey(item.createdAt || item.date));
-    if (idx !== undefined) monthlyBucket[idx].hazards += 1;
-  });
-
-  trainingRecords.forEach((item) => {
-    const completions = item.completions || [];
-    completions.forEach((completion) => {
-      if (!completion?.isCompleted || !completion?.completedAt) return;
-      const idx = indexMap.get(toMonthKey(completion.completedAt));
-      if (idx !== undefined) monthlyBucket[idx].trainingCompletions += 1;
-    });
-  });
-
-  const userActivity = monthlyBucket.map((row) => ({
-    month: row.month,
-    logins: users.filter((item) => toMonthKey(item.lastLoginAt) === row._key).length
-  }));
-
-  const safetyPerformanceScore = Math.min(
-    100,
-    Math.round(
-      (totalWorkApprovals === 0 ? 100 : (completedWork / totalWorkApprovals) * 100) * 0.6 +
-        (totalHazards === 0 ? 100 : (closedHazards / totalHazards) * 100) * 0.4
-    )
-  );
-
-  const workActivities = workRecords.map((item) => ({
-    id: item._id,
-    module: "work",
-    action: item.status || "Pending",
-    message: `${item.workType || item.title || "Work"} ${item.status || "Pending"} at ${
-      item.location || "-"
-    }`,
-    timestamp: item.updatedAt || item.createdAt
-  }));
-
-  const hazardActivities = hazardRecords.map((item) => ({
-    id: item._id,
-    module: "hazards",
-    action: item.status || "Open",
-    message: `${item.category || "Hazard"} ${item.status || "Open"} at ${item.location || "-"}`,
-    timestamp: item.updatedAt || item.createdAt
-  }));
-
-  const trainingActivities = trainingRecords.map((item) => ({
-    id: item._id,
-    module: "training",
-    action: "Published",
-    message: `Training module available: ${item.title || "Training"}`,
-    timestamp: item.updatedAt || item.createdAt
-  }));
-
-  const loginActivities = users
-    .filter((item) => item.lastLoginAt)
-    .map((item) => ({
-      id: item._id,
-      module: "users",
-      action: "Login",
-      message: `${item.name || item.email || "User"} login activity`,
-      timestamp: item.lastLoginAt
-    }));
-
-  const reportActivities = getLocalActivities().map((item) => ({
-    id: item.id,
-    module: item.module || "reports",
-    action: item.action || "Exported",
-    message: item.message || "Report exported",
-    timestamp: item.timestamp
-  }));
-
-  const activities = [
-    ...workActivities,
-    ...hazardActivities,
-    ...trainingActivities,
-    ...loginActivities,
-    ...reportActivities
-  ]
-    .filter((item) => item.timestamp)
-    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    .slice(0, 15);
-
-  return {
-    success: true,
-    kpis: {
-      totalUsers,
-      activeUsers,
-      totalWorkApprovals,
-      pendingWork,
-      approvedWork,
-      completedWork,
-      partiallyCompleted: partiallyCompletedWork,
-      partiallyCompletedWork,
-      pendingCheck,
-      pendingRecommendation,
-      pendingFinalApproval,
-      workInProgress,
-      returnedForCorrection,
-      totalHazards,
-      openHazards,
-      closedHazards,
-      trainingRecords: trainingCount
-    },
-    charts: {
-      workStatus: [
-        { name: "Pending", value: pendingWork },
-        { name: "Approved", value: approvedWork },
-        { name: "Completed", value: completedWork },
-        {
-          name: "Partially Completed",
-          value: workRecords.filter((item) => item.status === "Partially Completed").length
-        },
-        { name: "Rejected", value: rejectedWork }
-      ],
-      hazardStatus: [
-        { name: "Open", value: openHazards },
-        { name: "In Progress", value: inProgressHazards },
-        { name: "Closed", value: closedHazards }
-      ],
-      monthlyTrend: monthlyBucket.map(({ _key, ...rest }) => rest),
-      userActivity,
-      safetyPerformanceScore
-    },
-    activities
-  };
-};
-
 const normalizeSettings = (value = {}) => {
   const security = value.security || {};
   const passwordPolicy = security.passwordPolicy || {};
@@ -851,24 +660,19 @@ export const authService = {
 };
 
 export const dashboardService = {
-  summary: async () =>
-    withLegacyFallback(
-      async () => (await client.get("/dashboard/summary")).data,
-      async () => {
-        const [workRes, hazardRes, usersRes, trainingRes] = await Promise.allSettled([
-          workService.list({ unpaginated: true }),
-          hazardService.list(),
-          userService.list(),
-          trainingService.list()
-        ]);
-        return buildDashboardSummaryFallback({
-          workRecords: workRes.status === "fulfilled" ? workRes.value.records || [] : [],
-          hazardRecords: hazardRes.status === "fulfilled" ? hazardRes.value.records || [] : [],
-          users: usersRes.status === "fulfilled" ? usersRes.value.users || [] : [],
-          trainingRecords: trainingRes.status === "fulfilled" ? trainingRes.value.records || [] : []
-        });
-      }
-    )
+  // Deliberately has no client-side fallback.
+  //
+  // This used to react to any failure of /dashboard/summary by fetching every
+  // work approval (`unpaginated: true`), every hazard, every user and every
+  // training record and recomputing the KPIs in the browser. On a live database
+  // that is tens of megabytes of JSON, parsed on the main thread, triggered by
+  // the exact condition under which the server is already struggling — the
+  // single worst "the app hangs after login" path in the system.
+  //
+  // The dashboard now surfaces a refresh warning and keeps its last snapshot
+  // instead, and the browser-side KPI recomputation that fallback needed has
+  // been deleted along with it.
+  summary: async () => (await client.get("/dashboard/summary")).data
 };
 
 export const userService = {
@@ -1093,13 +897,20 @@ export const workService = {
 };
 
 export const hazardService = {
-  list: async () =>
+  // Always paginated. The backend treats a request with neither `page` nor
+  // `limit` as "return everything", and a hazard document carries its full
+  // evidence/closure media arrays — an unbounded list here was routinely a
+  // multi-megabyte response.
+  list: async (params = {}) =>
     withLegacyFallback(
       async () => {
-        const res = await client.get("/hazards");
+        const res = await client.get("/hazards", {
+          params: { page: 1, limit: 25, ...params }
+        });
         return {
           success: true,
-          records: (res.data.records || []).map(mapHazardRecord)
+          records: (res.data.records || []).map(mapHazardRecord),
+          pagination: res.data.pagination || null
         };
       },
       async () => {
@@ -1202,10 +1013,13 @@ export const trainingService = {
   list: async (params = {}) =>
     withLegacyFallback(
       async () => {
-        const res = await client.get("/training", { params });
+        const res = await client.get("/training", {
+          params: { page: 1, limit: 60, ...params }
+        });
         return {
           success: true,
-          records: (res.data.records || []).map(mapTrainingRecord)
+          records: (res.data.records || []).map(mapTrainingRecord),
+          pagination: res.data.pagination || null
         };
       },
       async () => {
@@ -1367,20 +1181,40 @@ export const reportService = {
   }
 };
 
+// In-flight request deduplication for settings.
+//
+// Company settings are read from several independent places (the app shell's
+// session-timeout watchdog, the Settings page, branding lookups). Without this,
+// each mount issued its own GET /settings and they all raced. Concurrent
+// callers now share one request; `invalidateSettingsCache()` is called by every
+// mutation below so a save is never served a stale read.
+let settingsRequest = null;
+
+const invalidateSettingsCache = () => {
+  settingsRequest = null;
+};
+
 export const settingsService = {
-  get: async () =>
-    withLegacyFallback(
-      async () => {
-        const response = (await client.get("/settings")).data;
-        const settings = normalizeSettings(response.settings || {});
-        cacheSettings(settings);
-        return { success: true, settings };
-      },
-      async () => {
-        const cached = getCachedSettings();
-        return { success: true, settings: normalizeSettings(cached || {}) };
-      }
-    ),
+  get: async () => {
+    if (!settingsRequest) {
+      settingsRequest = withLegacyFallback(
+        async () => {
+          const response = (await client.get("/settings")).data;
+          const settings = normalizeSettings(response.settings || {});
+          cacheSettings(settings);
+          return { success: true, settings };
+        },
+        async () => {
+          const cached = getCachedSettings();
+          return { success: true, settings: normalizeSettings(cached || {}) };
+        }
+      ).finally(() => {
+        // Only dedupe concurrent callers — a later read still hits the server.
+        settingsRequest = null;
+      });
+    }
+    return settingsRequest;
+  },
   updateProfile: async (payload) => {
     const normalized = normalizeSettings({ ...(getCachedSettings() || {}), ...payload });
     return withLegacyFallback(
@@ -1390,6 +1224,7 @@ export const settingsService = {
         ).data;
         const settings = normalizeSettings(response.settings || normalized);
         cacheSettings(settings);
+        invalidateSettingsCache();
         return { success: true, settings };
       },
       async () => {
@@ -1409,6 +1244,7 @@ export const settingsService = {
         const response = (await client.put("/settings/branding", normalized.branding)).data;
         const settings = normalizeSettings(response.settings || normalized);
         cacheSettings(settings);
+        invalidateSettingsCache();
         return { success: true, settings };
       },
       async () => {
@@ -1437,6 +1273,7 @@ export const settingsService = {
         ).data;
         const settings = normalizeSettings(response.settings || normalized);
         cacheSettings(settings);
+        invalidateSettingsCache();
         return { success: true, settings };
       },
       async () => {

@@ -183,7 +183,12 @@
 .auth-recovery__notice p { margin: 6px 0 0; color: var(--brand-text-muted); font-size: 11px; line-height: 1.55; }
 .auth-text-button--back { margin-top: 14px; }
 .auth-card--success { display: flex; min-height: 360px; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-.auth-success-icon { display: inline-flex; width: 68px; height: 68px; align-items: center; justify-content: center; margin-bottom: 23px; border-radius: 50%; background: #e7f5ed; color: var(--brand-success); box-shadow: 0 0 0 10px #f2faf5; }
+.auth-success-icon { position: relative; display: inline-flex; width: 74px; height: 74px; align-items: center; justify-content: center; margin-bottom: 23px; border-radius: 50%; background: #e7f5ed; color: var(--brand-success); box-shadow: 0 0 0 10px #f2faf5; }
+.auth-success-icon__mark { width: 46px; height: 46px; fill: none; stroke: var(--brand-success); stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
+.auth-success-icon__ring { stroke-dasharray: 152; stroke-dashoffset: 152; opacity: .34; animation: auth-success-ring 520ms cubic-bezier(.2,.75,.25,1) forwards; }
+.auth-success-icon__check { stroke-dasharray: 48; stroke-dashoffset: 48; animation: auth-success-check 380ms cubic-bezier(.2,.75,.25,1) 260ms forwards; }
+@keyframes auth-success-ring { to { stroke-dashoffset: 0; } }
+@keyframes auth-success-check { to { stroke-dashoffset: 0; } }
 .auth-card--success p { color: var(--brand-text-muted); }
 .auth-spinner { animation: auth-spin 800ms linear infinite; }
 .corporate-login__legal { display: flex; width: min(100%,470px); align-items: center; justify-content: center; gap: 7px; margin: 20px 0 0; color: #c8c2bc; font-size: 11px; text-align: center; }
@@ -220,4 +225,59 @@
 @media (prefers-reduced-motion: reduce) {
   .corporate-login__background, .corporate-login__momentum-rotator, .auth-card, .auth-spinner { animation: none; }
   .auth-primary-button, .auth-field__control { transition: none; }
+}
+
+/* --- card lighting -------------------------------------------------------
+   A single, very low-contrast diagonal sheen across the glass card. It is a
+   static gradient, not an animation, so it costs nothing per frame and does
+   not compete with the rotating Momentum mark behind it. */
+.auth-card { position: relative; overflow: hidden; }
+.auth-card__sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.5) 0%, rgba(255,255,255,0) 42%),
+    radial-gradient(120% 90% at 88% 4%, rgba(var(--brand-primary-rgb), .07), transparent 58%);
+  mix-blend-mode: soft-light;
+}
+.auth-card > *:not(.auth-card__sheen) { position: relative; z-index: 1; }
+
+/* --- step transition ---------------------------------------------------- */
+.auth-form--step { animation: auth-step-in 300ms cubic-bezier(.2,.75,.25,1) both; }
+@keyframes auth-step-in { from { opacity: 0; transform: translateY(10px); } }
+
+/* --- OTP digit indicators ----------------------------------------------- */
+.auth-otp__digits { display: flex; gap: 8px; margin-top: 10px; }
+.auth-otp__digit {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,.55);
+  color: var(--brand-text);
+  font-family: ui-monospace, monospace;
+  font-size: 17px;
+  font-weight: 720;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+.auth-otp__digit--filled {
+  border-color: var(--brand-primary);
+  background: var(--brand-primary-soft);
+  transform: translateY(-1px);
+}
+.auth-otp__digit--active {
+  border-color: var(--brand-primary-light);
+  box-shadow: var(--focus-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-success-icon__ring,
+  .auth-success-icon__check { animation: none; stroke-dashoffset: 0; }
+  .auth-form--step { animation: none; }
+  .auth-otp__digit { transition: none; }
 }
