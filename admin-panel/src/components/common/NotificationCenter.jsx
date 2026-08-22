@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, CheckCheck, ClipboardCheck, GraduationCap, ShieldAlert, UserRound, Wrench } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { notificationService } from "../../api/services";
@@ -55,14 +55,16 @@ const normalizeModule = (notification = {}) => {
   return "";
 };
 
+const POLL_INTERVAL_MS = 60000;
+
 const NotificationCenter = ({ onSelectModule }) => {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("unread");
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({ unreadCount: 0, notifications: [] });
-  const [lastUnread, setLastUnread] = useState(0);
+  const lastUnreadRef = useRef(0);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       const response = await notificationService.list();
       setData({
@@ -74,31 +76,76 @@ const NotificationCenter = ({ onSelectModule }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchNotifications();
-    const timer = setInterval(fetchNotifications, 30000);
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
-    return () => clearInterval(timer);
   }, []);
 
+  // Opening the panel is a real user gesture, which is both the only moment a
+  // desktop-notification permission prompt is appropriate (browsers suppress
+  // or penalise prompts fired on page load) and a good moment to re-sync.
+  const togglePanel = useCallback(() => {
+    setOpen((value) => {
+      const next = !value;
+      if (next) {
+        fetchNotifications();
+        if ("Notification" in window && Notification.permission === "default") {
+          Notification.requestPermission().catch(() => {});
+        }
+      }
+      return next;
+    });
+  }, [fetchNotifications]);
+
+  // Polling strategy: a 60s cadence that pauses entirely while the tab is
+  // hidden and re-syncs the moment it comes back, plus an immediate refresh
+  // when the panel is opened. The previous unconditional 30s interval kept
+  // querying on behalf of every backgrounded tab a user had left open.
+  useEffect(() => {
+    let timer = null;
+
+    const start = () => {
+      if (timer) return;
+      timer = setInterval(() => {
+        if (!document.hidden) fetchNotifications();
+      }, POLL_INTERVAL_MS);
+    };
+    const stop = () => {
+      if (!timer) return;
+      clearInterval(timer);
+      timer = null;
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+        return;
+      }
+      fetchNotifications();
+      start();
+    };
+
+    fetchNotifications();
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+    // fetchNotifications is stable for the component's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Desktop notification on a genuinely new unread item. `lastUnreadRef` is a
+  // ref rather than state so this effect does not schedule an extra render
+  // pass on every poll just to record the count it already saw.
   useEffect(() => {
     const unread = data.unreadCount || 0;
-    if (
-      unread > lastUnread &&
-      "Notification" in window &&
-      Notification.permission === "granted"
-    ) {
-      const latest = data.notifications.find((item) => !item.read);
-      if (latest) {
-        new Notification(latest.title, { body: latest.message });
-      }
-    }
-    setLastUnread(unread);
-  }, [data, lastUnread]);
+    const previous = lastUnreadRef.current;
+    lastUnreadRef.current = unread;
+
+    if (unread <= previous) return;
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+    const latest = data.notifications.find((item) => !item.read);
+    if (latest) new Notification(latest.title, { body: latest.message });
+  }, [data]);
 
   const unread = data.unreadCount || 0;
   const filteredItems = useMemo(() => {
@@ -147,7 +194,7 @@ const NotificationCenter = ({ onSelectModule }) => {
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={togglePanel}
         className="relative rounded-2xl border border-white/15 bg-white/10 p-2.5 text-white transition hover:bg-white/20"
         aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`}
       >

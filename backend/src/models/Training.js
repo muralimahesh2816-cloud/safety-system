@@ -64,6 +64,24 @@ const trainingSchema = new mongoose.Schema(
     },
     tags: [String],
     durationMinutes: Number,
+    // --- HSE instructional content -----------------------------------------
+    // Optional structured teaching content for a training concept. All fields
+    // default to empty so every pre-existing Training document stays valid and
+    // renders exactly as before; the training detail view simply omits any
+    // section that has no content.
+    //
+    // `catalogId` links a record to an entry in the front-end HSE catalogue
+    // (admin-panel/src/config/hseTrainingCatalog.js), which is what lets a
+    // Safety Manager create a training pre-filled from the standard curriculum
+    // and still edit it afterwards. `visualKey` names the instructional visual
+    // to show when no thumbnail/video has been uploaded yet.
+    catalogId: { type: String, default: "" },
+    visualKey: { type: String, default: "" },
+    objective: { type: String, default: "" },
+    hazards: { type: [String], default: [] },
+    correctPractice: { type: [String], default: [] },
+    incorrectPractice: { type: [String], default: [] },
+    requiredPpe: { type: [String], default: [] },
     isPublished: { type: Boolean, default: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     recommendedForRoles: [String],
@@ -93,5 +111,9 @@ trainingSchema.index({ createdBy: 1, createdAt: -1 });
 trainingSchema.index({ recommendedForRoles: 1, isPublished: 1 });
 trainingSchema.index({ "completions.user": 1, "completions.isCompleted": 1 });
 trainingSchema.index({ trainer: 1 });
+trainingSchema.index({ catalogId: 1 });
+// Serves the monthly training-completion aggregation, which unwinds
+// completions and filters on completedAt.
+trainingSchema.index({ "completions.completedAt": -1 });
 
 module.exports = mongoose.model("Training", trainingSchema);

@@ -121,19 +121,6 @@ html.light [class*="text-slate-400"] {
   color: #475569 !important;
 }
 
-html.light .hse-swal-popup {
-  background: rgba(255, 255, 255, 0.88) !important;
-  border: 1px solid rgba(15, 23, 42, 0.12) !important;
-}
-
-html.light .hse-swal-title {
-  color: #0f172a !important;
-}
-
-html.light .hse-swal-text {
-  color: #334155 !important;
-}
-
 .font-display {
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -181,44 +168,6 @@ html.light .hse-swal-text {
   perspective: 1100px;
 }
 
-.momentum-particle {
-  position: absolute;
-  bottom: -12px;
-  border-radius: 999px;
-  background: #67e8f9;
-  box-shadow: 0 0 18px rgba(103, 232, 249, 0.8);
-  animation: momentum-particle-rise 9s linear infinite;
-}
-
-.momentum-wave {
-  animation: momentum-wave 8s ease-in-out infinite;
-}
-
-@keyframes momentum-particle-rise {
-  0% {
-    transform: translate3d(0, 0, 0) scale(0.8);
-    opacity: 0;
-  }
-  20% {
-    opacity: 0.6;
-  }
-  100% {
-    transform: translate3d(-42px, -110vh, 120px) scale(1.2);
-    opacity: 0;
-  }
-}
-
-@keyframes momentum-wave {
-  0%, 100% {
-    transform: translateX(-12%) skewY(-4deg);
-    opacity: 0.28;
-  }
-  50% {
-    transform: translateX(12%) skewY(3deg);
-    opacity: 0.48;
-  }
-}
-
 .bg-premium-grid {
   background-image:
     linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
@@ -260,58 +209,6 @@ html.light .hse-swal-text {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-}
-
-.hse-swal-popup {
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
-  border-radius: 1.25rem !important;
-  background: rgba(15, 23, 42, 0.72) !important;
-  backdrop-filter: blur(18px) saturate(130%) !important;
-  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.45) !important;
-}
-
-.hse-swal-title {
-  color: #ecfeff !important;
-  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
-  font-size: 1.2rem !important;
-}
-
-.hse-swal-text {
-  color: #cbd5e1 !important;
-}
-
-.hse-swal-timer {
-  background: linear-gradient(90deg, #22c55e, #14b8a6) !important;
-}
-
-.hse-swal-show {
-  animation: hse-swal-enter 0.25s ease;
-}
-
-.hse-swal-hide {
-  animation: hse-swal-exit 0.2s ease forwards;
-}
-
-@keyframes hse-swal-enter {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes hse-swal-exit {
-  from {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(8px) scale(0.98);
-  }
 }
 
 .safety-bg-overlay {

@@ -287,8 +287,17 @@ const LoginPanel = ({ onLogin, onVerifyOtp, onResendOtp, onAuthenticated }) => {
   if (authState.step === AUTH_STEPS.AUTHENTICATED) {
     return (
       <section className="auth-card auth-card--success" aria-live="polite">
+        {/*
+          The tick is stroked on with SVG dash animation rather than being a
+          static glyph that appears — it reads as confirmation of the action
+          that just succeeded. It collapses to a plain tick under
+          prefers-reduced-motion (see login.scss).
+        */}
         <span className="auth-success-icon" aria-hidden="true">
-          <Check size={30} />
+          <svg viewBox="0 0 52 52" className="auth-success-icon__mark">
+            <circle className="auth-success-icon__ring" cx="26" cy="26" r="23" />
+            <path className="auth-success-icon__check" d="M15 27.5 L22.5 35 L37.5 19" />
+          </svg>
         </span>
         <h2>{heading}</h2>
         <p>Redirecting to your dashboard...</p>
@@ -298,7 +307,12 @@ const LoginPanel = ({ onLogin, onVerifyOtp, onResendOtp, onAuthenticated }) => {
   }
 
   return (
-    <section className="auth-card" aria-labelledby="auth-card-title">
+    <section
+      className="auth-card"
+      data-step={interactiveStep}
+      aria-labelledby="auth-card-title"
+    >
+      <span className="auth-card__sheen" aria-hidden="true" />
       <header className="auth-card__header">
         <div className="auth-card__identity">
           <span className="auth-card__logo" aria-hidden="true">
@@ -373,7 +387,8 @@ const LoginPanel = ({ onLogin, onVerifyOtp, onResendOtp, onAuthenticated }) => {
         </div>
       ) : (
         <form
-          className="auth-form"
+          key={interactiveStep}
+          className="auth-form auth-form--step"
           onSubmit={handleSubmit}
           noValidate
           aria-label={isOtpStep ? "Verification form" : "Sign in form"}
@@ -497,6 +512,23 @@ const LoginPanel = ({ onLogin, onVerifyOtp, onResendOtp, onAuthenticated }) => {
                     aria-describedby={fieldErrors.otp ? "login-otp-error" : "login-otp-help"}
                     disabled={isSubmitting}
                   />
+                </div>
+                {/*
+                  Digit indicators mirror the (single, accessible) input above
+                  rather than replacing it with six separate boxes — six inputs
+                  break password managers, paste, and one-time-code autofill.
+                */}
+                <div className="auth-otp__digits" aria-hidden="true">
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <span
+                      key={index}
+                      className={`auth-otp__digit${index < otp.length ? " auth-otp__digit--filled" : ""}${
+                        index === otp.length ? " auth-otp__digit--active" : ""
+                      }`}
+                    >
+                      {otp[index] || ""}
+                    </span>
+                  ))}
                 </div>
                 {fieldErrors.otp ? (
                   <FieldMessage id="login-otp-error">{fieldErrors.otp}</FieldMessage>

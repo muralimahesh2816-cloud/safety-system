@@ -18,11 +18,27 @@ const buildPaginationMeta = ({ page, limit, total }) => ({
 
 const hasPagination = (query = {}) => query.page !== undefined || query.limit !== undefined;
 
+/**
+ * Ceiling applied to list endpoints that a client called without any
+ * pagination parameters.
+ *
+ * Those endpoints previously returned the entire collection. For hazards and
+ * training — whose documents carry embedded media arrays and per-user
+ * completion history — that meant a response that grows without bound as the
+ * site accumulates records, which is what made those pages progressively
+ * slower to open. Older clients keep working (they still get a single
+ * response); they just cannot pull down an unbounded one. Responses report
+ * `capped: true` when the cap actually truncated the result, so a caller can
+ * tell the difference between "that is everything" and "ask for page 2".
+ */
+const UNPAGINATED_MAX = 500;
+
 const escapeRegex = (value = "") => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 module.exports = {
   getPagination,
   buildPaginationMeta,
   hasPagination,
-  escapeRegex
+  escapeRegex,
+  UNPAGINATED_MAX
 };

@@ -306,5 +306,9 @@ workApprovalSchema.index({ assignedRecommender: 1, workflowStage: 1, createdAt: 
 workApprovalSchema.index({ assignedFinalApprover: 1, workflowStage: 1, createdAt: -1 });
 workApprovalSchema.index({ completedAt: -1 });
 workApprovalSchema.index({ idempotencyKey: 1 }, { unique: true, sparse: true });
+// Standalone createdAt index: the dashboard's monthly-trend aggregation matches
+// on createdAt alone, which none of the compound indexes above can serve
+// (createdAt is never their leading field), so it was a full collection scan.
+workApprovalSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model("WorkApproval", workApprovalSchema);

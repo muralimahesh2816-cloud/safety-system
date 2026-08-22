@@ -89,87 +89,74 @@ const calculateSafetyScore = ({ totalWork, completedWork, totalHazards, closedHa
   return Math.min(100, Math.round(completionFactor * 0.6 + hazardFactor * 0.4));
 };
 
-const matchesStage = (values) => ({
-  $expr: {
-    $in: [
-      {
-        $cond: [
-          {
-            $and: [
-              { $ne: [{ $ifNull: ["$workflowStage", ""] }, ""] },
-              { $ne: ["$workflowStage", null] }
-            ]
-          },
-          "$workflowStage",
-          "$status"
-        ]
-      },
-      values
-    ]
-  }
-});
-
-const aggregateWorkKpis = async () => {
-  const [result = {}] = await WorkApproval.aggregate([
+// Effective workflow stage for a record: `workflowStage` when present, else the
+// legacy `status` field. Expressed once here and reused by the grouping below.
+const EFFECTIVE_STAGE = {
+  $cond: [
     {
-      $facet: {
-        total: [{ $count: "value" }],
-        pendingCheck: [
-          { $match: matchesStage(["Pending", "Under Review", WORK_STAGES.PENDING_CHECK]) },
-          { $count: "value" }
-        ],
-        pendingRecommendation: [
-          { $match: matchesStage([WORK_STAGES.PENDING_RECOMMENDATION]) },
-          { $count: "value" }
-        ],
-        pendingFinalApproval: [
-          { $match: matchesStage(["Pending Approval", WORK_STAGES.PENDING_FINAL_APPROVAL]) },
-          { $count: "value" }
-        ],
-        approved: [
-          { $match: matchesStage(["Final Approved", WORK_STAGES.APPROVED]) },
-          { $count: "value" }
-        ],
-        workInProgress: [
-          { $match: matchesStage([WORK_STAGES.WORK_IN_PROGRESS]) },
-          { $count: "value" }
-        ],
-        completed: [
-          {
-            $match: matchesStage([
-              WORK_STAGES.COMPLETED,
-              "COMPLETED",
-              "complete",
-              "Work Completed",
-              "Final Completed"
-            ])
-          },
-          { $count: "value" }
-        ],
-        partiallyCompleted: [
-          { $match: matchesStage([WORK_STAGES.PARTIALLY_COMPLETED]) },
-          { $count: "value" }
-        ],
-        returnedForCorrection: [
-          { $match: matchesStage([WORK_STAGES.RETURNED, "Rejected"]) },
-          { $count: "value" }
-        ]
-      }
-    }
+      $and: [
+        { $ne: [{ $ifNull: ["$workflowStage", ""] }, ""] },
+        { $ne: ["$workflowStage", null] }
+      ]
+    },
+    "$workflowStage",
+    "$status"
+  ]
+};
+
+// Every historical spelling that maps onto each KPI bucket. Kept as data so
+// the mapping is auditable in one place rather than spread across nine
+// separate aggregation stages.
+const STAGE_BUCKETS = {
+  pendingCheck: ["Pending", "Under Review", WORK_STAGES.PENDING_CHECK],
+  pendingRecommendation: [WORK_STAGES.PENDING_RECOMMENDATION],
+  pendingFinalApproval: ["Pending Approval", WORK_STAGES.PENDING_FINAL_APPROVAL],
+  approved: ["Final Approved", WORK_STAGES.APPROVED],
+  workInProgress: [WORK_STAGES.WORK_IN_PROGRESS],
+  completed: [
+    WORK_STAGES.COMPLETED,
+    "COMPLETED",
+    "complete",
+    "Work Completed",
+    "Final Completed"
+  ],
+  partiallyCompleted: [WORK_STAGES.PARTIALLY_COMPLETED],
+  returnedForCorrection: [WORK_STAGES.RETURNED, "Rejected"]
+};
+
+const STAGE_TO_BUCKET = new Map(
+  Object.entries(STAGE_BUCKETS).flatMap(([bucket, stages]) =>
+    stages.map((stage) => [stage, bucket])
+  )
+);
+
+/**
+ * Work-approval KPI counts.
+ *
+ * This used to run a `$facet` of nine `$match` stages, each wrapping its
+ * predicate in `$expr`. `$expr` cannot use an index, so every one of those
+ * nine branches was a full collection scan of WorkApproval — nine scans per
+ * dashboard load, per user, on a 30-second poll.
+ *
+ * It is now a single `$group` that counts documents per effective stage; the
+ * (small, bounded) result is folded into the KPI buckets in JS.
+ */
+const aggregateWorkKpis = async () => {
+  const rows = await WorkApproval.aggregate([
+    { $group: { _id: EFFECTIVE_STAGE, count: { $sum: 1 } } }
   ]);
 
-  const value = (key) => result[key]?.[0]?.value || 0;
-  return {
-    total: value("total"),
-    pendingCheck: value("pendingCheck"),
-    pendingRecommendation: value("pendingRecommendation"),
-    pendingFinalApproval: value("pendingFinalApproval"),
-    approved: value("approved"),
-    workInProgress: value("workInProgress"),
-    completed: value("completed"),
-    partiallyCompleted: value("partiallyCompleted"),
-    returnedForCorrection: value("returnedForCorrection")
-  };
+  const counts = Object.fromEntries(Object.keys(STAGE_BUCKETS).map((key) => [key, 0]));
+  let total = 0;
+
+  rows.forEach((row) => {
+    const count = row.count || 0;
+    total += count;
+    const bucket = STAGE_TO_BUCKET.get(row._id);
+    if (bucket) counts[bucket] += count;
+  });
+
+  return { total, ...counts };
 };
 
 const buildAssignedTasks = async (user = {}) => {

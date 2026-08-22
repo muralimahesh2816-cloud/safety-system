@@ -1,4 +1,4 @@
-import jsPDF from "jspdf";
+import { loadPdfKit } from "./lazyVendor";
 import companyLogoUrl from "../assets/vertis-logo.svg";
 import { APP_NAME, ORGANIZATION_NAME } from "../config/appConfig";
 import { PDF_COLORS } from "./pdfDesign";
@@ -120,6 +120,7 @@ const drawMetaGrid = (doc, { rows, startY, centerX, width }) => {
  * exactly one thing with the same generated document.
  */
 export const buildCertificateDoc = async (certificate) => {
+  const { jsPDF } = await loadPdfKit();
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const width = doc.internal.pageSize.getWidth();
   const height = doc.internal.pageSize.getHeight();

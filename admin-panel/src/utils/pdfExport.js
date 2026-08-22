@@ -1,5 +1,4 @@
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import { loadPdfKit } from "./lazyVendor";
 import { APP_NAME } from "../config/appConfig";
 import { getChainageFrom } from "./chainage";
 import { addStandardPdfFooters, PDF_COLORS, PDF_LAYOUT } from "./pdfDesign";
@@ -357,6 +356,8 @@ export const exportReportPdf = async ({
   const body = normalizedRows.map((row) => headers.map((header) => row[header] ?? "-"));
   const compactTable = headers.length > 14;
   const orientation = headers.length > 7 ? "landscape" : "portrait";
+  // jsPDF/autotable are code-split — see utils/lazyVendor.js.
+  const { jsPDF, autoTable } = await loadPdfKit();
   const doc = new jsPDF({ orientation, unit: PDF_LAYOUT.unit, format: PDF_LAYOUT.format });
   const generatedDateText = formatGeneratedDate(generatedAt);
   const logoData = await loadImageAsDataUrl(companyLogo);

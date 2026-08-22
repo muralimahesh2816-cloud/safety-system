@@ -1,7 +1,4 @@
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-import * as XLSX from "xlsx";
-import { saveAs } from "file-saver";
+import { loadFileSaver, loadPdfKit, loadXlsx } from "./lazyVendor";
 import { ORGANIZATION_NAME } from "../config/appConfig";
 
 const safe = (value) => {
@@ -34,7 +31,11 @@ const reportRows = (records = []) => records.map((record) => ({
 
 const fileStem = (module, suffix) => `${module.key}-${suffix}-${new Date().toISOString().slice(0, 10)}`;
 
-export const exportHseExcel = ({ module, records, filters = {} }) => {
+// Excel/PDF vendors are code-split (see utils/lazyVendor.js), which makes
+// these exporters async. Callers already treat them as fire-and-forget click
+// handlers, so nothing downstream had to change.
+export const exportHseExcel = async ({ module, records, filters = {} }) => {
+  const [XLSX, saveAs] = await Promise.all([loadXlsx(), loadFileSaver()]);
   const workbook = XLSX.utils.book_new();
   const rows = reportRows(records);
   const worksheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Message: "No matching records" }]);
@@ -52,7 +53,8 @@ export const exportHseExcel = ({ module, records, filters = {} }) => {
   saveAs(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `${fileStem(module, "register")}.xlsx`);
 };
 
-export const exportHsePdf = ({ module, records, filters = {} }) => {
+export const exportHsePdf = async ({ module, records, filters = {} }) => {
+  const { jsPDF, autoTable } = await loadPdfKit();
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   doc.setProperties({
     title: `${module.label} Register`,
@@ -96,7 +98,8 @@ export const exportHsePdf = ({ module, records, filters = {} }) => {
   doc.save(`${fileStem(module, "register")}.pdf`);
 };
 
-export const exportHseDetailPdf = ({ module, record }) => {
+export const exportHseDetailPdf = async ({ module, record }) => {
+  const { jsPDF, autoTable } = await loadPdfKit();
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   doc.setProperties({ title: `${record.recordId} ${record.title}`, author: ORGANIZATION_NAME });
   doc.setFillColor(8, 47, 73);

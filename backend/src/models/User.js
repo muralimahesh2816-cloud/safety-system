@@ -77,5 +77,7 @@ userSchema.index({ role: 1, status: 1 });
 userSchema.index({ status: 1, lastLoginAt: -1 });
 userSchema.index({ email: 1, status: 1 });
 userSchema.index({ employeeId: 1, status: 1 });
+// Serves the dashboard's monthly login-activity aggregation.
+userSchema.index({ lastLoginAt: -1 });
 
 module.exports = mongoose.model("User", userSchema);

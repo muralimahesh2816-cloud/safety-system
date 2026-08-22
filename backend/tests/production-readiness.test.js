@@ -14,7 +14,8 @@ const {
   escapeRegex,
   getPagination,
   buildPaginationMeta,
-  hasPagination
+  hasPagination,
+  UNPAGINATED_MAX
 } = require("../src/utils/pagination");
 const { getBackupReadiness } = require("../src/services/backup.service");
 const {
@@ -54,6 +55,10 @@ const {
 } = require("../src/validators/work.validators");
 const { updateHazardSchema } = require("../src/validators/hazard.validators");
 const WorkApproval = require("../src/models/WorkApproval");
+const Hazard = require("../src/models/Hazard");
+const Training = require("../src/models/Training");
+const User = require("../src/models/User");
+const { createTrainingSchema } = require("../src/validators/training.validators");
 const {
   ENTERPRISE_HSE_MODULES,
   ENTERPRISE_HSE_KEYS,
@@ -355,4 +360,67 @@ test("location service preserves coordinates when no provider is configured", as
   assert.equal(result.longitude, 74.719246);
   assert.equal(result.formattedAddress, "Address unavailable");
   assert.equal(result.reverseGeocodeStatus, "unavailable");
+});
+
+
+test("list endpoints without pagination parameters are still capped", () => {
+  // A caller that sends no page/limit gets a single response, but never an
+  // unbounded one — hazards and training documents carry embedded media and
+  // completion arrays, so an uncapped list grew without limit.
+  assert.equal(hasPagination({}), false);
+  assert.ok(Number.isInteger(UNPAGINATED_MAX));
+  assert.ok(UNPAGINATED_MAX > 0 && UNPAGINATED_MAX <= 1000);
+});
+
+test("indexes exist for the aggregations the dashboard runs on every load", () => {
+  const indexKeys = (model) => model.schema.indexes().map(([fields]) => JSON.stringify(fields));
+
+  // The monthly-trend facets match on createdAt / lastLoginAt alone, which no
+  // compound index above them can serve (createdAt is never the leading field).
+  assert.ok(indexKeys(WorkApproval).includes(JSON.stringify({ createdAt: -1 })));
+  assert.ok(indexKeys(Hazard).includes(JSON.stringify({ createdAt: -1 })));
+  assert.ok(indexKeys(User).includes(JSON.stringify({ lastLoginAt: -1 })));
+  assert.ok(indexKeys(Training).includes(JSON.stringify({ "completions.completedAt": -1 })));
+});
+
+test("training carries optional structured HSE content without breaking legacy records", () => {
+  const paths = Training.schema.paths;
+  ["objective", "catalogId", "visualKey"].forEach((field) => {
+    assert.equal(paths[field].options.default, "", `${field} must default to an empty string`);
+  });
+  ["hazards", "correctPractice", "incorrectPractice", "requiredPpe"].forEach((field) => {
+    assert.deepEqual(paths[field].options.default, [], `${field} must default to an empty array`);
+  });
+
+  // A pre-upgrade payload with none of the new fields must still validate.
+  const legacy = createTrainingSchema.safeParse({
+    title: "Toolbox Talk",
+    description: "Daily briefing",
+    category: "General"
+  });
+  assert.equal(legacy.success, true);
+  assert.deepEqual(legacy.data.hazards, []);
+  assert.equal(legacy.data.objective, "");
+});
+
+test("training content lists accept multipart JSON strings and reject malformed input", () => {
+  const parsed = createTrainingSchema.safeParse({
+    title: "Working at Height",
+    description: "Fall protection",
+    category: "Construction Site Safety",
+    hazards: JSON.stringify(["Falls from open edges", "   ", "Dropped tools"]),
+    correctPractice: ["Harness attached to a rated anchor"]
+  });
+  assert.equal(parsed.success, true);
+  // Blank entries are dropped rather than stored as empty bullet points.
+  assert.deepEqual(parsed.data.hazards, ["Falls from open edges", "Dropped tools"]);
+  assert.deepEqual(parsed.data.correctPractice, ["Harness attached to a rated anchor"]);
+
+  const malformed = createTrainingSchema.safeParse({
+    title: "Working at Height",
+    description: "Fall protection",
+    category: "Construction Site Safety",
+    hazards: "not-json"
+  });
+  assert.equal(malformed.success, false);
 });

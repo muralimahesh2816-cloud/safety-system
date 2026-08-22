@@ -88,5 +88,8 @@ hazardSchema.index({ status: 1, createdAt: -1 });
 hazardSchema.index({ location: 1, createdAt: -1 });
 hazardSchema.index({ reportedBy: 1, createdAt: -1 });
 hazardSchema.index({ assignedTo: 1, status: 1, createdAt: -1 });
+// Serves the dashboard's monthly hazard-trend aggregation, which filters on
+// createdAt with no status prefix.
+hazardSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model("Hazard", hazardSchema);

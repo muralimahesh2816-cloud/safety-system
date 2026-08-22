@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
 import {
   AlertTriangle,
   Ambulance,
@@ -116,7 +115,7 @@ const Sidebar = ({
       </div>
 
       <nav className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1" aria-label="Application modules">
-        {groups.map((group, groupIndex) => {
+        {groups.map((group) => {
           const expanded = compact || expandedGroups.has(group.key);
           return (
             <section key={group.key} aria-label={group.label}>
@@ -125,16 +124,63 @@ const Sidebar = ({
                   <span>{group.label}</span><ChevronDown size={13} className={`transition ${expanded ? "rotate-180" : ""}`} />
                 </button>
               ) : null}
-              {expanded ? <div className="mt-1 space-y-1.5">{group.items.map((module, itemIndex) => {
+              {expanded ? <div className="mt-1 space-y-1.5">{group.items.map((module) => {
                 const Icon = icons[module.icon || module.key] || ChartNoAxesCombined;
                 const active = activeModule === module.key;
                 return (
-                  <motion.button key={module.key} type="button" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.015 * (groupIndex + itemIndex) }} onClick={() => onSelectModule(module.key)} className={classNames("group relative flex w-full items-center rounded-xl text-left transition", compact ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5", active ? "brand-nav-active text-white" : "bg-white/[0.035] text-slate-300 hover:bg-white/10 hover:text-white")} title={compact ? module.label : undefined} aria-current={active ? "page" : undefined}>
-                    <Icon size={16} className="shrink-0" />
-                    {!compact ? <span className="truncate text-xs font-medium">{module.label}</span> : null}
-                    {!compact && active ? <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-white shadow-[0_0_18px_rgba(255,255,255,0.9)]" /> : null}
-                    {compact ? <span className="sidebar-tooltip pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-lg border border-white/20 bg-slate-900/95 px-2 py-1 text-[11px] text-white opacity-0 backdrop-blur-xl transition group-hover:opacity-100">{module.label}</span> : null}
-                  </motion.button>
+                  // aria-label is explicit rather than inferred from the visible
+                  // label: in the collapsed rail that label is CSS-clipped and
+                  // the tooltip is aria-hidden, so this is what guarantees the
+                  // button reports the same name in both states.
+                  <button
+                    key={module.key}
+                    type="button"
+                    onClick={() => onSelectModule(module.key)}
+                    className={classNames(
+                      "brand-nav-item group relative flex w-full items-center rounded-xl text-left",
+                      compact ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
+                      active ? "brand-nav-active text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"
+                    )}
+                    aria-label={module.label}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    <Icon size={16} className="shrink-0" aria-hidden="true" />
+                    {/*
+                      The label is always mounted and simply faded/clipped by
+                      the rail width. Mounting and unmounting 30+ nav labels on
+                      every hover-expand was re-running React reconciliation for
+                      the whole nav each time the pointer entered the sidebar.
+                    */}
+                    <span
+                      className={classNames(
+                        "brand-nav-item__label truncate text-xs font-medium",
+                        compact ? "brand-nav-item__label--hidden" : ""
+                      )}
+                    >
+                      {module.label}
+                    </span>
+                    {active ? (
+                      <span
+                        className={classNames(
+                          "brand-nav-item__marker ml-auto h-2 w-2 shrink-0 rounded-full bg-white",
+                          compact ? "brand-nav-item__label--hidden" : ""
+                        )}
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    {/* Purely a visual affordance for the collapsed rail — the
+                        clipped label above is already the button's accessible
+                        name, so exposing this too made every item announce its
+                        name twice. */}
+                    {compact ? (
+                      <span
+                        aria-hidden="true"
+                        className="sidebar-tooltip pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-lg border border-white/20 bg-slate-900/95 px-2 py-1 text-[11px] text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      >
+                        {module.label}
+                      </span>
+                    ) : null}
+                  </button>
                 );
               })}</div> : null}
             </section>
