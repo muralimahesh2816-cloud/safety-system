@@ -4,6 +4,7 @@ import useDeviceLocation, { getLocationMessage, LOCATION_STATUS } from "../../ho
 import { createVideoPoster, stampImageFile } from "../../utils/GpsImageStamp";
 import { locationService } from "../../api/services";
 import MediaLocationCard from "./MediaLocationCard";
+import ModalPortal from "../common/ModalPortal";
 
 const IMAGE_LIMIT = 10 * 1024 * 1024;
 const VIDEO_LIMIT = 100 * 1024 * 1024;
@@ -316,8 +317,12 @@ const DirectMediaCapture = ({
           })}
         </div>
       ) : <p className="mt-3 text-[11px] text-slate-500">No evidence selected. Desktop browsers may open the standard file picker when native capture is unavailable.</p>}
+      {/* Portalled for the same reason as every other overlay: a transformed
+          page-transition ancestor would otherwise make `position: fixed`
+          resolve against the content column and clip this preview. */}
       {viewingItem ? (
-        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/90 p-4" role="dialog" aria-modal="true" aria-label={`Preview ${viewingItem.metadata.originalFileName}`} onClick={() => setViewingItem(null)}>
+        <ModalPortal>
+        <div className="hse-overlay hse-overlay--nested flex items-center justify-center bg-slate-950/90 p-4" role="dialog" aria-modal="true" aria-label={`Preview ${viewingItem.metadata.originalFileName}`} onClick={() => setViewingItem(null)}>
           <div className="relative max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-white/15 bg-slate-950 p-3" onClick={(event) => event.stopPropagation()}>
             <button type="button" onClick={() => setViewingItem(null)} aria-label="Close preview" className="absolute right-4 top-4 z-10 inline-flex h-11 w-11 items-center justify-center rounded-full bg-slate-950/80 text-white"><X size={20} /></button>
             {viewingItem.mediaType === "video"
@@ -325,6 +330,7 @@ const DirectMediaCapture = ({
               : <img src={viewingItem.previewUrl} alt={`${label}: ${viewingItem.metadata.originalFileName}`} className="max-h-[84vh] w-full object-contain" />}
           </div>
         </div>
+        </ModalPortal>
       ) : null}
     </section>
   );

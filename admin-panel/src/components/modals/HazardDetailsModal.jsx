@@ -14,6 +14,7 @@ import { formatDateTime } from "../../utils/format";
 import { getMediaUrl } from "../../utils/media";
 import { exportHazardDetailsPdf } from "../../utils/detailPdfExport";
 import EvidencePreviewCard from "../media/EvidencePreviewCard";
+import ModalPortal from "../common/ModalPortal";
 
 const valueOrDash = (value) => (value === undefined || value === null || value === "" ? "-" : value);
 
@@ -100,10 +101,11 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
   };
 
   return (
+    <ModalPortal>
     <AnimatePresence>
       {open && hazard ? (
         <motion.div
-          className="fixed inset-0 z-[90000] flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-xl sm:p-5"
+          className="hse-overlay flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-xl sm:p-5"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -219,6 +221,7 @@ const HazardDetailsModal = ({ open, hazard, onClose, onOpenMedia }) => {
         </motion.div>
       ) : null}
     </AnimatePresence>
+    </ModalPortal>
   );
 };
 

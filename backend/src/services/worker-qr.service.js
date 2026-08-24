@@ -41,8 +41,21 @@ const sign = (workerCode) =>
     .digest("base64url")
     .slice(0, SIGNATURE_LENGTH);
 
-/** A fresh random worker code. Not derived from any user attribute. */
-const generateWorkerCode = () => crypto.randomBytes(16).toString("base64url");
+/**
+ * A fresh worker code — the unique QR identity.
+ *
+ * Formatted `WRK-<16 hex>` so it is human-readable and can be quoted over
+ * radio or printed under the badge, while still being 64 bits of randomness
+ * and derived from no user attribute (not the _id, not the employee ID, not
+ * the email). Uniqueness comes from the randomness plus a unique index;
+ * unforgeability comes from the HMAC, not from this value being secret.
+ *
+ * Codes issued before this format was introduced are plain base64url and
+ * remain valid — `verifyQrPayload` accepts both, so no badge reissue is
+ * needed.
+ */
+const generateWorkerCode = () =>
+  `WRK-${crypto.randomBytes(8).toString("hex").toUpperCase()}`;
 
 /** The full QR payload string for a stored worker code. */
 const buildQrPayload = (workerCode) =>

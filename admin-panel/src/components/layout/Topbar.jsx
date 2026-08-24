@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { LogOut, Menu } from "lucide-react";
 import NotificationCenter from "../common/NotificationCenter";
 import ThemeToggle from "../common/ThemeToggle";
-import topbarLogo from "../../assets/topbarlogo.svg";
+import MomentumLogo from "../brand/MomentumLogo";
 import vertisVideo from "../../assets/vertis-video.mp4";
 import { getMediaUrl } from "../../utils/media";
 import { APP_NAME } from "../../config/appConfig";
@@ -101,7 +101,7 @@ const Topbar = ({ user, onLogout, title, onSelectModule, onToggleSidebar, sideba
   }, [profilePhotoUrl]);
 
   return (
-    <header className="brand-topbar relative z-[80] mb-5 flex items-center justify-between overflow-visible rounded-2xl border border-white/10 bg-slate-950/65 px-3 py-3 backdrop-blur-2xl md:px-5">
+    <header className="brand-topbar relative mb-5 flex items-center justify-between overflow-visible rounded-2xl border border-white/10 bg-slate-950/65 px-3 py-3 backdrop-blur-2xl md:px-5">
       <div className="flex items-center gap-3">
         <button
           type="button"
@@ -119,26 +119,13 @@ const Topbar = ({ user, onLogout, title, onSelectModule, onToggleSidebar, sideba
           onMouseLeave={() => setLogoHovered(false)}
         >
           {/*
-            The Momentum wheel used to run three infinite framer-motion
-            animations at all times — a pulsing blur, a pulsing
-            backdrop-blur ring, and a continuous rotation — which kept the
-            compositor busy for the entire session on every page. It now sits
-            still and turns only while the pointer is actually on it, driven
-            by CSS so no React work happens per frame.
+            The live Momentum wheel. One shared component (components/brand/
+            MomentumLogo) so the mark has a single definition everywhere, and
+            the rotation is a CSS `transform` animation rather than the three
+            infinite framer-motion animations this used to run — those kept the
+            compositor busy for the whole session on every page.
           */}
-          <div
-            className={`brand-momentum-mark relative flex h-16 w-16 items-center justify-center ${
-              logoHovered && !reduceMotion ? "brand-momentum-mark--active" : ""
-            }`}
-          >
-            <span aria-hidden="true" className="brand-momentum-mark__halo" />
-            <span aria-hidden="true" className="brand-momentum-mark__ring" />
-            <img
-              src={topbarLogo}
-              alt={`${APP_NAME} logo`}
-              className="brand-momentum-mark__image relative z-10 h-12 w-12 object-contain"
-            />
-          </div>
+          <MomentumLogo size="lg" spin={!reduceMotion} label={`${APP_NAME} logo`} />
           <AnimatePresence>
             {logoHovered ? (
               <motion.div
@@ -146,7 +133,7 @@ const Topbar = ({ user, onLogout, title, onSelectModule, onToggleSidebar, sideba
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 8 }}
                 transition={{ duration: 0.22, ease: "easeOut" }}
-                className="pointer-events-none absolute left-1 top-full z-[999] mt-3 w-72 overflow-hidden rounded-2xl border border-white/20 bg-slate-900/70 shadow-[0_18px_44px_rgba(2,6,23,0.65)] backdrop-blur-2xl"
+                className="pointer-events-none absolute left-1 top-full mt-3 [z-index:var(--z-dropdown)] w-72 overflow-hidden rounded-2xl border border-white/20 bg-slate-900/70 shadow-[0_18px_44px_rgba(2,6,23,0.65)] backdrop-blur-2xl"
               >
                 <video
                   src={vertisVideo}
@@ -206,7 +193,7 @@ const Topbar = ({ user, onLogout, title, onSelectModule, onToggleSidebar, sideba
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 8 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
-                className="pointer-events-none absolute right-0 top-full z-[999] mt-3 w-72 overflow-hidden rounded-2xl border border-white/20 bg-slate-900/75 shadow-[0_18px_44px_rgba(2,6,23,0.65)] backdrop-blur-2xl"
+                className="pointer-events-none absolute right-0 top-full mt-3 [z-index:var(--z-dropdown)] w-72 overflow-hidden rounded-2xl border border-white/20 bg-slate-900/75 shadow-[0_18px_44px_rgba(2,6,23,0.65)] backdrop-blur-2xl"
               >
                 <div className="border-b border-white/10 bg-white/5 px-4 py-3">
                   <p className="brand-accent-text text-[10px] uppercase tracking-[0.16em]">User Profile</p>

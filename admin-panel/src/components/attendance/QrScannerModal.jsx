@@ -5,6 +5,7 @@ import { modalEnter, overlayEnter } from "../../animation/motion";
 import useReducedMotion from "../../hooks/useReducedMotion";
 import ActionButton from "../common/ActionButton";
 import { ButtonSpinner } from "../common/Skeletons";
+import ModalPortal from "../common/ModalPortal";
 
 /**
  * Worker QR scanner.
@@ -175,9 +176,10 @@ const QrScannerModal = ({ open, onClose, onDecode, busy = false, statusMessage =
   if (!open) return null;
 
   return (
+    <ModalPortal>
     <motion.div
       {...(reduced ? {} : overlayEnter)}
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/90 p-3"
+      className="hse-overlay hse-overlay--nested flex items-center justify-center bg-slate-950/90 p-3"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -274,6 +276,7 @@ const QrScannerModal = ({ open, onClose, onDecode, busy = false, statusMessage =
         </footer>
       </motion.div>
     </motion.div>
+    </ModalPortal>
   );
 };
 

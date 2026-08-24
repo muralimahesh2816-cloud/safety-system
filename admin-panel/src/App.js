@@ -389,7 +389,7 @@ const AppContent = () => {
           <motion.aside
             animate={{ width: sidebarCollapsed ? SIDEBAR_WIDTH_RAIL : SIDEBAR_WIDTH_EXPANDED }}
             transition={{ duration: reduceMotion ? 0 : 0.2, ease: [0.22, 0.75, 0.25, 1] }}
-            className={`absolute inset-y-0 left-0 z-50 overflow-hidden ${
+            className={`brand-sidebar-panel absolute inset-y-0 left-0 overflow-hidden ${
               sidebarExpanded && !sidebarLocked ? "shadow-[18px_0_48px_rgba(2,6,23,.55)]" : ""
             }`}
           >
@@ -411,7 +411,7 @@ const AppContent = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40 bg-black/60 md:hidden"
+              className="hse-drawer-scrim fixed inset-0 bg-black/60 md:hidden"
               onClick={() => setMobileSidebarOpen(false)}
             >
               <motion.aside
@@ -530,7 +530,7 @@ const AppContent = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/90 p-4"
+            className="hse-dialog-overlay flex items-center justify-center bg-slate-950/90 p-4"
           >
             <motion.div
               initial={{ scale: 0.92, opacity: 0 }}

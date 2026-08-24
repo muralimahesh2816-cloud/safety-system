@@ -6,6 +6,7 @@ import ActionButton from "../common/ActionButton";
 import StatusBadge from "../common/StatusBadge";
 import { formatDateTime } from "../../utils/format";
 import { getMediaUrl } from "../../utils/media";
+import ModalPortal from "../common/ModalPortal";
 
 /**
  * The confirmation step between a successful badge read and an attendance
@@ -54,9 +55,10 @@ const AttendanceConfirmModal = ({
       .join("") || "?";
 
   return (
+    <ModalPortal>
     <motion.div
       {...(reduced ? {} : overlayEnter)}
-      className="fixed inset-0 z-[10010] flex items-center justify-center bg-slate-950/90 p-3"
+      className="hse-overlay hse-overlay--nested flex items-center justify-center bg-slate-950/90 p-3"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
@@ -156,6 +158,7 @@ const AttendanceConfirmModal = ({
         </footer>
       </motion.div>
     </motion.div>
+    </ModalPortal>
   );
 };
 
