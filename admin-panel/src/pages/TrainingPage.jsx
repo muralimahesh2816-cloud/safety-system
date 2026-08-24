@@ -1,26 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Award,
   BookOpen,
   CheckCircle2,
   Download,
   Eye,
-  GraduationCap,
-  Plus,
+  HardHat,
+  PlayCircle,
   Printer,
-  Search,
   ShieldCheck,
-  Upload
+  Trash2
 } from "lucide-react";
-import ActionButton from "../components/common/ActionButton";
-import EmptyState from "../components/common/EmptyState";
-import EnterpriseCard from "../components/common/EnterpriseCard";
+import GlassCard from "../components/common/GlassCard";
+import MediaStudioModal from "../components/common/MediaStudioModal";
 import PageHeader from "../components/common/PageHeader";
-import StatusBadge from "../components/common/StatusBadge";
-import { CardSkeleton } from "../components/common/Skeletons";
-import TrainingCard from "../components/training/TrainingCard";
-import TrainingDetail from "../components/training/TrainingDetail";
 import { certificateService, trainingService } from "../api/services";
 import {
   closeLoadingPopup,
@@ -31,16 +25,71 @@ import {
   showValidationPopup
 } from "../utils/alerts";
 import { formatDateTime } from "../utils/format";
-import {
-  buildCatalogPreviews,
-  buildCategoryFilters,
-  catalogToFormValues,
-  normalizeTraining
-} from "../utils/trainingContent";
-import { CATEGORIES } from "../config/hseTrainingCatalog";
-import { downloadCertificatePdf, printCertificatePdf, viewCertificatePdf } from "../utils/certificatePdf";
+import { getMediaUrl, IMAGE_PLACEHOLDER_URL } from "../utils/media";
+import { downloadCertificatePdf, viewCertificatePdf, printCertificatePdf } from "../utils/certificatePdf";
 
-const TRAINING_PAGE_SIZE = 60;
+const baseCategories = ["All", "General", "PPE", "Electrical", "Fire Safety", "Road Safety"];
+
+const createSafetyGallerySvg = ({ title, subtitle, accent }) => {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#020617"/>
+          <stop offset="58%" stop-color="#0f172a"/>
+          <stop offset="100%" stop-color="${accent}"/>
+        </linearGradient>
+      </defs>
+      <rect width="1400" height="860" rx="54" fill="url(#bg)"/>
+      <circle cx="1130" cy="165" r="132" fill="#ffffff" opacity=".08"/>
+      <circle cx="245" cy="690" r="180" fill="#5eead4" opacity=".10"/>
+      <path d="M208 592h356l-48 120H256z" fill="none" stroke="#facc15" stroke-width="18" stroke-linejoin="round"/>
+      <path d="M260 592l38-210h176l38 210M302 438h168M322 500h130M306 560h164" fill="none" stroke="#facc15" stroke-width="16" stroke-linecap="round"/>
+      <path d="M940 244l156 70v130c0 126-78 238-156 278-78-40-156-152-156-278V314z" fill="none" stroke="#5eead4" stroke-width="18" stroke-linejoin="round"/>
+      <path d="M872 474l50 50 104-126" fill="none" stroke="#5eead4" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="104" y="145" fill="#f8fafc" font-family="Arial, sans-serif" font-size="62" font-weight="800">${title}</text>
+      <text x="108" y="213" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="30">${subtitle}</text>
+      <text x="108" y="278" fill="#67e8f9" font-family="Arial, sans-serif" font-size="22" letter-spacing="8">SAFETY AWARENESS</text>
+    </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+};
+
+const fallbackSafetyGallery = [
+  createSafetyGallerySvg({
+    title: "PPE Saves Lives",
+    subtitle: "Helmet, vest, gloves, and eye protection before every task.",
+    accent: "#083344"
+  }),
+  createSafetyGallerySvg({
+    title: "Report Every Hazard",
+    subtitle: "Observe, report, correct, and close unsafe conditions.",
+    accent: "#431407"
+  }),
+  createSafetyGallerySvg({
+    title: "Work Zone Discipline",
+    subtitle: "Barricades, signage, and traffic controls protect every worker.",
+    accent: "#172554"
+  })
+];
+
+const loadLocalSafetyGallery = () => {
+  try {
+    // CRA/Webpack: load every image from src/assets/safety-gallery automatically.
+    // eslint-disable-next-line no-undef
+    const galleryContext = require.context("../assets/safety-gallery", false, /\.(png|jpe?g|webp|avif|gif|svg)$/i);
+    return galleryContext
+      .keys()
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+      .map((key) => galleryContext(key));
+  } catch (_error) {
+    return [];
+  }
+};
+
+const safetyGallery = (() => {
+  const localImages = loadLocalSafetyGallery();
+  return localImages.length ? localImages : fallbackSafetyGallery;
+})();
 
 const initialForm = {
   title: "",
@@ -48,14 +97,6 @@ const initialForm = {
   category: "",
   concept: "",
   trainerName: "",
-  objective: "",
-  catalogId: "",
-  visualKey: "",
-  durationMinutes: "",
-  hazards: [],
-  correctPractice: [],
-  incorrectPractice: [],
-  requiredPpe: [],
   requiresAssessment: false,
   passingScore: "",
   validityMonths: ""
@@ -64,9 +105,13 @@ const initialForm = {
 const normalizeRole = (role = "") =>
   String(role || "").trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_");
 
+// Presentation only — mirrors the backend completion.status enum
+// (assigned/in_progress/completed/failed/expired) from
+// backend/src/models/Training.js.
 // Maps the backend's checkCertificateEligibility() error `code` (see
-// backend/src/services/certificate.service.js) to a distinct popup title, so a
-// real ineligibility reason never reads as a generic validation error.
+// backend/src/services/certificate.service.js) to a distinct popup title,
+// so a real ineligibility reason never reads as a generic
+// "fill required fields" validation error.
 const CERTIFICATE_ERROR_TITLES = {
   NO_COMPLETION: "Training Not Started",
   NOT_COMPLETED: "Training Not Completed",
@@ -74,63 +119,57 @@ const CERTIFICATE_ERROR_TITLES = {
   SCORE_FAILED: "Assessment Not Passed"
 };
 
-const STATUS_LABELS = {
-  assigned: "Assigned",
-  in_progress: "In Progress",
-  completed: "Completed",
-  failed: "Failed",
-  expired: "Expired"
+const STATUS_BADGES = {
+  assigned: { label: "Assigned", className: "bg-white/15 text-slate-200" },
+  in_progress: { label: "In Progress", className: "bg-amber-500/25 text-amber-100" },
+  completed: { label: "Completed", className: "bg-emerald-500/25 text-emerald-100" },
+  failed: { label: "Failed", className: "bg-rose-500/25 text-rose-100" },
+  expired: { label: "Expired", className: "bg-white/10 text-slate-400" }
 };
 
 const TrainingPage = ({ user }) => {
   const [records, setRecords] = useState([]);
   const [history, setHistory] = useState([]);
   const [certificates, setCertificates] = useState([]);
-  const [activeCategory, setActiveCategory] = useState("all");
+  const [activeCategory, setActiveCategory] = useState("All");
   const [search, setSearch] = useState("");
-  const [openTrainingId, setOpenTrainingId] = useState("");
   const [form, setForm] = useState(initialForm);
   const [video, setVideo] = useState(null);
   const [videoPreview, setVideoPreview] = useState("");
-  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [activeTraining, setActiveTraining] = useState(null);
+  const [playVideo, setPlayVideo] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [imageModal, setImageModal] = useState({ open: false, items: [], index: 0, compare: null });
   const [deletingId, setDeletingId] = useState("");
-  // "<trainingId or certId>:<action>" while an action is in flight, so only the
-  // button that was clicked shows a busy state.
+  // "<trainingId or certId>:<action>" while a certificate action is in
+  // flight, so only the button that was clicked shows a busy state.
   const [busyAction, setBusyAction] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [pagination, setPagination] = useState(null);
   const uploadLockRef = useRef(false);
-  const uploadFormRef = useRef(null);
+  const previewVideoRef = useRef(null);
 
   const currentRole = normalizeRole(user?.role);
   const canManageConcepts = ["super_admin", "admin", "safety_manager"].includes(currentRole);
+  const canUpload = canManageConcepts;
 
-  const fetchTraining = useCallback(async ({ page = 1, append = false } = {}) => {
-    if (append) setLoadingMore(true);
-    else setLoading(true);
+  const fetchTraining = useCallback(async () => {
+    setLoading(true);
     setError("");
     try {
-      // The list endpoint is paginated and no longer ships every user's
-      // completion history with every record, so one page covers a normal
-      // catalogue; the Load More control handles anything larger.
-      const requests = [trainingService.list({ page, limit: TRAINING_PAGE_SIZE })];
-      if (!append) requests.push(trainingService.history(), certificateService.mine());
-
-      const [listRes, historyRes, certRes] = await Promise.all(requests);
-      setRecords((previous) => (append ? [...previous, ...(listRes.records || [])] : listRes.records || []));
-      setPagination(listRes.pagination || null);
-      if (!append) {
-        setHistory(historyRes?.history || []);
-        setCertificates(certRes?.certificates || []);
-      }
+      const [listRes, historyRes, certRes] = await Promise.all([
+        trainingService.list(),
+        trainingService.history(),
+        certificateService.mine()
+      ]);
+      const list = listRes.records || [];
+      setRecords(list);
+      setHistory(historyRes.history || []);
+      setCertificates(certRes.certificates || []);
     } catch (fetchError) {
       setError(fetchError?.response?.data?.message || "Unable to load training modules");
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
   }, []);
 
@@ -138,161 +177,103 @@ const TrainingPage = ({ user }) => {
     fetchTraining();
   }, [fetchTraining]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    return () => {
       if (videoPreview?.startsWith("blob:")) URL.revokeObjectURL(videoPreview);
-    },
-    [videoPreview]
-  );
+    };
+  }, [videoPreview]);
 
-  /* ------------------------------------------------------------- data */
+  useEffect(() => {
+    const previewNode = previewVideoRef.current;
+    const previewSource =
+      videoPreview || getMediaUrl(activeTraining?.video?.url || activeTraining?.video);
+    if (!previewNode || !previewSource) return;
+    if (playVideo) {
+      const playback = previewNode.play();
+      if (playback && typeof playback.catch === "function") {
+        playback.catch(() => {});
+      }
+      return;
+    }
+    previewNode.pause();
+    previewNode.currentTime = 0;
+  }, [playVideo, videoPreview, activeTraining]);
 
-  // Published trainings, enriched with the HSE catalogue where a record has no
-  // authored content of its own.
-  const publishedTrainings = useMemo(() => records.map(normalizeTraining), [records]);
+  useEffect(() => {
+    setPlayVideo(true);
+  }, [activeTraining?._id]);
 
-  // Curriculum concepts nothing covers yet. Only Safety Managers/Admins see
-  // them — an employee cannot complete a training that does not exist.
-  const catalogPreviews = useMemo(
-    () => (canManageConcepts ? buildCatalogPreviews(records) : []),
-    [records, canManageConcepts]
-  );
+  const categoryOptions = useMemo(() => {
+    const dynamic = new Set(baseCategories);
+    records.forEach((item) => {
+      if (item?.category) dynamic.add(item.category);
+    });
+    return Array.from(dynamic);
+  }, [records]);
 
-  const allTrainings = useMemo(
-    () => [...publishedTrainings, ...catalogPreviews],
-    [publishedTrainings, catalogPreviews]
-  );
+  const filteredRecords = useMemo(() => {
+    const searchKey = search.trim().toLowerCase();
+    return records.filter((item) => {
+      if (activeCategory !== "All" && item.category !== activeCategory) return false;
+      if (!searchKey) return true;
+      const payload = `${item.title || ""} ${item.description || ""} ${item.category || ""}`.toLowerCase();
+      return payload.includes(searchKey);
+    });
+  }, [records, activeCategory, search]);
 
-  const progressByTraining = useMemo(() => {
+  useEffect(() => {
+    if (filteredRecords.length === 0) {
+      setActiveTraining(null);
+      return;
+    }
+    if (!activeTraining) {
+      setActiveTraining(filteredRecords[0]);
+      return;
+    }
+    const exists = filteredRecords.some((item) => item._id === activeTraining._id);
+    if (!exists) setActiveTraining(filteredRecords[0]);
+  }, [filteredRecords, activeTraining]);
+
+  const userProgressMap = useMemo(() => {
     const map = new Map();
     history.forEach((item) => {
-      map.set(String(item.trainingId || item.id), item);
+      map.set(item.id || item.trainingId, item.progress || 0);
     });
     return map;
   }, [history]);
 
-  const certificateByTraining = useMemo(() => {
-    const map = new Map();
-    certificates.forEach((certificate) => {
-      map.set(String(certificate.training), certificate);
+  // "Training Completion" summary (spec section 13): one row per training
+  // the user has ever started, merging their progress/assessment status
+  // (history, from GET /training/history/me) with any certificate already
+  // issued for it (certificates, from GET /certificates/mine). A training
+  // with no certificate yet still shows here — that's what lets the
+  // "Generate Certificate" button appear once eligible.
+  const myTrainingCompletions = useMemo(() => {
+    return history.map((item) => {
+      const certificate = certificates.find(
+        (cert) => String(cert.training) === String(item.trainingId || item.id)
+      );
+      return { ...item, certificate: certificate || null };
     });
-    return map;
-  }, [certificates]);
-
-  const categoryFilters = useMemo(() => buildCategoryFilters(allTrainings), [allTrainings]);
-
-  const filteredTrainings = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return allTrainings.filter((item) => {
-      if (activeCategory !== "all" && item.categoryKey !== activeCategory) return false;
-      if (!needle) return true;
-      return `${item.title} ${item.concept} ${item.description} ${item.categoryLabel}`
-        .toLowerCase()
-        .includes(needle);
-    });
-  }, [allTrainings, activeCategory, search]);
-
-  const openTraining = useMemo(
-    () => allTrainings.find((item) => item._id === openTrainingId) || null,
-    [allTrainings, openTrainingId]
-  );
-
-  const completionStats = useMemo(() => {
-    const completed = history.filter((item) => item.status === "completed").length;
-    const total = publishedTrainings.length;
-    return {
-      completed,
-      total,
-      percent: total ? Math.round((completed / total) * 100) : 0,
-      certificates: certificates.length
-    };
-  }, [history, publishedTrainings.length, certificates.length]);
-
-  // One row per training the user has ever started, merged with any issued
-  // certificate — this is what makes "Generate Certificate" appear once
-  // eligible, including for trainings with no certificate yet.
-  const myCompletions = useMemo(
-    () =>
-      history.map((item) => ({
-        ...item,
-        certificate: certificateByTraining.get(String(item.trainingId || item.id)) || null
-      })),
-    [history, certificateByTraining]
-  );
-
-  const stateFor = useCallback(
-    (training) => {
-      const entry = progressByTraining.get(String(training._id));
-      return {
-        progress: entry?.progress || 0,
-        status: entry?.status || "assigned",
-        assessmentScore: entry?.assessmentScore ?? null,
-        certificate: certificateByTraining.get(String(training._id)) || null
-      };
-    },
-    [progressByTraining, certificateByTraining]
-  );
-
-  /* ---------------------------------------------------------- actions */
+  }, [history, certificates]);
 
   const busyKey = (id, action) => `${id}:${action}`;
-
-  const updateProgress = useCallback(
-    async (training, progress, seconds = 120) => {
-      if (!training?._id || training.isCatalogPreview) return;
-      try {
-        await trainingService.updateProgress(training._id, progress, seconds);
-        setHistory((previous) => {
-          const next = [...previous];
-          const index = next.findIndex((item) => String(item.trainingId || item.id) === String(training._id));
-          const merged = {
-            id: training._id,
-            trainingId: training._id,
-            title: training.title,
-            category: training.category,
-            passingScore: training.passingScore ?? null,
-            progress,
-            status: progress >= 100 ? "completed" : "in_progress"
-          };
-          if (index >= 0) {
-            next[index] = {
-              ...next[index],
-              progress: Math.max(progress, next[index].progress || 0),
-              status:
-                progress >= 100 && next[index].status !== "failed" ? "completed" : next[index].status || merged.status
-            };
-          } else {
-            next.push(merged);
-          }
-          return next;
-        });
-      } catch (_error) {
-        // Legacy training endpoints may not support progress updates; the
-        // learner's place in the material is not worth an error dialog.
-      }
-    },
-    []
-  );
 
   const generateCertificate = async (item) => {
     const key = busyKey(item.trainingId, "generate");
     setBusyAction(key);
     try {
       const response = await certificateService.generate({ trainingId: item.trainingId });
-      setCertificates((previous) => [
-        response.certificate,
-        ...previous.filter((cert) => cert._id !== response.certificate._id)
-      ]);
-      await showSuccessPopup(
-        response.alreadyExisted ? "Certificate Already Exists" : "Certificate Generated Successfully",
-        response.alreadyExisted ? "Use View or Download below to access it." : ""
-      );
+      setCertificates((prev) => [response.certificate, ...prev.filter((cert) => cert._id !== response.certificate._id)]);
+      if (response.alreadyExisted) {
+        await showSuccessPopup("Certificate Already Exists", "Use View or Download below to access it.");
+      } else {
+        await showSuccessPopup("Certificate Generated Successfully");
+      }
     } catch (generateError) {
       const code = generateError?.response?.data?.code;
-      showValidationPopup(
-        generateError?.response?.data?.message || "This training is not yet eligible for a certificate.",
-        CERTIFICATE_ERROR_TITLES[code] || "Certificate Not Eligible"
-      );
+      const message = generateError?.response?.data?.message || "This training is not yet eligible for a certificate.";
+      showValidationPopup(message, CERTIFICATE_ERROR_TITLES[code] || "Certificate Not Eligible");
     } finally {
       setBusyAction("");
     }
@@ -307,20 +288,19 @@ const TrainingPage = ({ user }) => {
       max: 100
     });
     if (score === null) return;
-
     const key = busyKey(item.trainingId, "score");
     setBusyAction(key);
     try {
       await trainingService.recordAssessment(item.trainingId, user.id, score);
-      setHistory((previous) =>
-        previous.map((entry) =>
-          entry.trainingId === item.trainingId
+      setHistory((prev) =>
+        prev.map((historyItem) =>
+          historyItem.trainingId === item.trainingId
             ? {
-                ...entry,
+                ...historyItem,
                 assessmentScore: score,
                 status: item.passingScore !== null && score < item.passingScore ? "failed" : "completed"
               }
-            : entry
+            : historyItem
         )
       );
       await showSuccessPopup("Assessment Score Recorded");
@@ -334,130 +314,132 @@ const TrainingPage = ({ user }) => {
     }
   };
 
-  const runCertificateAction = async (certificate, action, run, failureMessage) => {
-    const key = busyKey(certificate._id, action);
+  const downloadCertificate = async (certificate) => {
+    const key = busyKey(certificate._id, "download");
     setBusyAction(key);
     try {
-      await run(certificate);
-      certificateService.logAction(certificate._id, action === "download" ? "downloaded" : `${action}ed`);
-    } catch (_actionError) {
-      showValidationPopup(failureMessage, "Certificate Unavailable");
+      await downloadCertificatePdf(certificate);
+      certificateService.logAction(certificate._id, "downloaded");
+    } catch (_downloadError) {
+      showValidationPopup("Could not generate the certificate PDF. Please try again.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const viewCertificate = async (certificate) => {
+    const key = busyKey(certificate._id, "view");
+    setBusyAction(key);
+    try {
+      await viewCertificatePdf(certificate);
+      certificateService.logAction(certificate._id, "viewed");
+    } catch (_viewError) {
+      showValidationPopup("Could not open the certificate PDF. Please try again.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const printCertificate = async (certificate) => {
+    const key = busyKey(certificate._id, "print");
+    setBusyAction(key);
+    try {
+      await printCertificatePdf(certificate);
+      certificateService.logAction(certificate._id, "printed");
+    } catch (_printError) {
+      showValidationPopup("Could not open the certificate for printing. Please try again.");
     } finally {
       setBusyAction("");
     }
   };
 
   const openVerifyPage = (certificate) => {
-    window.open(
-      `${window.location.origin}/verify?code=${certificate.verificationCode}`,
-      "_blank",
-      "noopener,noreferrer"
-    );
+    window.open(`${window.location.origin}/verify?code=${certificate.verificationCode}`, "_blank", "noopener,noreferrer");
   };
 
-  const prefillFromCatalog = (training) => {
-    setForm({
-      ...initialForm,
-      ...catalogToFormValues({
-        id: training.catalogId,
-        title: training.title,
-        concept: training.concept,
-        category: training.categoryKey,
-        objective: training.objective,
-        duration: training.durationMinutes,
-        visual: training.visualKey,
-        hazards: training.hazards,
-        correctPractice: training.correctPractice,
-        incorrectPractice: training.incorrectPractice,
-        ppe: training.requiredPpe
-      }),
-      category: training.categoryLabel
-    });
-    setOpenTrainingId("");
-    setShowUploadForm(true);
-    // Give the form a frame to mount before scrolling to it.
-    requestAnimationFrame(() => {
-      uploadFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+  const updateProgress = async (record, progress, seconds = 120) => {
+    if (!record?._id) return;
+    try {
+      await trainingService.updateProgress(record._id, progress, seconds);
+      setHistory((prev) => {
+        const next = [...prev];
+        const idx = next.findIndex((item) => (item.id || item.trainingId) === record._id);
+        if (idx >= 0) {
+          next[idx] = { ...next[idx], progress: Math.max(progress, next[idx].progress || 0) };
+        } else {
+          next.push({ id: record._id, progress });
+        }
+        return next;
+      });
+    } catch (_error) {
+      // Legacy training endpoints may not support progress updates.
+    }
   };
 
   const uploadTraining = async (event) => {
     event.preventDefault();
     setError("");
-
-    if (!form.title || !form.description || !form.category) {
-      const message = "Training title, description and category are required.";
-      setError(message);
-      showValidationPopup(message);
+    if (!form.title || !form.description || !form.category || !video) {
+      setError("Fill all required training fields");
+      showValidationPopup("Please fill all required Training fields.");
       return;
     }
-    if (form.requiresAssessment && !String(form.passingScore || "").trim()) {
-      const message = "Enter the passing score, or turn off the assessment requirement.";
-      setError(message);
-      showValidationPopup(message);
-      return;
-    }
-
-    // Ref lock closes the window between the click and React committing the
-    // disabled state, so a fast double-click cannot post twice.
     if (uploadLockRef.current) return;
     uploadLockRef.current = true;
     setUploading(true);
-    await showLoadingPopup("Publishing Training", "Uploading training content...");
-
+    await showLoadingPopup("Uploading Please Wait...", "Uploading training video...");
     try {
-      // passingScore/validityMonths are optional numeric fields on the backend
-      // (z.coerce.number().optional()) — an empty string would coerce to NaN
-      // and fail validation, so they are only included when actually set.
-      // passingScore is additionally gated by the assessment checkbox, which is
-      // what stops a training silently becoming assessment-gated (and therefore
-      // blocking Generate Certificate) because a number was left in the field.
+      // passingScore/validityMonths are optional numeric fields on the
+      // backend (zod z.coerce.number().optional()) — sending an empty
+      // string would coerce to NaN and fail validation, so they're only
+      // included when actually set. passingScore is additionally gated by
+      // the "requires a passing assessment score" checkbox — this is what
+      // prevents a training from silently ending up assessment-gated
+      // (which then blocks Generate Certificate until a score is
+      // recorded) just because a number was left in the field.
       const payload = { ...form, video };
       if (!payload.requiresAssessment || !String(payload.passingScore || "").trim()) {
         delete payload.passingScore;
       }
       delete payload.requiresAssessment;
       if (!String(payload.validityMonths || "").trim()) delete payload.validityMonths;
-      if (!String(payload.durationMinutes || "").trim()) delete payload.durationMinutes;
-
       await trainingService.create(payload);
-
       setForm(initialForm);
       setVideo(null);
       if (videoPreview?.startsWith("blob:")) URL.revokeObjectURL(videoPreview);
       setVideoPreview("");
-      setShowUploadForm(false);
-      closeLoadingPopup();
-      await showSuccessPopup("Training Published Successfully");
+      await showSuccessPopup("Training Added Successfully");
       fetchTraining();
     } catch (submitError) {
-      closeLoadingPopup();
-      const message = submitError?.response?.data?.message || "Training upload failed. Please try again.";
-      setError(message);
-      showValidationPopup(message, "Unable to Publish Training");
+      setError(submitError?.response?.data?.message || "Training upload failed");
     } finally {
       uploadLockRef.current = false;
       setUploading(false);
+      closeLoadingPopup();
     }
   };
 
-  const deleteConcept = async (training) => {
-    if (!canManageConcepts || !training?._id || training.isCatalogPreview) return;
+  const deleteConcept = async (record, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canManageConcepts || !record?._id) return;
     const confirmed = await showConfirmPopup({
       title: "Delete Training Concept?",
-      text: `${training.title} will be removed from the training list.`,
+      text: `${record.title} will be removed from the training list.`,
       confirmText: "Delete",
       cancelText: "Cancel",
       icon: "warning"
     });
     if (!confirmed) return;
 
-    setDeletingId(training._id);
+    setDeletingId(record._id);
     setError("");
     try {
-      await trainingService.remove(training._id);
-      if (openTrainingId === training._id) setOpenTrainingId("");
+      await trainingService.remove(record._id);
       await showSuccessPopup("Training Concept Deleted");
+      if (activeTraining?._id === record._id) {
+        setPlayVideo(false);
+      }
       await fetchTraining();
     } catch (deleteError) {
       setError(deleteError?.response?.data?.message || "Unable to delete training concept");
@@ -466,224 +448,316 @@ const TrainingPage = ({ user }) => {
     }
   };
 
-  /* ----------------------------------------------------------- render */
+  const activeVideoUrl = getMediaUrl(activeTraining?.video?.url || activeTraining?.video);
+  const activeBannerUrl =
+    getMediaUrl(activeTraining?.thumbnail?.url || activeTraining?.banner || activeTraining?.thumbnail) ||
+    safetyGallery[0] ||
+    IMAGE_PLACEHOLDER_URL;
+  const effectivePreviewVideo = videoPreview || activeVideoUrl;
 
-  const openState = openTraining ? stateFor(openTraining) : null;
+  const openTrainingGallery = (index = 0) => {
+    const items = filteredRecords
+      .map((item) => getMediaUrl(item.thumbnail || item.banner))
+      .filter(Boolean)
+      .map((url) => ({ url }));
+    const galleryItems = items.length ? items : safetyGallery.map((url) => ({ url }));
+    setImageModal({ open: true, items: galleryItems, index: Math.max(0, index), compare: null });
+  };
+
+  const openTrainingMedia = (record = activeTraining) => {
+    const videoUrl = getMediaUrl(record?.video?.url || record?.video);
+    const imageUrl = getMediaUrl(record?.thumbnail?.url || record?.banner || record?.thumbnail);
+    const assets = [videoUrl || imageUrl].filter(Boolean).map((url) => ({ url }));
+    if (!assets.length) return;
+    setImageModal({ open: true, items: assets, index: 0, compare: null });
+  };
 
   return (
     <div className="safety-bg-overlay safety-bg-training space-y-5">
       <PageHeader
-        title="HSE Training"
-        subtitle="Safety curriculum, instructional media, assessments, and certificates"
-        statusCount={publishedTrainings.length}
-        actions={
-          canManageConcepts ? (
-            <ActionButton
-              icon={showUploadForm ? undefined : Plus}
-              variant={showUploadForm ? "secondary" : "primary"}
-              size="sm"
-              onClick={() => setShowUploadForm((value) => !value)}
-            >
-              {showUploadForm ? "Hide Upload Form" : "Add Training"}
-            </ActionButton>
-          ) : null
-        }
+        title="Training Streaming Portal"
+        subtitle="Legacy training layout and workflows restored with enterprise visual experience"
       />
 
-      {/* --------------------------------------------------- KPI strip */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <EnterpriseCard title="Published Training" icon={BookOpen} kpi={publishedTrainings.length} tone="raised" />
-        <EnterpriseCard title="Completed by Me" icon={CheckCircle2} kpi={completionStats.completed} tone="raised" delay={0.04} />
-        <EnterpriseCard
-          title="Training Completion"
-          icon={GraduationCap}
-          kpi={`${completionStats.percent}%`}
-          kpiHint={`${completionStats.completed} of ${completionStats.total}`}
-          tone="raised"
-          delay={0.08}
-        />
-        <EnterpriseCard title="My Certificates" icon={Award} kpi={completionStats.certificates} tone="raised" delay={0.12} />
-      </div>
-
-      {/* ------------------------------------------------ filter bar */}
-      <EnterpriseCard bodyClassName="p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          {categoryFilters.map((category) => (
+      <GlassCard className="p-5">
+        <div className="flex flex-wrap gap-2">
+          {categoryOptions.map((category) => (
             <button
-              key={category.key}
+              key={category}
               type="button"
-              onClick={() => setActiveCategory(category.key)}
-              aria-pressed={activeCategory === category.key}
-              className={`inline-flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-[11px] font-semibold transition ${
-                activeCategory === category.key
-                  ? "border border-[var(--brand-primary-light)] bg-[rgba(var(--brand-primary-rgb),.22)] text-white"
-                  : "border border-white/12 bg-white/[0.05] text-slate-300 hover:bg-white/[0.1]"
+              onClick={() => setActiveCategory(category)}
+              className={`rounded-xl px-3 py-1.5 text-xs ${
+                activeCategory === category
+                  ? "bg-teal-500/30 text-teal-100"
+                  : "bg-white/10 text-slate-300"
               }`}
             >
-              {category.label}
-              <span className="rounded-full bg-black/35 px-1.5 py-0.5 text-[10px]">{category.count}</span>
+              {category}
             </button>
           ))}
-
-          <div className="relative ml-auto min-w-[200px] flex-1 sm:flex-none">
-            <Search
-              size={14}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
-              aria-hidden="true"
-            />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search training concepts..."
-              aria-label="Search training"
-              className="min-h-9 w-full rounded-xl border border-white/12 bg-white/[0.05] py-2 pl-9 pr-3 text-xs text-white placeholder:text-slate-500 focus:border-[var(--brand-primary-light)] focus:outline-none"
-            />
-          </div>
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search training..."
+            className="ml-auto min-w-[200px] rounded-xl border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-white"
+          />
         </div>
-      </EnterpriseCard>
+      </GlassCard>
 
-      {/* ------------------------------------------------ upload form */}
-      {canManageConcepts && showUploadForm ? (
-        <EnterpriseCard
-          ref={uploadFormRef}
-          title="Publish a training concept"
-          subtitle="Fields left blank fall back to the standard HSE curriculum content for this concept."
-          icon={Upload}
-        >
-          <form className="grid grid-cols-1 gap-3 lg:grid-cols-2" onSubmit={uploadTraining}>
-            <label className="block">
-              <span className="mb-1.5 block text-[11px] font-semibold text-slate-300">Training title *</span>
+      {activeTraining ? (
+        <GlassCard className="overflow-hidden p-0">
+          <button
+            type="button"
+            className="group training-preview-panel relative h-[360px] w-full overflow-hidden text-left md:h-[430px]"
+            onClick={() => {
+              openTrainingMedia(activeTraining);
+              updateProgress(activeTraining, 100);
+            }}
+            onMouseEnter={() => setPlayVideo(true)}
+          >
+            <div className="training-preview-scroll absolute inset-0 h-full w-full overflow-hidden">
+              {effectivePreviewVideo ? (
+                <video
+                  ref={previewVideoRef}
+                  src={effectivePreviewVideo}
+                  poster={activeBannerUrl}
+                  className="training-preview-media absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105"
+                  muted
+                  loop
+                  autoPlay
+                  playsInline
+                  preload="metadata"
+                />
+              ) : (
+                <img
+                  src={activeBannerUrl}
+                  alt={activeTraining.title}
+                  className="training-preview-media absolute inset-0 h-full w-full object-cover"
+                />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/45 to-black/15" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+            </div>
+            <div className="absolute bottom-5 left-5 right-5 max-w-3xl md:bottom-8 md:left-8 md:right-8">
+              <p className="mb-2 inline-flex rounded-full bg-black/60 px-3 py-1 text-[11px] text-teal-100">
+                {activeTraining.category || "General"}
+              </p>
+              <h3 className="font-display text-2xl font-semibold text-white md:text-4xl">
+                {activeTraining.title}
+              </h3>
+              <p className="mt-2 text-xs text-slate-200 md:text-base">{activeTraining.description}</p>
+              <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-black/55 px-3 py-2 text-xs text-white">
+                <PlayCircle size={16} />
+                Open Training
+              </span>
+            </div>
+          </button>
+        </GlassCard>
+      ) : null}
+
+      <GlassCard className="p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-lg font-semibold text-white">
+            <BookOpen className="text-teal-300" size={18} />
+            Training Concepts
+          </h3>
+          <button
+            type="button"
+            onClick={() => openTrainingGallery(0)}
+            className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-slate-200"
+          >
+            Open Image Gallery
+          </button>
+        </div>
+        {loading ? (
+          <p className="text-sm text-slate-300">Loading training modules...</p>
+        ) : (
+          <div className="flex gap-4 overflow-x-auto pb-2">
+            {filteredRecords.map((record) => {
+              const progress = userProgressMap.get(record._id) || 0;
+              const thumb =
+                getMediaUrl(record.thumbnail?.url || record.thumbnail || record.banner) ||
+                safetyGallery[0] ||
+                IMAGE_PLACEHOLDER_URL;
+              return (
+                <motion.article
+                  key={record._id}
+                  whileHover={{ y: -4, scale: 1.02 }}
+                  className="relative min-w-[320px] overflow-hidden rounded-3xl border border-white/10 bg-white/5 text-left shadow-xl"
+                >
+                  {canManageConcepts ? (
+                    <button
+                      type="button"
+                      onClick={(event) => deleteConcept(record, event)}
+                      disabled={deletingId === record._id}
+                      className="absolute right-3 top-3 z-20 rounded-full border border-rose-400/40 bg-black/60 p-2 text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label={`Delete ${record.title}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onMouseEnter={() => {
+                      setActiveTraining(record);
+                      setPlayVideo(true);
+                    }}
+                    onClick={() => {
+                      setActiveTraining(record);
+                      openTrainingMedia(record);
+                      updateProgress(record, Math.min(100, progress + 25));
+                    }}
+                    className="block w-full text-left"
+                  >
+                    <div className="relative h-44 overflow-hidden">
+                      <img
+                        src={thumb}
+                        alt={record.title}
+                        loading="lazy"
+                        className="h-full w-full object-cover transition duration-500 hover:scale-105"
+                        style={{ objectFit: "cover", objectPosition: "center" }}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                      <p className="absolute left-3 top-3 rounded-full bg-black/60 px-2 py-1 text-[11px] text-white">
+                        {record.category || "General"}
+                      </p>
+                      <span className="absolute bottom-3 right-3 rounded-full bg-teal-500/80 p-2 text-white shadow-lg">
+                        <PlayCircle size={18} />
+                      </span>
+                    </div>
+                    <div className="p-4">
+                      <p className="text-sm font-semibold text-white">{record.title}</p>
+                      <p className="mt-1 line-clamp-2 text-xs text-slate-300">{record.description}</p>
+                      <div className="mt-3 rounded-full bg-white/10 p-1">
+                        <div
+                          className="h-2 rounded-full bg-gradient-to-r from-teal-400 to-cyan-400"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-300">
+                        <span>{progress}% complete</span>
+                        <span>{record.durationMinutes || 10} mins</span>
+                      </div>
+                    </div>
+                  </button>
+                </motion.article>
+              );
+            })}
+            {filteredRecords.length === 0 ? (
+              <p className="text-xs text-slate-300">No training modules found for the selected filters.</p>
+            ) : null}
+          </div>
+        )}
+      </GlassCard>
+
+      <GlassCard className="p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-lg font-semibold text-white">
+            <HardHat className="text-amber-300" size={18} />
+            Safety Awareness Gallery
+          </h3>
+          <p className="text-xs text-slate-300">Click any image to preview fullscreen</p>
+        </div>
+        <div className="flex gap-4 overflow-x-auto pb-2">
+          {safetyGallery.map((src, index) => (
+            <button
+              key={src}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setImageModal({
+                  open: true,
+                  items: safetyGallery.map((item) => ({ url: item })),
+                  index,
+                  compare: null
+                });
+              }}
+              className="min-w-[300px] overflow-hidden rounded-3xl border border-white/10 bg-white/5"
+            >
+              <img
+                src={src}
+                alt="Safety awareness"
+                loading="lazy"
+                className="h-44 w-full object-cover transition duration-500 hover:scale-105"
+              />
+            </button>
+          ))}
+        </div>
+      </GlassCard>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {canUpload ? (
+          <GlassCard className="p-5">
+            <h3 className="mb-2 text-lg font-semibold text-white">Upload New Training</h3>
+            <form className="space-y-2" onSubmit={uploadTraining}>
               <input
                 value={form.title}
                 onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
+                placeholder="Training Title"
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
                 required
-                className="min-h-10 w-full rounded-xl border border-white/12 bg-white/[0.05] px-3 text-xs text-white"
               />
-            </label>
-
-            <label className="block">
-              <span className="mb-1.5 block text-[11px] font-semibold text-slate-300">Category *</span>
               <input
-                list="hse-training-categories"
                 value={form.category}
                 onChange={(event) => setForm((prev) => ({ ...prev, category: event.target.value }))}
+                placeholder="Category"
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
                 required
-                className="min-h-10 w-full rounded-xl border border-white/12 bg-white/[0.05] px-3 text-xs text-white"
               />
-              <datalist id="hse-training-categories">
-                {CATEGORIES.map((category) => (
-                  <option key={category.key} value={category.label} />
-                ))}
-              </datalist>
-            </label>
-
-            <label className="block lg:col-span-2">
-              <span className="mb-1.5 block text-[11px] font-semibold text-slate-300">Description *</span>
               <textarea
                 rows={3}
                 value={form.description}
                 onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+                placeholder="Training Description"
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
                 required
-                className="w-full rounded-xl border border-white/12 bg-white/[0.05] px-3 py-2 text-xs text-white"
               />
-            </label>
-
-            <label className="block lg:col-span-2">
-              <span className="mb-1.5 block text-[11px] font-semibold text-slate-300">
-                Safety objective
-              </span>
-              <textarea
-                rows={2}
-                value={form.objective}
-                onChange={(event) => setForm((prev) => ({ ...prev, objective: event.target.value }))}
-                placeholder="What the learner must be able to do after this training"
-                className="w-full rounded-xl border border-white/12 bg-white/[0.05] px-3 py-2 text-xs text-white"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1.5 block text-[11px] font-semibold text-slate-300">
-                Training concept (shown on certificates)
-              </span>
               <input
                 value={form.concept}
                 onChange={(event) => setForm((prev) => ({ ...prev, concept: event.target.value }))}
-                className="min-h-10 w-full rounded-xl border border-white/12 bg-white/[0.05] px-3 text-xs text-white"
+                placeholder="Training Concept (optional, shown on certificates)"
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
               />
-            </label>
-
-            <label className="block">
-              <span className="mb-1.5 block text-[11px] font-semibold text-slate-300">Trainer name</span>
               <input
                 value={form.trainerName}
                 onChange={(event) => setForm((prev) => ({ ...prev, trainerName: event.target.value }))}
-                className="min-h-10 w-full rounded-xl border border-white/12 bg-white/[0.05] px-3 text-xs text-white"
+                placeholder="Trainer Name (optional)"
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
               />
-            </label>
-
-            <label className="block">
-              <span className="mb-1.5 block text-[11px] font-semibold text-slate-300">Duration (minutes)</span>
-              <input
-                type="number"
-                min="1"
-                value={form.durationMinutes}
-                onChange={(event) => setForm((prev) => ({ ...prev, durationMinutes: event.target.value }))}
-                className="min-h-10 w-full rounded-xl border border-white/12 bg-white/[0.05] px-3 text-xs text-white"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1.5 block text-[11px] font-semibold text-slate-300">
-                Certificate validity (months)
-              </span>
-              <input
-                type="number"
-                min="1"
-                value={form.validityMonths}
-                onChange={(event) => setForm((prev) => ({ ...prev, validityMonths: event.target.value }))}
-                className="min-h-10 w-full rounded-xl border border-white/12 bg-white/[0.05] px-3 text-xs text-white"
-              />
-            </label>
-
-            <label className="flex items-start gap-2.5 rounded-xl border border-white/12 bg-white/[0.05] px-3 py-3 text-xs text-slate-200 lg:col-span-2">
-              <input
-                type="checkbox"
-                checked={form.requiresAssessment}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    requiresAssessment: event.target.checked,
-                    passingScore: event.target.checked ? prev.passingScore : ""
-                  }))
-                }
-                className="mt-0.5"
-              />
-              <span>
-                This training requires a passing assessment score before a certificate can be issued.
-                <span className="mt-0.5 block text-[11px] text-slate-400">
-                  Leave unticked for awareness training — the certificate then reads &ldquo;Assessment: Not
-                  Applicable&rdquo;.
-                </span>
-              </span>
-            </label>
-
-            {form.requiresAssessment ? (
-              <label className="block">
-                <span className="mb-1.5 block text-[11px] font-semibold text-slate-300">Passing score % *</span>
+              <label className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={form.requiresAssessment}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      requiresAssessment: event.target.checked,
+                      passingScore: event.target.checked ? prev.passingScore : ""
+                    }))
+                  }
+                />
+                This training requires a passing assessment score before a certificate can be issued
+              </label>
+              {form.requiresAssessment ? (
                 <input
                   type="number"
                   min="0"
                   max="100"
                   value={form.passingScore}
                   onChange={(event) => setForm((prev) => ({ ...prev, passingScore: event.target.value }))}
+                  placeholder="Passing Score % (required)"
+                  className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
                   required
-                  className="min-h-10 w-full rounded-xl border border-white/12 bg-white/[0.05] px-3 text-xs text-white"
                 />
-              </label>
-            ) : null}
-
-            <label className="block lg:col-span-2">
-              <span className="mb-1.5 block text-[11px] font-semibold text-slate-300">Training video</span>
+              ) : null}
+              <input
+                type="number"
+                min="1"
+                value={form.validityMonths}
+                onChange={(event) => setForm((prev) => ({ ...prev, validityMonths: event.target.value }))}
+                placeholder="Certificate Validity (months, optional)"
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white"
+              />
               <input
                 type="file"
                 accept="video/*"
@@ -693,370 +767,174 @@ const TrainingPage = ({ user }) => {
                   if (videoPreview?.startsWith("blob:")) URL.revokeObjectURL(videoPreview);
                   setVideoPreview(selected ? URL.createObjectURL(selected) : "");
                 }}
-                className="w-full rounded-xl border border-dashed border-white/20 bg-white/[0.05] px-3 py-2.5 text-xs text-slate-300"
+                className="w-full rounded-xl border border-dashed border-white/20 bg-white/5 px-3 py-2 text-xs text-slate-300"
               />
-            </label>
-
-            {videoPreview ? (
-              <video
-                src={videoPreview}
-                controls
-                preload="metadata"
-                className="h-40 w-full rounded-xl border border-white/10 object-cover lg:col-span-2"
-              />
-            ) : null}
-
-            {form.hazards.length || form.correctPractice.length ? (
-              <p className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2.5 text-[11px] text-emerald-100 lg:col-span-2">
-                Standard curriculum content for this concept ({form.hazards.length} hazards,{" "}
-                {form.correctPractice.length} correct practices, {form.incorrectPractice.length} unsafe practices,{" "}
-                {form.requiredPpe.length} PPE items) will be published with this training.
-              </p>
-            ) : null}
-
-            {error ? (
-              <p className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2.5 text-[11px] text-rose-100 lg:col-span-2">
-                {error}
-              </p>
-            ) : null}
-
-            <div className="flex gap-2 lg:col-span-2">
-              <ActionButton
+              {videoPreview ? (
+                <video
+                  src={videoPreview}
+                  controls
+                  className="h-40 w-full rounded-xl border border-white/10 object-cover"
+                />
+              ) : null}
+              <button
                 type="submit"
-                loading={uploading}
-                loadingLabel="Publishing..."
-                icon={Upload}
-                className="flex-1"
+                disabled={uploading}
+                className="w-full rounded-xl hse-primary-button px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Publish Training
-              </ActionButton>
-              <ActionButton
-                variant="secondary"
-                onClick={() => {
-                  setForm(initialForm);
-                  setError("");
-                }}
-              >
-                Reset
-              </ActionButton>
-            </div>
-          </form>
-        </EnterpriseCard>
-      ) : null}
-
-      {/* ------------------------------------------------- catalogue */}
-      <section>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-display text-lg font-semibold text-white">
-            {activeCategory === "all"
-              ? "Training catalogue"
-              : categoryFilters.find((entry) => entry.key === activeCategory)?.label}
-          </h2>
-          <p className="text-[11px] text-slate-400">
-            {filteredTrainings.length} concept{filteredTrainings.length === 1 ? "" : "s"}
-            {catalogPreviews.length ? ` · ${catalogPreviews.length} not yet published` : ""}
-          </p>
-        </div>
-
-        {loading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {Array.from({ length: 8 }).map((_, index) => (
-              <CardSkeleton key={index} className="h-72" />
-            ))}
-          </div>
-        ) : filteredTrainings.length === 0 ? (
-          <EmptyState
-            icon={GraduationCap}
-            title="No training matches these filters"
-            message={
-              search
-                ? `Nothing matches "${search}". Clear the search or pick another category.`
-                : "No training has been published for this category yet."
-            }
-            action={
-              search || activeCategory !== "all" ? (
-                <ActionButton
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setSearch("");
-                    setActiveCategory("all");
-                  }}
-                >
-                  Clear filters
-                </ActionButton>
-              ) : null
-            }
-          />
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {filteredTrainings.map((training, index) => {
-              const state = stateFor(training);
-              return (
-                <div key={training._id} className="relative">
-                  {training.isCatalogPreview ? (
-                    <span className="absolute -top-2 left-3 z-10 rounded-full border border-amber-400/40 bg-amber-500/25 px-2 py-0.5 text-[10px] font-semibold text-amber-100">
-                      Not published
-                    </span>
-                  ) : null}
-                  <TrainingCard
-                    training={training}
-                    index={index}
-                    progress={state.progress}
-                    status={state.status}
-                    assessmentScore={state.assessmentScore}
-                    passingScore={training.passingScore}
-                    certificate={state.certificate}
-                    deletable={canManageConcepts && !training.isCatalogPreview}
-                    deleting={deletingId === training._id}
-                    onDelete={(event) => {
-                      event.stopPropagation();
-                      deleteConcept(training);
-                    }}
-                    onOpen={() =>
-                      training.isCatalogPreview
-                        ? prefillFromCatalog(training)
-                        : setOpenTrainingId(training._id)
-                    }
-                    onViewCertificate={() =>
-                      state.certificate &&
-                      runCertificateAction(
-                        state.certificate,
-                        "view",
-                        viewCertificatePdf,
-                        "Could not open the certificate PDF. Please try again."
-                      )
-                    }
-                  />
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {pagination?.hasNextPage ? (
-          <div className="mt-4 flex justify-center">
-            <ActionButton
-              variant="secondary"
-              loading={loadingMore}
-              loadingLabel="Loading..."
-              onClick={() => fetchTraining({ page: pagination.page + 1, append: true })}
-            >
-              {`Load More (${records.length} of ${pagination.total})`}
-            </ActionButton>
-          </div>
+                {uploading ? "Uploading..." : "Upload Training"}
+              </button>
+            </form>
+          </GlassCard>
         ) : null}
-      </section>
 
-      {/* --------------------------------- completion & certificates */}
-      <EnterpriseCard
-        title="Training Completion &amp; Certificates"
-        subtitle="A certificate can be generated once a training reaches 100% and meets any configured passing score. Every certificate carries a unique reference number and a verification code checkable on the public verify page."
-        icon={Award}
-      >
-        {loading ? (
+        <GlassCard className="p-5">
+          <h3 className="mb-2 flex items-center gap-2 text-lg font-semibold text-white">
+            <Award size={18} className="text-[#f0a69b]" aria-hidden="true" /> Training Completion &amp; Certificates
+          </h3>
+          <p className="mb-3 text-[11px] text-slate-400">
+            Once a training reaches 100% and meets any configured passing score, you can generate a certificate.
+            Every certificate carries a unique reference number and a verification code checkable on the portal's
+            public verify page.
+          </p>
           <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <CardSkeleton key={index} className="h-20" />
-            ))}
-          </div>
-        ) : myCompletions.length === 0 ? (
-          <EmptyState
-            icon={BookOpen}
-            title="No training started yet"
-            message="Open any training concept above to begin. Your progress and certificates will appear here."
-          />
-        ) : (
-          <div className="space-y-2">
-            {myCompletions.map((item) => {
-              const { certificate } = item;
-              const certId = certificate?._id;
-              // A training only ever needs a score when it has a passingScore
-              // configured. Everything else, including every legacy record, is
-              // never blocked on a missing score.
-              const hasAssessment = item.passingScore !== null && item.passingScore !== undefined;
-              const scorePending =
-                hasAssessment && (item.assessmentScore === null || item.assessmentScore === undefined);
-              const canGenerate = item.status === "completed" && !certificate && !scorePending;
-
-              let assessmentLine = "Assessment: Not Applicable";
-              if (hasAssessment) {
-                assessmentLine = scorePending
-                  ? `Assessment: Pending (passing score ${item.passingScore}%)`
-                  : `Assessment: ${item.assessmentScore}% (passing ${item.passingScore}%)`;
-              }
-
-              return (
-                <div
-                  key={item.trainingId || item.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold text-white">{item.title}</p>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
-                      <StatusBadge status={STATUS_LABELS[item.status] || "Assigned"} />
-                      <span>{item.progress || 0}% complete</span>
-                      <span>{assessmentLine}</span>
-                      {certificate ? (
-                        <span>
-                          {certificate.certificateNumber} — completed {formatDateTime(certificate.completedAt)}
+            {myTrainingCompletions.length === 0 ? (
+              <p className="text-xs text-slate-300">
+                No training started yet — open a training module above to begin.
+              </p>
+            ) : (
+              myTrainingCompletions.map((item) => {
+                const { certificate } = item;
+                const certId = certificate?._id;
+                const statusBadge = STATUS_BADGES[item.status] || STATUS_BADGES.assigned;
+                // Case A (assessment configured) vs Case B (no assessment
+                // — spec section 1): a training only ever needs a score
+                // when it has a passingScore configured. Everything else,
+                // including every legacy record, is Case B and is never
+                // blocked on a missing score.
+                const hasAssessment = item.passingScore !== null && item.passingScore !== undefined;
+                const scorePending = hasAssessment && (item.assessmentScore === null || item.assessmentScore === undefined);
+                const canGenerate = item.status === "completed" && !certificate && !scorePending;
+                let assessmentLine = "Assessment: Not Applicable";
+                if (hasAssessment) {
+                  assessmentLine = scorePending
+                    ? `Assessment: Pending (passing score ${item.passingScore}%)`
+                    : `Assessment: ${item.assessmentScore}% (passing ${item.passingScore}%)`;
+                }
+                return (
+                  <div
+                    key={item.trainingId || item.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 p-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-white">{item.title}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-300">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusBadge.className}`}>
+                          {statusBadge.label}
                         </span>
+                        <span>{item.progress || 0}% complete</span>
+                        <span>{assessmentLine}</span>
+                        {certificate ? (
+                          <span>
+                            {certificate.certificateNumber} - Completed {formatDateTime(certificate.completedAt)}
+                          </span>
+                        ) : null}
+                      </div>
+                      {item.status === "failed" ? (
+                        <p className="mt-1 text-[11px] text-rose-300">
+                          Certificate cannot be issued because the assessment score is below the passing requirement.
+                        </p>
+                      ) : null}
+                      {scorePending ? (
+                        <p className="mt-1 text-[11px] text-amber-200">
+                          {canManageConcepts
+                            ? "An assessment is configured for this training, but no score is available yet."
+                            : "An assessment is configured for this training — your trainer needs to record a score before a certificate can be issued."}
+                        </p>
                       ) : null}
                     </div>
-                    {item.status === "failed" ? (
-                      <p className="mt-1.5 text-[11px] text-rose-300">
-                        Certificate cannot be issued because the assessment score is below the passing requirement.
-                      </p>
-                    ) : null}
-                    {scorePending ? (
-                      <p className="mt-1.5 text-[11px] text-amber-200">
-                        {canManageConcepts
-                          ? "An assessment is configured for this training, but no score is available yet."
-                          : "An assessment is configured for this training — your trainer needs to record a score before a certificate can be issued."}
-                      </p>
-                    ) : null}
+
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      {scorePending && canManageConcepts ? (
+                        <button
+                          type="button"
+                          onClick={() => recordAssessmentScore(item)}
+                          disabled={busyAction === busyKey(item.trainingId, "score")}
+                          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 text-[11px] font-semibold text-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {busyAction === busyKey(item.trainingId, "score") ? "Saving..." : "Record Score"}
+                        </button>
+                      ) : null}
+
+                      {canGenerate ? (
+                        <button
+                          type="button"
+                          onClick={() => generateCertificate(item)}
+                          disabled={busyAction === busyKey(item.trainingId, "generate")}
+                          className="hse-primary-button inline-flex min-h-9 items-center gap-1.5 px-3 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <ShieldCheck size={13} aria-hidden="true" />
+                          {busyAction === busyKey(item.trainingId, "generate") ? "Generating..." : "Generate Certificate"}
+                        </button>
+                      ) : null}
+
+                      {certificate ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => viewCertificate(certificate)}
+                            disabled={busyAction === busyKey(certId, "view")}
+                            title="View"
+                            className="inline-flex min-h-9 items-center gap-1 rounded-xl border border-white/15 bg-white/10 px-2.5 text-[11px] text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Eye size={13} aria-hidden="true" /> View
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => downloadCertificate(certificate)}
+                            disabled={busyAction === busyKey(certId, "download")}
+                            className="hse-primary-button inline-flex min-h-9 items-center gap-1.5 px-3 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Download size={13} aria-hidden="true" />
+                            {busyAction === busyKey(certId, "download") ? "Preparing..." : "Download"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => printCertificate(certificate)}
+                            disabled={busyAction === busyKey(certId, "print")}
+                            title="Print"
+                            className="inline-flex min-h-9 items-center gap-1 rounded-xl border border-white/15 bg-white/10 px-2.5 text-[11px] text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Printer size={13} aria-hidden="true" /> Print
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openVerifyPage(certificate)}
+                            title="Verify"
+                            className="inline-flex min-h-9 items-center gap-1 rounded-xl border border-white/15 bg-white/10 px-2.5 text-[11px] text-slate-100"
+                          >
+                            <CheckCircle2 size={13} aria-hidden="true" /> Verify
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
-
-                  <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                    {scorePending && canManageConcepts ? (
-                      <ActionButton
-                        variant="secondary"
-                        size="sm"
-                        loading={busyAction === busyKey(item.trainingId, "score")}
-                        loadingLabel="Saving..."
-                        onClick={() => recordAssessmentScore(item)}
-                      >
-                        Record Score
-                      </ActionButton>
-                    ) : null}
-
-                    {canGenerate ? (
-                      <ActionButton
-                        size="sm"
-                        icon={ShieldCheck}
-                        loading={busyAction === busyKey(item.trainingId, "generate")}
-                        loadingLabel="Generating..."
-                        onClick={() => generateCertificate(item)}
-                      >
-                        Generate Certificate
-                      </ActionButton>
-                    ) : null}
-
-                    {certificate ? (
-                      <>
-                        <ActionButton
-                          variant="secondary"
-                          size="sm"
-                          icon={Eye}
-                          loading={busyAction === busyKey(certId, "view")}
-                          loadingLabel="Opening..."
-                          onClick={() =>
-                            runCertificateAction(
-                              certificate,
-                              "view",
-                              viewCertificatePdf,
-                              "Could not open the certificate PDF. Please try again."
-                            )
-                          }
-                        >
-                          View
-                        </ActionButton>
-                        <ActionButton
-                          size="sm"
-                          icon={Download}
-                          loading={busyAction === busyKey(certId, "download")}
-                          loadingLabel="Preparing..."
-                          onClick={() =>
-                            runCertificateAction(
-                              certificate,
-                              "download",
-                              downloadCertificatePdf,
-                              "Could not generate the certificate PDF. Please try again."
-                            )
-                          }
-                        >
-                          Download
-                        </ActionButton>
-                        <ActionButton
-                          variant="secondary"
-                          size="sm"
-                          icon={Printer}
-                          loading={busyAction === busyKey(certId, "print")}
-                          loadingLabel="Preparing..."
-                          onClick={() =>
-                            runCertificateAction(
-                              certificate,
-                              "print",
-                              printCertificatePdf,
-                              "Could not open the certificate for printing. Please try again."
-                            )
-                          }
-                        >
-                          Print
-                        </ActionButton>
-                        <ActionButton
-                          variant="secondary"
-                          size="sm"
-                          icon={CheckCircle2}
-                          onClick={() => openVerifyPage(certificate)}
-                        >
-                          Verify
-                        </ActionButton>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
-        )}
-      </EnterpriseCard>
+        </GlassCard>
+      </div>
 
-      {/* ---------------------------------------------- detail modal */}
-      <AnimatePresence>
-        {openTraining && openState ? (
-          <TrainingDetail
-            training={openTraining}
-            progress={openState.progress}
-            status={openState.status}
-            assessmentScore={openState.assessmentScore}
-            certificate={openState.certificate}
-            canRecordScore={canManageConcepts}
-            busyAction={
-              busyAction === busyKey(openTraining._id, "generate")
-                ? "generate"
-                : busyAction === busyKey(openTraining._id, "score")
-                ? "score"
-                : ""
-            }
-            onClose={() => setOpenTrainingId("")}
-            onProgress={(progress) => updateProgress(openTraining, progress)}
-            onGenerateCertificate={() =>
-              generateCertificate({
-                trainingId: openTraining._id,
-                title: openTraining.title,
-                passingScore: openTraining.passingScore
-              })
-            }
-            onRecordScore={() =>
-              recordAssessmentScore({
-                trainingId: openTraining._id,
-                title: openTraining.title,
-                passingScore: openTraining.passingScore
-              })
-            }
-            onViewCertificate={() =>
-              openState.certificate &&
-              runCertificateAction(
-                openState.certificate,
-                "view",
-                viewCertificatePdf,
-                "Could not open the certificate PDF. Please try again."
-              )
-            }
-          />
-        ) : null}
-      </AnimatePresence>
+      {error ? <p className="text-xs text-rose-300">{error}</p> : null}
+
+      <MediaStudioModal
+        open={imageModal.open}
+        onClose={() => setImageModal((prev) => ({ ...prev, open: false }))}
+        items={imageModal.items}
+        activeIndex={imageModal.index}
+        onIndexChange={(index) => setImageModal((prev) => ({ ...prev, index }))}
+        compare={imageModal.compare}
+      />
     </div>
   );
 };

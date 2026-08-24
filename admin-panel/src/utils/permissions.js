@@ -223,4 +223,7 @@ export const toPermissionPayload = (permissions = {}) =>
     return acc;
   }, {});
 
-export { ACCESS_MODULES };
+// Exported so the Access Control matrix can render what each role actually
+// gets by default, rather than restating the policy in a second hard-coded
+// table that could silently drift from the one the app enforces.
+export { ACCESS_MODULES, DEFAULT_ROLE_PERMISSIONS };

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, KeyRound, Lock, Search, Shield, Unlock } from "lucide-react";
 import GlassCard from "../components/common/GlassCard";
 import ImageStudioModal from "../components/common/ImageStudioModal";
+import WorkerQrCard from "../components/attendance/WorkerQrCard";
 import PageHeader from "../components/common/PageHeader";
 import { userService } from "../api/services";
 import { ROLE_GROUPS, ROLE_LABELS, ROLES } from "../constants/roles";
@@ -74,6 +75,12 @@ const UsersPage = ({ currentUser }) => {
 
   const canManageUsers = useMemo(
     () => [ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(currentUser?.role),
+    [currentUser?.role]
+  );
+
+  // Mirrors the backend role check on POST /users/:id/worker-qr/regenerate.
+  const canRegenerateWorkerQr = useMemo(
+    () => [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.SAFETY_MANAGER].includes(currentUser?.role),
     [currentUser?.role]
   );
 
@@ -505,6 +512,7 @@ const UsersPage = ({ currentUser }) => {
       </GlassCard>
 
       {selectedUser ? (
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_20rem]">
         <GlassCard className="p-5">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-white">
@@ -541,6 +549,15 @@ const UsersPage = ({ currentUser }) => {
             )}
           </div>
         </GlassCard>
+
+        {/* The worker's printable attendance badge. Only administrators and
+            safety management can rotate a badge, so the regenerate control is
+            gated on the same roles the backend enforces. */}
+        <WorkerQrCard
+          userId={selectedUser._id || selectedUser.id}
+          canRegenerate={canRegenerateWorkerQr}
+        />
+        </div>
       ) : null}
 
       <ImageStudioModal

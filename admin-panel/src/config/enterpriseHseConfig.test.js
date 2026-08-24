@@ -1,16 +1,37 @@
 import {
+  DEPRECATED_HSE_MODULE_KEYS,
   ENTERPRISE_HSE_KEYS,
   ENTERPRISE_HSE_MODULES,
   NAV_GROUPS,
-  getEnterpriseModule
+  getEnterpriseModule,
+  isDeprecatedHseModule
 } from "./enterpriseHseConfig";
 import { canAccessModule, normalizePermissions } from "../utils/permissions";
 
 describe("enterprise HSE module registry", () => {
-  test("contains ten phase one and ten phase two functional modules", () => {
-    expect(ENTERPRISE_HSE_MODULES.filter((module) => module.phase === 1)).toHaveLength(10);
-    expect(ENTERPRISE_HSE_MODULES.filter((module) => module.phase === 2)).toHaveLength(10);
-    expect(new Set(ENTERPRISE_HSE_KEYS).size).toBe(20);
+  test("registry contains only the modules the portal still runs", () => {
+    expect(ENTERPRISE_HSE_KEYS.length).toBeGreaterThan(0);
+    expect(new Set(ENTERPRISE_HSE_KEYS).size).toBe(ENTERPRISE_HSE_KEYS.length);
+  });
+
+  test("retired modules are gone from the registry, not merely hidden", () => {
+    // A retired module must have no definition at all — no route can resolve
+    // to it, no sidebar entry can render it, and getEnterpriseModule() must
+    // not hand a caller a usable config for it.
+    DEPRECATED_HSE_MODULE_KEYS.forEach((key) => {
+      expect(ENTERPRISE_HSE_KEYS).not.toContain(key);
+      expect(getEnterpriseModule(key)).toBeNull();
+      expect(isDeprecatedHseModule(key)).toBe(true);
+    });
+  });
+
+  test("retired modules are absent from every navigation group", () => {
+    const navigationKeys = NAV_GROUPS.flatMap((group) => group.items.map((item) => item.key));
+    DEPRECATED_HSE_MODULE_KEYS.forEach((key) => expect(navigationKeys).not.toContain(key));
+  });
+
+  test("every navigation group still has at least one item", () => {
+    NAV_GROUPS.forEach((group) => expect(group.items.length).toBeGreaterThan(0));
   });
 
   test("every module has workflow, categories, dates, and module detail fields", () => {
@@ -32,6 +53,6 @@ describe("enterprise HSE module registry", () => {
     const normalized = normalizePermissions({ incidents: false }, "supervisor");
     expect(normalized.permits).toBe(true);
     expect(normalized.incidents).toBe(false);
-    expect(canAccessModule({ role: "viewer", permissions: {} }, "capa")).toBe(true);
+    expect(canAccessModule({ role: "viewer", permissions: {} }, "permits")).toBe(true);
   });
 });

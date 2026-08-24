@@ -66,8 +66,15 @@ const {
   getPagination,
   buildPaginationMeta
 } = require("../utils/pagination");
+const workAttendanceRoutes = require("./work-attendance.routes");
 
 const router = express.Router();
+
+// Worker attendance lives on its own router, mounted under the parent work
+// approval. Declared before any "/:id" route so "/:id/attendance" can never be
+// captured as a work-approval id.
+router.use("/:id/attendance", workAttendanceRoutes);
+
 const MB = 1024 * 1024;
 const WORK_IMAGE_LIMIT_MB = 10;
 const WORK_VIDEO_LIMIT_MB = 100;

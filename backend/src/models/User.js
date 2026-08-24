@@ -49,6 +49,16 @@ const userSchema = new mongoose.Schema(
         return normalizePagePermissions({}, ROLES.USER);
       }
     },
+    // Worker QR identity.
+    //
+    // A random, rotatable code — never the _id or employeeId — that a printed
+    // badge encodes alongside an HMAC of it (see services/worker-qr.service.js).
+    // Regenerating it immediately invalidates every previously printed badge
+    // for this worker, which is the recovery path for a lost or copied badge.
+    // `select: false` keeps it out of every ordinary user response; the QR
+    // endpoints select it explicitly.
+    workerCode: { type: String, default: "", select: false },
+    workerCodeIssuedAt: { type: Date, default: null },
     lastLoginAt: Date,
     loginHistory: [loginHistorySchema],
     failedLoginAttempts: { type: Number, default: 0 },
@@ -79,5 +89,9 @@ userSchema.index({ email: 1, status: 1 });
 userSchema.index({ employeeId: 1, status: 1 });
 // Serves the dashboard's monthly login-activity aggregation.
 userSchema.index({ lastLoginAt: -1 });
+// Unique per worker, sparse so the many users without a badge yet do not
+// collide on "". Serves the QR scan lookup, which is the hot path during a
+// site attendance round.
+userSchema.index({ workerCode: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model("User", userSchema);
