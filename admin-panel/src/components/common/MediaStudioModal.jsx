@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Download, Minus, Plus, RotateCw, X } from "l
 import { getMediaUrl } from "../../utils/media";
 import { formatDateTime } from "../../utils/format";
 import EvidenceLocationDetails from "../media/EvidenceLocationDetails";
+import ModalPortal from "./ModalPortal";
 
 const isVideo = (url = "") => /\.(mp4|webm|mov|m4v|avi|mkv)(\?|$)/i.test(url);
 
@@ -93,10 +94,11 @@ const MediaStudioModal = ({
   };
 
   return (
+    <ModalPortal>
     <AnimatePresence>
       {shouldOpen && url ? (
         <motion.div
-          className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/78 p-4 backdrop-blur-xl"
+          className="hse-overlay hse-overlay--nested flex items-center justify-center bg-slate-950/78 p-4 backdrop-blur-xl"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -194,6 +196,7 @@ const MediaStudioModal = ({
         </motion.div>
       ) : null}
     </AnimatePresence>
+    </ModalPortal>
   );
 };
 

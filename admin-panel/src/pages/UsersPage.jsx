@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, KeyRound, Lock, Search, Shield, Unlock } from "lucide-react";
+import { ChevronLeft, ChevronRight, KeyRound, Lock, QrCode, Search, Shield, Unlock } from "lucide-react";
 import GlassCard from "../components/common/GlassCard";
 import ImageStudioModal from "../components/common/ImageStudioModal";
-import WorkerQrCard from "../components/attendance/WorkerQrCard";
+import WorkerQrModal from "../components/attendance/WorkerQrModal";
 import PageHeader from "../components/common/PageHeader";
 import { userService } from "../api/services";
 import { ROLE_GROUPS, ROLE_LABELS, ROLES } from "../constants/roles";
@@ -39,6 +39,9 @@ const UsersPage = ({ currentUser }) => {
   const [error, setError] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [history, setHistory] = useState([]);
+  // The worker whose badge is open, or null. Opening a badge must not depend on
+  // first opening login history, which is where it used to live.
+  const [qrUser, setQrUser] = useState(null);
   const [form, setForm] = useState(initialForm);
   const [editId, setEditId] = useState("");
   const [photoFile, setPhotoFile] = useState(null);
@@ -418,6 +421,7 @@ const UsersPage = ({ currentUser }) => {
                           {canManageUsers ? <button type="button" onClick={() => startEdit(user)} className="rounded-lg border border-white/15 px-2 py-1 text-white">Edit</button> : null}
                           {canManageUsers ? <button type="button" onClick={() => resetPassword(user._id)} className="rounded-lg border border-amber-400/30 px-2 py-1 text-amber-100"><KeyRound size={11} /></button> : null}
                           {canManageUsers ? <button type="button" onClick={() => toggleBlock(user)} className="rounded-lg border border-sky-400/30 px-2 py-1 text-sky-100">{user.status === "blocked" ? <Unlock size={11} /> : <Lock size={11} />}</button> : null}
+                          <button type="button" onClick={() => setQrUser(user)} aria-label={`Worker QR for ${user.name}`} className="inline-flex items-center gap-1 rounded-lg border border-[var(--brand-primary-light)] bg-[rgba(var(--brand-primary-rgb),.18)] px-2 py-1 text-white"><QrCode size={11} aria-hidden="true" /> QR</button>
                           <button type="button" onClick={() => openHistory(user)} className="rounded-lg border border-teal-400/30 px-2 py-1 text-teal-100">History</button>
                           {canManageUsers ? <button type="button" onClick={() => deleteUser(user._id)} className="rounded-lg border border-rose-400/30 px-2 py-1 text-rose-100">Delete</button> : null}
                         </div>
@@ -441,7 +445,10 @@ const UsersPage = ({ currentUser }) => {
                     <p className="mt-1 text-xs text-slate-400">{user.employeeId || "No employee ID"} | {ROLE_LABELS[user.role] || user.role}</p>
                     <p className="text-xs text-slate-400">{user.department || "No department"} | {user.status}</p>
                   </div>
-                  <button type="button" onClick={() => openHistory(user)} className="rounded-lg border border-teal-400/30 px-2 py-1 text-xs text-teal-100">History</button>
+                  <div className="flex shrink-0 flex-col gap-1.5">
+                    <button type="button" onClick={() => setQrUser(user)} aria-label={`Worker QR for ${user.name}`} className="inline-flex items-center gap-1 rounded-lg border border-[var(--brand-primary-light)] bg-[rgba(var(--brand-primary-rgb),.18)] px-2 py-1 text-xs text-white"><QrCode size={11} aria-hidden="true" /> QR</button>
+                    <button type="button" onClick={() => openHistory(user)} className="rounded-lg border border-teal-400/30 px-2 py-1 text-xs text-teal-100">History</button>
+                  </div>
                 </div>
                 {canManageUsers ? (
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -512,7 +519,6 @@ const UsersPage = ({ currentUser }) => {
       </GlassCard>
 
       {selectedUser ? (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_20rem]">
         <GlassCard className="p-5">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-white">
@@ -549,16 +555,14 @@ const UsersPage = ({ currentUser }) => {
             )}
           </div>
         </GlassCard>
-
-        {/* The worker's printable attendance badge. Only administrators and
-            safety management can rotate a badge, so the regenerate control is
-            gated on the same roles the backend enforces. */}
-        <WorkerQrCard
-          userId={selectedUser._id || selectedUser.id}
-          canRegenerate={canRegenerateWorkerQr}
-        />
-        </div>
       ) : null}
+
+      <WorkerQrModal
+        open={Boolean(qrUser)}
+        user={qrUser}
+        canRegenerate={canRegenerateWorkerQr}
+        onClose={() => setQrUser(null)}
+      />
 
       <ImageStudioModal
         open={imageModal.open}

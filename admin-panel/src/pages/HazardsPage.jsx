@@ -1063,7 +1063,7 @@ const HazardsPage = ({ user }) => {
 
       {editingHazard ? (
         <div
-          className="fixed inset-0 z-[99990] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xl"
+          className="hse-overlay flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xl"
           onClick={() => setEditingHazard(null)}
         >
           <form

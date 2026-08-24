@@ -30,6 +30,7 @@ import { isAttendanceStage } from "../../utils/attendance";
 import RoleBasedUserSelect from "../work/RoleBasedUserSelect";
 import DirectMediaCapture from "../media/DirectMediaCapture";
 import EvidencePreviewCard from "../media/EvidencePreviewCard";
+import ModalPortal from "../common/ModalPortal";
 
 const WORKFLOW_STAGES = [
   "Pending Check",
@@ -764,10 +765,11 @@ const WorkApprovalDetailsModal = ({
   };
 
   return (
+    <ModalPortal>
     <AnimatePresence>
       {open && safeWork ? (
         <motion.div
-          className="fixed inset-0 z-[90000] flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-xl sm:p-5"
+          className="hse-overlay flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-xl sm:p-5"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -940,6 +942,7 @@ const WorkApprovalDetailsModal = ({
         </motion.div>
       ) : null}
     </AnimatePresence>
+    </ModalPortal>
   );
 };
 

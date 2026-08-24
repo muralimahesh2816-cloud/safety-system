@@ -400,6 +400,10 @@ router.get(
       },
       // The QR string itself. Rendering it to an image is the client's job.
       qrPayload: buildQrPayload(user.workerCode),
+      // The human-readable identity printed under the badge. Safe to display:
+      // it is random, carries no personal data, and is useless without the
+      // signature that accompanies it inside the QR.
+      workerQrId: user.workerCode,
       issuedAt: user.workerCodeIssuedAt
     });
   })
@@ -439,6 +443,7 @@ router.post(
       success: true,
       message: "Worker QR badge regenerated. Previously printed badges no longer work.",
       qrPayload: buildQrPayload(user.workerCode),
+      workerQrId: user.workerCode,
       issuedAt: user.workerCodeIssuedAt
     });
   })

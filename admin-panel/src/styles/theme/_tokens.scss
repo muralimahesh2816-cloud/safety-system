@@ -29,4 +29,24 @@ $brand-charcoal: #151719;
   --shadow-card: 0 18px 48px rgba(15,17,19,.18);
   --shadow-glass: 0 34px 84px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.35);
   --focus-ring: 0 0 0 4px rgba(155,20,0,.14);
+
+  /* Stacking scale.
+   *
+   * One ordered ladder for the whole portal, replacing the ad-hoc escalation
+   * that had reached 100000. Layers are 10 apart so a one-off can slot between
+   * two without another rewrite. Anything above `--z-sidebar` is portalled to
+   * document.body (see components/common/ModalPortal.jsx), so these values
+   * only ever compete with each other, never with a transformed app-shell
+   * ancestor. */
+  --z-base: 0;
+  --z-raised: 10;          /* cards lifted on hover, sticky table headers */
+  --z-dropdown: 30;        /* menus, popovers, tooltips */
+  --z-sidebar: 50;         /* the expanding navigation panel */
+  --z-topbar: 60;
+  --z-drawer: 100;         /* mobile navigation drawer + its scrim */
+  --z-overlay: 1000;       /* modal backdrops */
+  --z-modal: 1010;         /* modal panels */
+  --z-modal-nested: 1020;  /* a viewer opened from inside a modal */
+  --z-dialog: 1100;        /* confirm / alert dialogs — always on top */
+  --z-toast: 1200;
 }

@@ -555,3 +555,49 @@ test("attendance snapshots the worker so historical records survive personnel ch
   // Removal is a status change, never a hard delete — attendance is evidence.
   assert.deepEqual(paths.status.enumValues, ["present", "removed"]);
 });
+
+
+test("a worker QR id is human-readable, prefixed and unique per issue", () => {
+  const codes = Array.from({ length: 200 }, () => generateWorkerCode());
+
+  codes.forEach((code) => {
+    // WRK-<16 hex>: quotable over radio and printable under the badge.
+    assert.match(code, /^WRK-[0-9A-F]{16}$/, `unexpected worker code shape: ${code}`);
+  });
+
+  // 64 bits of randomness — a collision inside one issuing run would indicate
+  // the generator is not actually random.
+  assert.equal(new Set(codes).size, codes.length);
+
+  // It must not be derivable from anything about the employee.
+  const payload = buildQrPayload(codes[0]);
+  assert.ok(payload.includes(codes[0]));
+  assert.equal(verifyQrPayload(payload).workerCode, codes[0]);
+});
+
+test("worker codes issued before the WRK- format still verify", () => {
+  // Existing badges must keep working — a format change cannot silently
+  // invalidate every card already printed and handed out.
+  const legacy = "RgexILhvpyr72qNZuzxB5g";
+  const result = verifyQrPayload(buildQrPayload(legacy));
+  assert.equal(result.valid, true);
+  assert.equal(result.workerCode, legacy);
+});
+
+test("the worker code is uniquely indexed so two workers cannot share a badge", () => {
+  const guard = User.schema
+    .indexes()
+    .find(([fields]) => Object.keys(fields).length === 1 && fields.workerCode === 1);
+
+  assert.ok(guard, "expected a workerCode index");
+  assert.equal(guard[1].unique, true);
+  // Sparse: the many users who have never been issued a badge all have no
+  // code, and must not collide with each other on that absence.
+  assert.equal(guard[1].sparse, true);
+});
+
+test("the worker code is never returned by an ordinary user query", () => {
+  // `select: false` keeps the badge identity out of /users, user detail and
+  // every other response that did not explicitly ask for it.
+  assert.equal(User.schema.paths.workerCode.options.select, false);
+});

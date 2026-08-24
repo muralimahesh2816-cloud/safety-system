@@ -34,7 +34,13 @@ test("shows the topbar only on Dashboard and keeps the mobile menu trigger elsew
   fireEvent.click(screen.getByRole("button", { name: /work approvals/i }));
   await screen.findByText("Work approvals content");
   await waitFor(() => expect(document.title).toBe("Work Approvals | Safety Management System"));
-  expect(screen.queryByRole("heading", { name: "Safety Management System" })).not.toBeInTheDocument();
+  // The topbar leaves via an AnimatePresence exit, so it is still mounted for a
+  // beat after the module has changed. Waiting for its removal (rather than
+  // asserting instantly) is what this needs — the previous instant assertion
+  // raced the exit animation and failed intermittently under parallel load.
+  await waitFor(() =>
+    expect(screen.queryByRole("heading", { name: "Safety Management System" })).not.toBeInTheDocument()
+  );
   expect(screen.getByRole("button", { name: /open navigation menu/i })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /expand sidebar|collapse sidebar/i })).not.toBeInTheDocument();
 });

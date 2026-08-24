@@ -341,44 +341,53 @@
 
 .brand-accent-text { color: var(--brand-accent-soft, #f0a69b); }
 
-.brand-momentum-mark__halo,
-.brand-momentum-mark__ring {
+// The live Momentum wheel. Continuous, slow, clockwise, compositor-only.
+.momentum-logo {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+}
+
+.momentum-logo__halo {
   position: absolute;
-  pointer-events: none;
+  inset: -6%;
   border-radius: 50%;
+  background: radial-gradient(circle, rgba(var(--brand-primary-rgb), .30), transparent 68%);
+  opacity: .5;
+  pointer-events: none;
+  transition: opacity 300ms ease;
 }
 
-.brand-momentum-mark__halo {
-  inset: 0;
-  background: radial-gradient(circle, rgba(var(--brand-primary-rgb), .28), transparent 68%);
-  opacity: .55;
-  transition: opacity 260ms ease, transform 260ms ease;
+.momentum-logo__mark {
+  position: relative;
+  display: block;
+  // Fixed intrinsic box + object-fit: aspect ratio can never be distorted by a
+  // flex parent, and there is no layout shift while the SVG loads.
+  object-fit: contain;
+  user-select: none;
+  transform-origin: 50% 50%;
+  // `will-change` promotes the mark to its own compositor layer once, instead
+  // of the browser re-deciding every frame of a 48s animation.
+  will-change: transform;
 }
 
-.brand-momentum-mark__ring {
-  inset: 14%;
-  border: 1px solid rgba(255, 255, 255, .22);
-  background: rgba(255, 255, 255, .05);
-  opacity: .45;
-  transition: opacity 260ms ease, transform 260ms ease;
+.momentum-logo--spinning .momentum-logo__mark {
+  animation: momentum-rotate 48s linear infinite;
 }
 
-.brand-momentum-mark__image {
-  transition: transform 320ms cubic-bezier(.2, .75, .25, 1);
-}
+.momentum-logo:hover .momentum-logo__halo { opacity: .85; }
 
-// Motion is opt-in on hover only — nothing animates while the pointer is
-// elsewhere, so the compositor stays idle for the rest of the session.
-.brand-momentum-mark--active {
-  .brand-momentum-mark__halo { opacity: .9; transform: scale(1.08); }
-  .brand-momentum-mark__ring { opacity: .7; transform: scale(1.05); }
-  .brand-momentum-mark__image { animation: brand-momentum-spin 7s linear infinite; }
+// Shared with the login page, which has always used this cadence.
+@keyframes momentum-rotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
-
-@keyframes brand-momentum-spin { to { transform: rotate(360deg); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .brand-momentum-mark--active .brand-momentum-mark__image { animation: none; }
+  .momentum-logo--spinning .momentum-logo__mark { animation: none; }
+  .momentum-logo__halo { transition: none; }
 }
 
 /* ------------------------------------------------------------- sidebar */
@@ -696,4 +705,53 @@ $icon-inset: math.div($rail-width - $icon-box, 2);
     radial-gradient(120% 140% at 88% -20%, rgba(var(--brand-primary-rgb), .38), transparent 62%),
     radial-gradient(90% 120% at 8% 120%, rgba(182, 115, 82, .18), transparent 60%),
     linear-gradient(135deg, #12151a 0%, #1b1f24 58%, #14171b 100%);
+}
+
+/* -------------------------------------------------------------- overlays */
+
+// Overlay layers. Every one of these is portalled to document.body, so these
+// z-indexes only compete with each other — never with an app-shell ancestor
+// that happens to be transformed or scrolled.
+.hse-overlay      { position: fixed; inset: 0; z-index: var(--z-overlay); }
+
+// App-shell layers, on the same ladder.
+.brand-sidebar-panel { z-index: var(--z-sidebar); }
+.hse-drawer-scrim    { z-index: var(--z-drawer); }
+.hse-overlay--nested { z-index: var(--z-modal-nested); }
+.hse-dialog-overlay  { z-index: var(--z-dialog); }
+
+// Scroll lock while any overlay is open. `overflow: hidden` on <body> rather
+// than on the app shell, because the shell is no longer the overlay's parent.
+body.hse-overlay-open { overflow: hidden; }
+
+.qr-reticle__corner {
+  position: absolute;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 3px solid #fff;
+  opacity: .9;
+}
+
+.qr-reticle__corner--tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: .5rem 0 0 0; }
+.qr-reticle__corner--tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 .5rem 0 0; }
+.qr-reticle__corner--bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 .5rem; }
+.qr-reticle__corner--br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 .5rem 0; }
+
+.qr-reticle__sweep {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #4ade80, transparent);
+  box-shadow: 0 0 12px rgba(74, 222, 128, .8);
+  animation: qr-sweep 2.2s ease-in-out infinite;
+}
+
+@keyframes qr-sweep {
+  0%, 100% { top: 4%; }
+  50%      { top: 96%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qr-reticle__sweep { animation: none; top: 50%; }
 }
