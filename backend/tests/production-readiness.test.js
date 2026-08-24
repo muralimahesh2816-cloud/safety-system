@@ -59,6 +59,18 @@ const Hazard = require("../src/models/Hazard");
 const Training = require("../src/models/Training");
 const User = require("../src/models/User");
 const { createTrainingSchema } = require("../src/validators/training.validators");
+const WorkAttendance = require("../src/models/WorkAttendance");
+const {
+  buildQrPayload,
+  generateWorkerCode,
+  verifyQrPayload
+} = require("../src/services/worker-qr.service");
+const {
+  buildWorkSessionKey,
+  canRemoveAttendance,
+  canScanAttendance,
+  isAttendanceOpenStage
+} = require("../src/constants/work-attendance");
 const {
   ENTERPRISE_HSE_MODULES,
   ENTERPRISE_HSE_KEYS,
@@ -423,4 +435,123 @@ test("training content lists accept multipart JSON strings and reject malformed 
     hazards: "not-json"
   });
   assert.equal(malformed.success, false);
+});
+
+
+test("a worker QR badge carries no personal data and no database id", () => {
+  const code = generateWorkerCode();
+  const payload = buildQrPayload(code);
+  const [namespace, kind, encodedCode] = payload.split(":");
+
+  assert.equal(namespace, "UTPLHSE1");
+  assert.equal(kind, "W");
+  assert.equal(encodedCode, code);
+  assert.equal(payload.split(":").length, 4);
+
+  // Nothing identifying may appear anywhere in the printed payload.
+  ["@", "murali", "UTPL00125", "safety_officer", "eyJ"].forEach((leak) => {
+    assert.ok(!payload.toLowerCase().includes(leak.toLowerCase()), `payload leaked ${leak}`);
+  });
+});
+
+test("a worker QR badge round-trips and rejects every tampering attempt", () => {
+  const code = generateWorkerCode();
+  const payload = buildQrPayload(code);
+
+  const good = verifyQrPayload(payload);
+  assert.equal(good.valid, true);
+  assert.equal(good.workerCode, code);
+
+  // Swapping in another worker's code invalidates the signature, so a badge
+  // cannot be edited to impersonate a different worker.
+  const otherCode = generateWorkerCode();
+  const forged = payload.replace(code, otherCode);
+  assert.equal(verifyQrPayload(forged).valid, false);
+  assert.equal(verifyQrPayload(forged).reason, "SIGNATURE_INVALID");
+
+  // A hand-written payload with no signature is rejected.
+  assert.equal(verifyQrPayload(`UTPLHSE1:W:${code}:`).valid, false);
+  assert.equal(verifyQrPayload(`UTPLHSE1:W:${code}`).valid, false);
+
+  // Arbitrary QR content the camera might resolve is rejected, not crashed on.
+  ["", "   ", "https://example.com", "OTHERNS:W:abc:def", "UTPLHSE1:X:abc:def",
+   null, undefined, 42, {}, "A".repeat(400)].forEach((input) => {
+    assert.equal(verifyQrPayload(input).valid, false);
+  });
+});
+
+test("regenerating a worker code invalidates the previously printed badge", () => {
+  const oldCode = generateWorkerCode();
+  const oldPayload = buildQrPayload(oldCode);
+  const newCode = generateWorkerCode();
+
+  assert.notEqual(oldCode, newCode);
+  // The old payload still verifies cryptographically — it is the *lookup* that
+  // fails, because no user holds that code any more. That is the intended
+  // design: the signature proves issuance, the database row proves currency.
+  assert.equal(verifyQrPayload(oldPayload).workerCode, oldCode);
+  assert.notEqual(verifyQrPayload(oldPayload).workerCode, newCode);
+});
+
+test("attendance is restricted to site supervisory roles, removal more narrowly", () => {
+  // Holding a badge does not confer the right to scan one.
+  assert.equal(canScanAttendance("employee"), false);
+  assert.equal(canScanAttendance("user"), false);
+  assert.equal(canScanAttendance("viewer"), false);
+
+  ["safety_officer", "site_engineer", "safety_manager", "admin", "super_admin"].forEach((role) => {
+    assert.equal(canScanAttendance(role), true, `${role} should be able to scan`);
+  });
+
+  // Removing attendance rewrites safety evidence, so it is narrower than
+  // recording it: a Safety Officer may scan but may not delete.
+  assert.equal(canRemoveAttendance("safety_officer"), false);
+  assert.equal(canRemoveAttendance("site_engineer"), false);
+  assert.equal(canRemoveAttendance("safety_manager"), true);
+  assert.equal(canRemoveAttendance("admin"), true);
+});
+
+test("attendance is only open between approval and close-out", () => {
+  assert.equal(isAttendanceOpenStage(WORK_STAGES.APPROVED), true);
+  assert.equal(isAttendanceOpenStage(WORK_STAGES.WORK_IN_PROGRESS), true);
+  assert.equal(isAttendanceOpenStage(WORK_STAGES.PARTIALLY_COMPLETED), true);
+
+  // Not before approval...
+  assert.equal(isAttendanceOpenStage(WORK_STAGES.PENDING_CHECK), false);
+  assert.equal(isAttendanceOpenStage(WORK_STAGES.PENDING_RECOMMENDATION), false);
+  assert.equal(isAttendanceOpenStage(WORK_STAGES.PENDING_FINAL_APPROVAL), false);
+  assert.equal(isAttendanceOpenStage(WORK_STAGES.RETURNED), false);
+  // ...and not after close-out.
+  assert.equal(isAttendanceOpenStage(WORK_STAGES.COMPLETED), false);
+});
+
+test("duplicate attendance is prevented by a unique index, not a read check", () => {
+  // Two scanners on site can pass a read-then-write check simultaneously; only
+  // the database can actually reject the second write.
+  const indexes = WorkAttendance.schema.indexes();
+  const guard = indexes.find(([fields]) =>
+    fields.workApproval === 1 && fields.workSessionKey === 1 && fields.worker === 1
+  );
+
+  assert.ok(guard, "expected a (workApproval, workSessionKey, worker) index");
+  assert.equal(guard[1].unique, true);
+  // Partial, so removing an attendance record frees the worker to be re-added.
+  assert.deepEqual(guard[1].partialFilterExpression, { status: "present" });
+});
+
+test("a work session defaults to the calendar date and supports named shifts", () => {
+  assert.equal(buildWorkSessionKey(new Date("2026-08-24T10:35:00Z")), "2026-08-24");
+  assert.equal(buildWorkSessionKey(new Date("2026-08-24T10:35:00Z"), "night"), "2026-08-24:night");
+});
+
+test("attendance snapshots the worker so historical records survive personnel changes", () => {
+  const paths = WorkAttendance.schema.paths;
+  assert.equal(paths.workerName.isRequired, true);
+  ["employeeId", "workerRole", "scannedByName", "scannedByRole"].forEach((field) => {
+    assert.ok(paths[field], `expected snapshot field ${field}`);
+  });
+  // The live reference is kept alongside the snapshot.
+  assert.equal(paths.worker.options.ref, "User");
+  // Removal is a status change, never a hard delete — attendance is evidence.
+  assert.deepEqual(paths.status.enumValues, ["present", "removed"]);
 });

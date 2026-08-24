@@ -1317,6 +1317,41 @@ export const notificationService = {
   markAllRead: async () => (await client.patch("/notifications/read-all")).data
 };
 
+// Worker QR badges and on-site attendance.
+//
+// Every one of these is a direct call with no legacy fallback: a failure here
+// (invalid badge, wrong stage, duplicate, insufficient role) is a real answer
+// the operator needs to see, and masking it behind a fake success would let
+// someone believe a worker was recorded when they were not.
+export const workerQrService = {
+  /** The signed QR payload for a user. Minted server-side on first request. */
+  get: async (userId) => (await client.get(`/users/${userId}/worker-qr`)).data,
+  regenerate: async (userId) => (await client.post(`/users/${userId}/worker-qr/regenerate`)).data
+};
+
+export const attendanceService = {
+  /**
+   * Resolves a scanned badge to a worker WITHOUT recording anything, so the
+   * operator can confirm the person in front of them first.
+   */
+  scan: async (workApprovalId, qrPayload) =>
+    (await client.post(`/work-approvals/${workApprovalId}/attendance/scan`, { qrPayload })).data,
+
+  /** Records the confirmed attendance. */
+  confirm: async (workApprovalId, { qrPayload, location } = {}) =>
+    (await client.post(`/work-approvals/${workApprovalId}/attendance`, { qrPayload, location })).data,
+
+  list: async (workApprovalId, params = {}) =>
+    (await client.get(`/work-approvals/${workApprovalId}/attendance`, { params })).data,
+
+  remove: async (workApprovalId, attendanceId, reason = "") =>
+    (
+      await client.delete(`/work-approvals/${workApprovalId}/attendance/${attendanceId}`, {
+        data: { reason }
+      })
+    ).data
+};
+
 export const certificateService = {
   mine: async () =>
     withLegacyFallback(

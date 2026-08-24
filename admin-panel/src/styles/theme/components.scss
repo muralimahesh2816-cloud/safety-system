@@ -1,3 +1,5 @@
+@use "sass:math";
+
 // Portal design-system components.
 //
 // One place for the surfaces, dialogs and states shared by every module, so
@@ -381,51 +383,307 @@
 
 /* ------------------------------------------------------------- sidebar */
 
+// Geometry. The rail width and the icon column are the two numbers that keep
+// icons from moving when the panel expands: the icon column sits at the same
+// left offset in both states, so expanding reveals the label instead of
+// sliding the whole row sideways.
+$rail-width: 80px;
+$panel-width: 280px;
+$icon-box: 40px;
+$icon-inset: math.div($rail-width - $icon-box, 2);
+
 .brand-sidebar {
-  // The panel is 280px wide even while the rail shows 80px of it, so its
-  // contents never re-wrap mid-transition.
-  width: 280px;
-  max-width: 280px;
+  display: flex;
+  width: $panel-width;
+  max-width: $panel-width;
+  height: 100%;
+  flex-direction: column;
+  border-right: 1px solid rgba(var(--brand-primary-rgb), .22);
+  background: linear-gradient(180deg, rgba(20, 22, 25, .96), rgba(14, 16, 18, .98));
+  padding: 1rem 0;
 }
 
+.brand-sidebar--mobile { border-right: 0; }
+
+/* --- brand --------------------------------------------------------------- */
+
+.brand-sidebar__head {
+  position: relative;
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: .7rem;
+  padding: 0 1rem 0 $icon-inset;
+  margin-bottom: 1.15rem;
+}
+
+.brand-sidebar__logo {
+  display: inline-flex;
+  width: $icon-box;
+  height: $icon-box;
+  flex: 0 0 $icon-box;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: #fff;
+  padding: .3rem;
+
+  img { width: 100%; height: 100%; object-fit: contain; }
+}
+
+.brand-sidebar__wordmark {
+  min-width: 0;
+  overflow: hidden;
+  color: #fff;
+  font-size: .82rem;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.brand-sidebar__close {
+  margin-left: auto;
+  border: 1px solid rgba(255, 255, 255, .15);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, .08);
+  padding: .45rem;
+  color: #fff;
+  cursor: pointer;
+}
+
+/* --- nav ----------------------------------------------------------------- */
+
+.brand-sidebar__nav {
+  min-height: 0;
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 .6rem 0 0;
+  scrollbar-width: thin;
+}
+
+.brand-sidebar__group + .brand-sidebar__group { margin-top: .55rem; }
+
+.brand-sidebar__group-toggle {
+  display: flex;
+  width: calc(100% - 1rem);
+  min-height: 2rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-left: .6rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: 0 .55rem;
+  color: #6f6b67;
+  font: inherit;
+  font-size: .6rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 160ms ease;
+
+  &:hover { color: #b8b3ae; }
+  svg { transition: transform 200ms ease; flex: 0 0 auto; }
+}
+
+.brand-sidebar__items { margin-top: .2rem; }
+
+/* --- nav item ------------------------------------------------------------ */
+
 .brand-nav-item {
-  background: rgba(255, 255, 255, .035);
-  transition: background-color 160ms ease, color 160ms ease;
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-height: 2.65rem;
+  align-items: center;
+  gap: .7rem;
+  border: 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: transparent;
+  padding: 0 1rem 0 $icon-inset;
+  color: #a9a5a1;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: color 180ms ease, background-color 180ms ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, .05);
+    color: #fff;
+  }
 
   &:focus-visible {
     outline: 2px solid var(--brand-primary-light);
-    outline-offset: 2px;
+    outline-offset: -2px;
   }
 }
 
-// Collapsed rail: labels stay mounted so expanding costs a repaint rather than
-// a re-render of the whole nav.
-//
-// This must be the clip-based visually-hidden technique, NOT `opacity: 0` or
-// `visibility: hidden`: Chrome drops zero-opacity subtrees from the
-// accessibility tree, which would leave every collapsed nav button with no
-// accessible name at all. Clipping keeps the label as the button's name for
-// screen readers while removing it visually.
-.brand-nav-item__label--hidden {
-  position: absolute !important;
-  width: 1px !important;
-  height: 1px !important;
-  margin: -1px !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  clip-path: inset(50%) !important;
-  white-space: nowrap !important;
-  border: 0 !important;
+.brand-nav-item--active {
+  color: #fff;
+  background: linear-gradient(
+    90deg,
+    rgba(var(--brand-primary-rgb), .28) 0%,
+    rgba(var(--brand-primary-rgb), .10) 55%,
+    transparent 100%
+  );
 }
 
-.sidebar-tooltip {
+// The single shared indicator that slides between items.
+.brand-nav-item__indicator {
+  position: absolute;
+  top: .45rem;
+  bottom: .45rem;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--brand-primary-light);
+  box-shadow: 0 0 12px rgba(var(--brand-primary-rgb), .85);
+}
+
+// Fixed column: this is what keeps icons perfectly still while the panel
+// expands and collapses.
+.brand-nav-item__icon {
+  display: inline-flex;
+  width: $icon-box;
+  height: $icon-box;
+  flex: 0 0 $icon-box;
+  align-items: center;
+  justify-content: center;
+  transition: transform 220ms cubic-bezier(.2, .75, .25, 1), color 180ms ease;
+}
+
+.brand-nav-item:hover .brand-nav-item__icon { transform: translateX(1px) scale(1.06); }
+.brand-nav-item--active .brand-nav-item__icon { color: #fff; }
+
+.brand-nav-item__label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: .78rem;
+  font-weight: 500;
   white-space: nowrap;
-  box-shadow: 0 12px 30px rgba(2, 6, 23, .5);
+  text-overflow: ellipsis;
+}
+
+.brand-nav-item--logout {
+  color: #e6a49b;
+
+  &:hover {
+    background: rgba(180, 35, 24, .16);
+    color: #ffd9d3;
+  }
+}
+
+/* --- footer / pin toggle ------------------------------------------------- */
+
+.brand-sidebar__footer {
+  margin-top: auto;
+  padding-top: .6rem;
+  border-top: 1px solid rgba(255, 255, 255, .07);
+}
+
+.brand-sidebar__pin {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-height: 2.4rem;
+  align-items: center;
+  gap: .7rem;
+  border: 0;
+  background: transparent;
+  padding: 0 1rem 0 $icon-inset;
+  color: #8b8681;
+  font: inherit;
+  font-size: .72rem;
+  text-align: left;
+  cursor: pointer;
+  transition: color 160ms ease, background-color 160ms ease;
+
+  &:hover { background: rgba(255, 255, 255, .05); color: #ddd8d3; }
+  &[aria-pressed="true"] { color: var(--brand-accent-soft); }
+  &:focus-visible { outline: 2px solid var(--brand-primary-light); outline-offset: -2px; }
+}
+
+/* --- tooltip (collapsed rail only) --------------------------------------- */
+
+.brand-nav-item__tooltip {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  z-index: 60;
+  margin-left: .1rem;
+  transform: translate(-6px, -50%);
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: var(--radius-sm);
+  background: rgba(22, 24, 27, .98);
+  padding: .3rem .55rem;
+  color: #fff;
+  font-size: .68rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .55);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+/* --- collapsed rail ------------------------------------------------------ */
+//
+// Only opacity/visibility and the panel width change. Nothing that affects the
+// icon column is touched, so the icons stay put.
+
+.brand-sidebar[data-collapsed="true"] {
+  .brand-sidebar__wordmark,
+  .brand-sidebar__group-toggle,
+  .brand-nav-item__label {
+    // Clipped rather than removed: `opacity: 0` and `display: none` both drop
+    // the text out of the accessibility tree, and unmounting it would force a
+    // re-render of the whole nav on every hover.
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .brand-nav-item:hover .brand-nav-item__tooltip,
+  .brand-sidebar__pin:hover .brand-nav-item__tooltip {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+}
+
+// Expanded panel: labels ease in. The stagger is a pure CSS animation, so it
+// costs nothing per frame and cannot stall the way a JS-driven sequence can.
+.brand-sidebar[data-collapsed="false"] {
+  .brand-nav-item__label,
+  .brand-sidebar__wordmark {
+    animation: brand-nav-label-in 220ms cubic-bezier(.2, .75, .25, 1) both;
+  }
+
+  .brand-sidebar__group-toggle { animation: brand-nav-label-in 200ms ease both; }
+  .brand-nav-item__tooltip { display: none; }
+}
+
+@keyframes brand-nav-label-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .brand-nav-item,
-  .sidebar-tooltip { transition: none !important; }
+  .brand-nav-item__icon,
+  .brand-nav-item__tooltip,
+  .brand-sidebar__pin,
+  .brand-sidebar__group-toggle svg { transition: none !important; }
+
+  .brand-sidebar[data-collapsed="false"] .brand-nav-item__label,
+  .brand-sidebar[data-collapsed="false"] .brand-sidebar__wordmark,
+  .brand-sidebar[data-collapsed="false"] .brand-sidebar__group-toggle { animation: none; }
 }
 
 /* ----------------------------------------------------------- dashboard */

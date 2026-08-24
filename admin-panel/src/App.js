@@ -14,6 +14,7 @@ import LoginPage from "./pages/LoginPage";
 import VerifyCertificatePage from "./pages/VerifyCertificatePage";
 import ModuleSkeleton from "./components/common/ModuleSkeleton";
 import { settingsService } from "./api/services";
+import { showConfirmPopup } from "./utils/alerts";
 import { IMAGE_PLACEHOLDER_URL } from "./utils/media";
 import { canAccessModule } from "./utils/permissions";
 import useSidebarPreference from "./hooks/useSidebarPreference";
@@ -292,6 +293,33 @@ const AppContent = () => {
     };
   }, [logout, sessionTimeoutMinutes]);
 
+  // Confirmed logout, used by both the sidebar and the topbar.
+  //
+  // The confirmation is not decoration: on a shared site terminal a mis-click
+  // on Logout costs the user their session and any half-filled form. The
+  // actual teardown is delegated to AuthContext.logout(), which revokes the
+  // session server-side and clears every stored token/user key — this only
+  // adds the prompt and the post-logout URL reset, so there is no second,
+  // divergent copy of the session-clearing logic.
+  const requestLogout = useCallback(async () => {
+    const confirmed = await showConfirmPopup({
+      title: "Are you sure you want to logout?",
+      text: "You will need to sign in again with your email and one-time code.",
+      confirmText: "Logout",
+      cancelText: "Cancel",
+      icon: "question"
+    });
+    if (!confirmed) return;
+
+    await logout();
+
+    // Land on /login rather than leaving the browser on a module URL the user
+    // is no longer authenticated for.
+    if (window.location.pathname !== "/login") {
+      window.history.replaceState({}, "", "/login");
+    }
+  }, [logout]);
+
   const continueSession = useCallback(() => {
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
@@ -372,6 +400,7 @@ const AppContent = () => {
               locked={sidebarLocked}
               onLockChange={setSidebarLocked}
               onSelectModule={handleModuleSelect}
+              onLogout={requestLogout}
             />
           </motion.aside>
         </div>
@@ -403,6 +432,7 @@ const AppContent = () => {
                   activeModule={activeModule}
                   onToggleCollapse={() => setMobileSidebarOpen(false)}
                   onSelectModule={handleModuleSelect}
+                  onLogout={requestLogout}
                 />
               </motion.aside>
             </motion.div>
@@ -434,7 +464,7 @@ const AppContent = () => {
               >
                 <Topbar
                   user={user}
-                  onLogout={logout}
+                  onLogout={requestLogout}
                   onToggleSidebar={handleSidebarToggle}
                   sidebarCollapsed={sidebarCollapsed}
                   navigationOpen={mobileSidebarOpen}

@@ -3,6 +3,8 @@ import GlassCard from "../common/GlassCard";
 import { userService } from "../../api/services";
 import { showSuccessPopup } from "../../utils/alerts";
 import { normalizePermissions, toPermissionPayload } from "../../utils/permissions";
+import RolePermissionMatrix from "./RolePermissionMatrix";
+import { showConfirmPopup } from "../../utils/alerts";
 
 const permissionColumns = [
   { key: "dashboard", label: "Dashboard" },
@@ -65,7 +67,28 @@ const AccessControlPanel = ({ currentUser, onPermissionUpdated = () => {} }) => 
       return;
     }
 
-    const payload = toPermissionPayload(drafts[user._id] || {});
+    // Dangerous changes get an explicit confirmation: revoking access can lock
+    // someone out of the module they are on shift to use, and editing an
+    // administrator's access can remove the last route back in.
+    const current = normalizePermissions(user.permissions, user.role);
+    const draft = drafts[user._id] || {};
+    const revoked = Object.keys(draft).filter((key) => current[key] && !draft[key]);
+    const isAdministrator = ["super_admin", "admin"].includes(user.role);
+
+    if (revoked.length || isAdministrator) {
+      const confirmed = await showConfirmPopup({
+        title: revoked.length ? "Revoke access?" : "Change administrator access?",
+        text: revoked.length
+          ? `${user.name} will immediately lose access to: ${revoked.join(", ")}. This is recorded in the audit log.`
+          : `${user.name} is an administrator. Changing their access is recorded in the audit log.`,
+        confirmText: "Apply Changes",
+        cancelText: "Cancel",
+        icon: "warning"
+      });
+      if (!confirmed) return;
+    }
+
+    const payload = toPermissionPayload(draft);
     setSavingId(user._id);
     setError("");
     try {
@@ -92,6 +115,8 @@ const AccessControlPanel = ({ currentUser, onPermissionUpdated = () => {} }) => 
   };
 
   return (
+    <div className="space-y-4">
+      <RolePermissionMatrix users={users} />
     <GlassCard className="p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-semibold text-white">Access Control</h3>
@@ -166,6 +191,7 @@ const AccessControlPanel = ({ currentUser, onPermissionUpdated = () => {} }) => 
         </div>
       ) : null}
     </GlassCard>
+    </div>
   );
 };
 

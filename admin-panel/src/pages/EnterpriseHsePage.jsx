@@ -56,7 +56,6 @@ const StatusBadge = ({ status }) => (
 
 const nextStatusesFor = (module, current) => {
   if (current === "Overdue") {
-    if (module.key === "capa") return ["In Progress", "Pending Verification"];
     if (module.key === "compliance-calendar") return ["Evidence Pending", "Completed"];
   }
   if (module.key === "permits") {

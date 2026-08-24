@@ -21,6 +21,7 @@ const {
   normalizeAssignmentStage,
   getEligibleAssigneeRoles
 } = require("../constants/work-assignment");
+const { buildQrPayload, generateWorkerCode } = require("../services/worker-qr.service");
 const {
   normalizePagePermissions,
   toActionPermissions
@@ -187,9 +188,52 @@ router.put(
       updates.permissions = normalizePagePermissions(updates.permissions, role);
     }
 
+    // Captured before the write so the audit entry can state what actually
+    // changed. Recording only the new value makes an access-control audit
+    // nearly useless after the fact — "who granted this, and what did they take
+    // away?" is the question it exists to answer.
+    const previousRole = existing.role;
+    const previousPermissions = existing.permissions || {};
+
     const user = await User.findByIdAndUpdate(req.params.id, updates, {
       new: true
     }).select("-password");
+
+    const roleChanged = Boolean(updates.role) && updates.role !== previousRole;
+    const permissionsChanged = Boolean(updates.permissions);
+
+    if (roleChanged || permissionsChanged) {
+      // Access changes get their own audit action so they can be filtered out
+      // of the general update noise during a review.
+      const granted = [];
+      const revoked = [];
+      if (permissionsChanged) {
+        Object.entries(updates.permissions).forEach(([key, value]) => {
+          const before = Boolean(previousPermissions[key]);
+          if (value && !before) granted.push(key);
+          if (!value && before) revoked.push(key);
+        });
+      }
+
+      await audit(
+        req,
+        roleChanged ? "role_changed" : "permissions_changed",
+        "settings",
+        {
+          targetUser: user.name,
+          targetEmail: user.email,
+          previousRole,
+          newRole: user.role,
+          granted,
+          revoked
+        },
+        user._id,
+        {
+          previousValue: { role: previousRole, permissions: previousPermissions },
+          newValue: { role: user.role, permissions: user.permissions }
+        }
+      );
+    }
 
     await audit(req, "update", "users", updates, user._id);
     res.json({
@@ -298,6 +342,104 @@ router.get(
         email: user.email
       },
       history: user.loginHistory || []
+    });
+  })
+);
+
+/* ------------------------------------------------------- worker QR badge */
+
+// Who may look at whose badge: your own always; anyone else's only with the
+// users:view permission. A badge is a physical credential, so handing one out
+// is a privileged action even though the payload itself carries no personal
+// data.
+const canViewWorkerQr = (req, targetId) =>
+  String(req.user.id) === String(targetId) ||
+  ["super_admin", "admin", "safety_manager"].includes(req.user.role);
+
+/**
+ * Returns the worker's QR payload, minting one on first request.
+ *
+ * The payload is generated server-side and never accepted from a client — the
+ * signature is only meaningful because the server is the sole issuer.
+ */
+router.get(
+  "/:id/worker-qr",
+  authMiddleware,
+  asyncHandler(async (req, res) => {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      throw new ApiError(400, "Invalid user id");
+    }
+    if (!canViewWorkerQr(req, req.params.id)) {
+      throw new ApiError(403, "You can only view your own worker QR badge.", null, "PERMISSION_DENIED");
+    }
+
+    const user = await User.findById(req.params.id).select(
+      "+workerCode name employeeId role status department plaza workerCodeIssuedAt"
+    );
+    if (!user) throw new ApiError(404, "User not found");
+
+    // Minted lazily so existing users get a badge the first time one is asked
+    // for, with no migration step.
+    if (!user.workerCode) {
+      user.workerCode = generateWorkerCode();
+      user.workerCodeIssuedAt = new Date();
+      await user.save();
+      await audit(req, "worker_qr_issued", "users", { name: user.name }, user._id);
+    }
+
+    res.json({
+      success: true,
+      worker: {
+        id: user._id,
+        name: user.name,
+        employeeId: user.employeeId || "",
+        role: user.role,
+        department: user.department || "",
+        plaza: user.plaza || "",
+        status: user.status
+      },
+      // The QR string itself. Rendering it to an image is the client's job.
+      qrPayload: buildQrPayload(user.workerCode),
+      issuedAt: user.workerCodeIssuedAt
+    });
+  })
+);
+
+/**
+ * Rotates the worker code, immediately invalidating every printed badge for
+ * this worker. This is the recovery path for a lost or copied badge, so it is
+ * restricted to administrators and safety management — a worker cannot rotate
+ * their own badge and silently invalidate attendance evidence tooling.
+ */
+router.post(
+  "/:id/worker-qr/regenerate",
+  authMiddleware,
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.SAFETY_MANAGER),
+  asyncHandler(async (req, res) => {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      throw new ApiError(400, "Invalid user id");
+    }
+
+    const user = await User.findById(req.params.id).select("+workerCode name employeeId role status");
+    if (!user) throw new ApiError(404, "User not found");
+
+    user.workerCode = generateWorkerCode();
+    user.workerCodeIssuedAt = new Date();
+    await user.save();
+
+    await audit(
+      req,
+      "worker_qr_regenerated",
+      "users",
+      { name: user.name, employeeId: user.employeeId },
+      user._id
+    );
+
+    res.json({
+      success: true,
+      message: "Worker QR badge regenerated. Previously printed badges no longer work.",
+      qrPayload: buildQrPayload(user.workerCode),
+      issuedAt: user.workerCodeIssuedAt
     });
   })
 );

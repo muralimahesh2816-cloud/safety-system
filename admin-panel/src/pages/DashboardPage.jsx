@@ -40,6 +40,7 @@ import SectionHeader from "../components/common/SectionHeader";
 import SkeletonBlock from "../components/common/SkeletonBlock";
 import { dashboardService } from "../api/services";
 import { enterpriseHseService } from "../api/enterpriseHse";
+import { isDeprecatedHseModule } from "../config/enterpriseHseConfig";
 import { formatDateTime } from "../utils/format";
 
 const REFRESH_INTERVAL_MS = 60000;
@@ -86,22 +87,10 @@ const trendingModules = [
     bg: "from-rose-500/30 to-orange-500/20"
   },
   {
-    key: "observations",
-    title: "Record an Observation",
-    desc: "Recognize safe practices and correct unsafe conditions",
-    bg: "from-emerald-500/30 to-teal-500/20"
-  },
-  {
     key: "permits",
     title: "Create a Permit",
     desc: "Control high-risk work from review through close-out",
     bg: "from-amber-500/30 to-yellow-500/20"
-  },
-  {
-    key: "capa",
-    title: "Assign CAPA",
-    desc: "Set ownership, target dates, and verification evidence",
-    bg: "from-violet-500/30 to-fuchsia-500/20"
   }
 ];
 
@@ -121,7 +110,14 @@ const DashboardPage = ({ onModuleSelect }) => {
         enterpriseHseService.alerts().catch(() => ({ alerts: [] }))
       ]);
       setSummary(response);
-      setEnterprise({ ...hseDashboard, alerts: hseAlerts.alerts || [] });
+      // The /hse endpoints aggregate across every collection, including the
+      // retired ones whose data still exists. Filtering here stops a retired
+      // module surfacing as a chart bar or as an alert that routes nowhere.
+      setEnterprise({
+        ...hseDashboard,
+        modules: (hseDashboard.modules || []).filter((item) => !isDeprecatedHseModule(item.key)),
+        alerts: (hseAlerts.alerts || []).filter((item) => !isDeprecatedHseModule(item.module))
+      });
       setLoadError("");
     } catch (_error) {
       // Keep the last good snapshot on screen rather than blanking the page.

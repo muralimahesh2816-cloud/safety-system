@@ -25,6 +25,8 @@ import {
   getChainageDisplay
 } from "../../utils/chainage";
 import WorkCompletionSummaryCard from "../work/WorkCompletionSummaryCard";
+import WorkerAttendancePanel from "../attendance/WorkerAttendancePanel";
+import { isAttendanceStage } from "../../utils/attendance";
 import RoleBasedUserSelect from "../work/RoleBasedUserSelect";
 import DirectMediaCapture from "../media/DirectMediaCapture";
 import EvidencePreviewCard from "../media/EvidencePreviewCard";
@@ -883,6 +885,20 @@ const WorkApprovalDetailsModal = ({
                 <div className="space-y-4">
                   {["Completed", "Partially Completed"].includes(stage) ? (
                     <WorkCompletionSummaryCard work={safeWork} />
+                  ) : null}
+
+                  {/*
+                    Attendance sits above the action panel because it is what
+                    the operator reads *before* completing the work: the
+                    completion form is right below it, so the present/assigned
+                    figures are on screen at the moment that decision is made.
+                    It only mounts once the work is approved — the backend
+                    rejects attendance outside that window either way, and
+                    showing a scan button that always fails is worse than not
+                    showing one.
+                  */}
+                  {isAttendanceStage(stage) ? (
+                    <WorkerAttendancePanel work={safeWork} />
                   ) : null}
                   <ActionPanel
                     work={safeWork}
