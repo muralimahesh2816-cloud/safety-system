@@ -1,0 +1,365 @@
+// Cinematic login environment.
+//
+// Every looping animation here is `transform` or `opacity` — the two properties
+// the compositor can run off the main thread — so the scene never competes with
+// the authentication request for it. Nothing animates width, height, top, left
+// or any other property that triggers layout.
+//
+// The two exceptions are deliberate and cheap: `stroke-dashoffset` on the eight
+// connection lines and `offset-distance` on the eight data points repaint
+// rather than composite, but they repaint a hairline stroke and a 0.7-unit dot
+// inside an already-composited SVG layer, and both are dropped entirely on the
+// reduced-motion and low-power tiers.
+//
+// Effect tiers, applied at the bottom of this file:
+//   [data-reduced="true"]   — prefers-reduced-motion: all motion stops
+//   [data-low-power="true"] — few cores: particles, blur and parallax drop
+
+.safety-scene {
+  --parallax-x: 0;
+  --parallax-y: 0;
+
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: #020617;
+  perspective: 1400px;
+  perspective-origin: 42% 45%;
+}
+
+/* --- environment --------------------------------------------------------- */
+
+.safety-scene__sky {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 90% at 30% 18%, rgba(29, 78, 216, .34), transparent 62%),
+    radial-gradient(90% 70% at 82% 8%, rgba(56, 189, 248, .16), transparent 58%),
+    linear-gradient(180deg, #020617 0%, #050b1c 46%, #0a1226 100%);
+}
+
+// Distant city, kept low-contrast so it reads as depth rather than detail.
+.safety-scene__skyline {
+  position: absolute;
+  right: 0;
+  bottom: 26%;
+  left: 0;
+  height: 22%;
+  opacity: .5;
+  background-repeat: repeat-x;
+  background-size: 420px 100%;
+  background-image:
+    linear-gradient(90deg,
+      transparent 0 14px, rgba(15, 32, 66, .95) 14px 54px, transparent 54px 78px,
+      rgba(13, 28, 58, .95) 78px 128px, transparent 128px 150px,
+      rgba(17, 36, 72, .95) 150px 196px, transparent 196px 224px,
+      rgba(12, 26, 54, .95) 224px 288px, transparent 288px 316px,
+      rgba(16, 34, 68, .95) 316px 372px, transparent 372px 420px);
+  mask-image: linear-gradient(180deg, transparent, #000 40%, #000);
+  transform: translate3d(calc(var(--parallax-x) * -6px), 0, 0);
+}
+
+.safety-scene__ground {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 30%;
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0) 0%, rgba(3, 9, 26, .9) 22%, #04091a 100%),
+    repeating-linear-gradient(90deg, transparent 0 78px, rgba(56, 189, 248, .05) 78px 80px);
+  box-shadow: inset 0 1px 0 rgba(148, 197, 255, .12);
+}
+
+.safety-scene__glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+}
+
+.safety-scene__glow--blue {
+  top: 8%;
+  left: 18%;
+  width: 34rem;
+  height: 34rem;
+  background: rgba(37, 99, 235, .22);
+  transform: translate3d(calc(var(--parallax-x) * 14px), calc(var(--parallax-y) * 10px), 0);
+}
+
+.safety-scene__glow--green {
+  bottom: 4%;
+  left: 6%;
+  width: 24rem;
+  height: 24rem;
+  background: rgba(34, 197, 94, .12);
+}
+
+/* --- stage --------------------------------------------------------------- */
+
+.safety-scene__stage {
+  position: absolute;
+  top: 50%;
+  left: 30%;
+  width: min(58vw, 44rem);
+  aspect-ratio: 1;
+  transform:
+    translate(-50%, -50%)
+    rotateY(calc(var(--parallax-x) * -5deg))
+    rotateX(calc(var(--parallax-y) * 3deg));
+  transform-style: preserve-3d;
+  transition: transform 500ms cubic-bezier(.22, .75, .25, 1);
+}
+
+/* --- connection paths ---------------------------------------------------- */
+
+.safety-scene__paths {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.safety-scene__path {
+  stroke-width: .28;
+  stroke-dasharray: 1.6 2.4;
+  opacity: .55;
+  animation: safety-path-flow 6s linear infinite;
+}
+
+.safety-scene__datum {
+  fill: #7dd3fc;
+  filter: drop-shadow(0 0 2px rgba(125, 211, 252, .9));
+  offset-rotate: 0deg;
+  animation: safety-datum-travel 5.5s cubic-bezier(.5, 0, .5, 1) infinite;
+}
+
+@keyframes safety-path-flow {
+  to { stroke-dashoffset: -8; }
+}
+
+@keyframes safety-datum-travel {
+  0%   { offset-distance: 0%;   opacity: 0; }
+  12%  { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { offset-distance: 100%; opacity: 0; }
+}
+
+/* --- shield -------------------------------------------------------------- */
+
+.safety-shield {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44%;
+  transform: translate3d(-50%, -54%, 60px);
+  transform-style: preserve-3d;
+}
+
+.safety-shield__halo {
+  position: absolute;
+  inset: -34%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(56, 189, 248, .30), transparent 66%);
+  filter: blur(26px);
+  animation: safety-breathe 7s ease-in-out infinite;
+}
+
+.safety-shield__body {
+  position: relative;
+  animation: safety-shield-drift 18s ease-in-out infinite;
+  transform-style: preserve-3d;
+}
+
+.safety-shield__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 34px 46px rgba(2, 6, 23, .85));
+}
+
+// Illuminated dais the shield stands on.
+.safety-shield__base {
+  position: absolute;
+  bottom: -14%;
+  left: 50%;
+  width: 92%;
+  height: 16%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(56, 189, 248, .5), rgba(56, 189, 248, .06) 62%, transparent 72%);
+  transform: translate3d(-50%, 0, -40px) rotateX(74deg);
+  animation: safety-breathe 7s ease-in-out infinite;
+}
+
+@keyframes safety-shield-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) rotateY(-7deg); }
+  50%      { transform: translate3d(0, -1.6%, 0) rotateY(7deg); }
+}
+
+@keyframes safety-breathe {
+  0%, 100% { opacity: .62; }
+  50%      { opacity: 1; }
+}
+
+/* --- orbiting icons ------------------------------------------------------ */
+
+.safety-orbit { position: absolute; inset: 0; transform-style: preserve-3d; }
+
+.safety-orbit__item {
+  position: absolute;
+  transform: translate3d(-50%, -50%, 90px);
+  animation: safety-float 9s ease-in-out infinite;
+}
+
+.safety-orbit__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  border: 1px solid rgba(125, 211, 252, .34);
+  border-radius: .7rem;
+  background: linear-gradient(150deg, rgba(12, 32, 72, .92), rgba(6, 18, 44, .92));
+  padding: .38rem .6rem;
+  color: #bae6fd;
+  white-space: nowrap;
+  box-shadow: 0 10px 26px rgba(2, 6, 23, .6), inset 0 1px 0 rgba(186, 230, 253, .16);
+}
+
+.safety-orbit__icon { width: .95rem; height: .95rem; flex: 0 0 auto; }
+
+.safety-orbit__label {
+  font-size: .56rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+@keyframes safety-float {
+  0%, 100% { transform: translate3d(-50%, -50%, 90px); }
+  50%      { transform: translate3d(-50%, calc(-50% - 9px), 108px); }
+}
+
+/* --- foreground props ---------------------------------------------------- */
+
+.safety-props {
+  position: absolute;
+  right: 2%;
+  bottom: -6%;
+  left: -4%;
+  height: 34%;
+  transform: translate3d(calc(var(--parallax-x) * 18px), 0, 150px);
+}
+
+.safety-props__helmet {
+  position: absolute;
+  bottom: 4%;
+  left: 2%;
+  width: 30%;
+  filter: drop-shadow(0 22px 26px rgba(2, 6, 23, .8));
+  animation: safety-prop-settle 12s ease-in-out infinite;
+}
+
+.safety-props__cone {
+  position: absolute;
+  right: 6%;
+  bottom: 2%;
+  width: 15%;
+  filter: drop-shadow(0 20px 24px rgba(2, 6, 23, .8));
+  animation: safety-prop-settle 12s ease-in-out infinite 1.6s;
+}
+
+.safety-props__barrier {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 12%;
+  background: repeating-linear-gradient(115deg, #facc15 0 22px, #1c1917 22px 44px);
+  opacity: .5;
+  mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+}
+
+@keyframes safety-prop-settle {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+
+/* --- ambient particles --------------------------------------------------- */
+
+.safety-scene__particles { position: absolute; inset: 0; }
+
+.safety-scene__particle {
+  position: absolute;
+  bottom: -4%;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: #7dd3fc;
+  box-shadow: 0 0 8px rgba(125, 211, 252, .8);
+  animation-name: safety-particle-rise;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes safety-particle-rise {
+  0%   { transform: translate3d(0, 0, 0) scale(.7); opacity: 0; }
+  18%  { opacity: 1; }
+  100% { transform: translate3d(-30px, -105vh, 0) scale(1.1); opacity: 0; }
+}
+
+/* --- effect tiers -------------------------------------------------------- */
+
+// Few logical cores: drop the expensive layers rather than the whole scene, so
+// the composition still reads while the device stops doing per-frame work.
+.safety-scene[data-low-power="true"] {
+  .safety-scene__glow { filter: blur(50px); opacity: .6; }
+  .safety-shield__halo { animation: none; filter: blur(18px); }
+  .safety-orbit__item,
+  .safety-props__helmet,
+  .safety-props__cone { animation: none; }
+  .safety-scene__stage { transition: none; }
+}
+
+.safety-scene[data-reduced="true"] {
+  .safety-shield__body,
+  .safety-shield__halo,
+  .safety-shield__base,
+  .safety-orbit__item,
+  .safety-props__helmet,
+  .safety-props__cone,
+  .safety-scene__path { animation: none; }
+  .safety-scene__stage { transition: none; transform: translate(-50%, -50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .safety-scene *,
+  .safety-scene *::before,
+  .safety-scene *::after { animation: none !important; transition: none !important; }
+}
+
+/* --- responsive ---------------------------------------------------------- */
+
+// Tablet: bring the composition inward and calm it down.
+@media (max-width: 1100px) {
+  .safety-scene__stage { left: 34%; width: min(74vw, 34rem); }
+  .safety-orbit__label { display: none; }
+  .safety-scene__particles { display: none; }
+}
+
+// Phone: the login panel is the page. The scene stays as atmosphere only —
+// shield and glow — with every element that competes for space removed.
+@media (max-width: 720px) {
+  .safety-scene__stage {
+    top: 26%;
+    left: 50%;
+    width: min(90vw, 22rem);
+    opacity: .32;
+  }
+  .safety-orbit,
+  .safety-props,
+  .safety-scene__paths,
+  .safety-scene__skyline { display: none; }
+  .safety-scene__glow--blue { width: 20rem; height: 20rem; filter: blur(60px); }
+}

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { authService } from "../api/services";
+import { authService, mobileAuthService } from "../api/services";
 import { clearSession, getStoredUser, setSession } from "../api/client";
 
 const AuthContext = createContext(null);
@@ -60,6 +60,27 @@ export const AuthProvider = ({ children }) => {
 
   const resendOtp = useCallback(async (email) => authService.resendOtp({ email }), []);
 
+  /* ----------------------------------------- mobile number + OTP sign-in --- */
+
+  // Requesting a code establishes nothing — no session, no tokens. It only
+  // asks the server to send one, and returns the masked destination so the UI
+  // can confirm where it went.
+  const requestMobileOtp = useCallback(async (mobile) => {
+    const csrf = await authService.getCsrf();
+    setSession({ csrfToken: csrf.csrfToken });
+    return mobileAuthService.requestOtp(mobile);
+  }, []);
+
+  // Verification is what authenticates. It stores exactly the same session the
+  // email/password path stores — same access token, same CSRF token, same user
+  // shape — so everything downstream is unaware of which door was used.
+  const verifyMobileOtp = useCallback(async (mobile, otp) => {
+    const res = await mobileAuthService.verifyOtp(mobile, otp);
+    setSession({ token: res.token, user: res.user, csrfToken: res.csrfToken });
+    setUser(res.user);
+    return res.user;
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await authService.logout();
@@ -78,10 +99,12 @@ export const AuthProvider = ({ children }) => {
       login,
       verifyOtp,
       resendOtp,
+      requestMobileOtp,
+      verifyMobileOtp,
       logout,
       setUser
     }),
-    [user, loading, login, verifyOtp, resendOtp, logout]
+    [user, loading, login, verifyOtp, resendOtp, requestMobileOtp, verifyMobileOtp, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

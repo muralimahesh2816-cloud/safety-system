@@ -659,6 +659,17 @@ export const authService = {
     )
 };
 
+// Mobile-number sign-in.
+//
+// Direct calls with no legacy fallback: an unregistered number, a blocked
+// account or an expired code are all answers the person signing in needs to
+// see, and masking them behind a fake success would leave someone staring at a
+// screen waiting for a code that is never coming.
+export const mobileAuthService = {
+  requestOtp: async (mobile) => (await client.post("/auth/otp/request", { mobile })).data,
+  verifyOtp: async (mobile, otp) => (await client.post("/auth/otp/verify", { mobile, otp })).data
+};
+
 export const dashboardService = {
   // Deliberately has no client-side fallback.
   //

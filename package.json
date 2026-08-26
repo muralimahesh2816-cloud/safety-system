@@ -8,6 +8,7 @@
     "dev": "nodemon server.js",
     "audit:work-fields": "node backend/scripts/audit-work-approval-fields.js",
     "migrate:work-chainage": "node backend/scripts/migrate-work-approval-chainage.js",
+    "migrate:mobile-otp": "node backend/scripts/migrate-mobile-and-whatsapp.js",
     "test": "node backend/tests/production-readiness.test.js"
   },
   "keywords": [],

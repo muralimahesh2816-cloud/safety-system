@@ -7,6 +7,9 @@ const { env } = require("../config/env");
 const { sendMailWithRetry } = require("./email.service");
 const { getChainageFrom, getChainageTo, formatChainageRange } = require("../utils/chainage");
 const logger = require("../utils/logger");
+const { enqueue } = require("./outbound-queue.service");
+const templates = require("./message-templates");
+const { maskPhone } = require("../utils/phone");
 
 const CHECKER_ROLES = [
   ROLES.SAFETY_OFFICER,
@@ -27,13 +30,8 @@ const ADMIN_ROLES = [ROLES.ADMIN, ROLES.SUPER_ADMIN];
 const getFinalApproverRoles = () =>
   env.workflowAdminOverrideEnabled ? [...FINAL_APPROVER_ROLES, ...ADMIN_ROLES] : FINAL_APPROVER_ROLES;
 
-const firstFrontendUrl = () =>
-  String(env.frontendUrl || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)[0] || env.backendPublicUrl;
-
-const buildWorkUrl = (workId) => `${firstFrontendUrl().replace(/\/+$/, "")}/work-approvals/${workId}`;
+const buildWorkUrl = (workId) =>
+  `${String(env.publicAppUrl || env.backendPublicUrl).replace(/\/+$/, "")}/work-approvals/${workId}`;
 
 const roleTitle = (role = "") =>
   String(role || "")
@@ -203,13 +201,13 @@ const getActiveUsersByRolesOrPermission = async ({ roles = [], workPermission = 
       { role: { $in: normalizedRoles } },
       ...(normalizedRoles.includes(ROLES.SUPER_ADMIN) ? [{ role: ROLES.SUPER_ADMIN }] : [])
     ]
-  }).select("name email role permissions notificationPreferences");
+  }).select("name email mobileNumber role permissions notificationPreferences");
 
   const byId = new Map();
   users.forEach((user) => byId.set(String(user._id), user));
 
   if (workPermission) {
-    const permissionUsers = await User.find({ status: "active" }).select("name email role permissions notificationPreferences");
+    const permissionUsers = await User.find({ status: "active" }).select("name email mobileNumber role permissions notificationPreferences");
     permissionUsers
       .filter((user) => hasWorkPermission(user, workPermission))
       .forEach((user) => byId.set(String(user._id), user));
@@ -221,7 +219,7 @@ const getActiveUsersByRolesOrPermission = async ({ roles = [], workPermission = 
 const getUsersByIds = async (ids = []) => {
   const cleanIds = Array.from(new Set(ids.filter(Boolean).map(String)));
   if (!cleanIds.length) return [];
-  return User.find({ _id: { $in: cleanIds }, status: "active" }).select("name email role permissions notificationPreferences");
+  return User.find({ _id: { $in: cleanIds }, status: "active" }).select("name email mobileNumber role permissions notificationPreferences");
 };
 
 const getAdminUsers = () => getActiveUsersByRolesOrPermission({ roles: ADMIN_ROLES });
@@ -240,6 +238,9 @@ const createEnterpriseNotification = async ({
   data = {},
   createdBy,
   email,
+  // { event, body, templateName?, templateVariables? } — when present and the
+  // recipient has a mobile number on file, the message is queued for WhatsApp.
+  whatsapp,
   channels = {}
 }) => {
   if (!user?._id) return null;
@@ -272,6 +273,43 @@ const createEnterpriseNotification = async ({
     });
   }
 
+  // WhatsApp is a third delivery channel on the same funnel that already
+  // handles in-app and email. Hooking it here rather than in each controller
+  // is what keeps assignment notifications consistent: any code path that
+  // notifies a user about an assignment gets WhatsApp for free, and there is
+  // exactly one place where the rules about who gets messaged live.
+  //
+  // Queued, never awaited for delivery — `enqueue` is a single insert, so an
+  // assignment response is never delayed by an external API.
+  const wantsWhatsApp =
+    channels.whatsapp !== false &&
+    preferences.whatsapp !== false &&
+    Boolean(user.mobileNumber) &&
+    Boolean(whatsapp);
+
+  if (wantsWhatsApp) {
+    try {
+      await enqueue({
+        recipient: user._id,
+        recipientPhone: user.mobileNumber,
+        recipientName: user.name || "",
+        event: whatsapp.event || type,
+        body: whatsapp.body,
+        relatedModule: module,
+        relatedRecordId,
+        notification: notification?._id || null,
+        templateName: whatsapp.templateName || "",
+        templateVariables: whatsapp.templateVariables || []
+      });
+    } catch (error) {
+      logger.warn("WhatsApp notification could not be queued", {
+        userId: String(user._id),
+        to: maskPhone(user.mobileNumber),
+        message: error.message
+      });
+    }
+  }
+
   if (wantsEmail && user.email) {
     try {
       await sendMailWithRetry({
@@ -296,7 +334,16 @@ const createEnterpriseNotification = async ({
 
 const notifyUsers = async (users, payload) => {
   const uniqueUsers = Array.from(new Map(users.map((user) => [String(user._id), user])).values());
-  await Promise.all(uniqueUsers.map((user) => createEnterpriseNotification({ user, ...payload })));
+  await Promise.all(
+    uniqueUsers.map((user) => {
+      // The WhatsApp body is addressed to a person, so it is rendered per
+      // recipient here rather than once by the caller.
+      const whatsapp = payload.whatsapp?.build
+        ? { ...payload.whatsapp, body: payload.whatsapp.build(user) }
+        : payload.whatsapp;
+      return createEnterpriseNotification({ ...payload, user, whatsapp });
+    })
+  );
   return uniqueUsers.length;
 };
 
@@ -334,6 +381,9 @@ const sendWorkStageNotification = async ({
     extraLines: extraRows.map(([label, value]) => `${label}: ${value}`)
   });
 
+  const chainageFrom = work.requestedChainageFrom || work.chainageFrom || work.chainageNo || "";
+  const chainageTo = work.requestedChainageTo || work.chainageTo || chainageFrom;
+
   return notifyUsers(users, {
     title,
     message,
@@ -354,6 +404,25 @@ const sendWorkStageNotification = async ({
       subject: title,
       text,
       html
+    },
+    // Rendered per stage rather than per recipient: every user notified about
+    // this stage transition gets the same factual summary, with their own name
+    // substituted by the queue-side template.
+    whatsapp: {
+      event: "work_assignment",
+      build: (user) =>
+        templates.workAssignment({
+          name: user.name,
+          approvalNo: model.workId,
+          workType: work.workType || work.title || "",
+          location: work.location || work.plaza || "",
+          chainage: chainageFrom ? `${chainageFrom} to ${chainageTo}` : "",
+          role: user.role ? String(user.role).replace(/_/g, " ") : "",
+          assignedBy: work.createdByName || "",
+          action: actionLabel || "Review this work approval",
+          recordId: model.id
+        }),
+      templateName: env.whatsapp.assignmentTemplate || ""
     }
   });
 };
@@ -528,6 +597,57 @@ const notifyWorkCompleted = async ({ work, actorId }) => {
   });
 };
 
+/**
+ * Is this notification telling someone that work is now theirs?
+ *
+ * Deliberately conservative: only messages that actually hand a person
+ * responsibility go to WhatsApp. Everything else stays in-app.
+ */
+const isAssignmentNotification = ({ type, title }) => {
+  const haystack = `${type || ""} ${title || ""}`.toLowerCase();
+  return /assign|allocated|awaiting your|for your (review|approval|action)/.test(haystack);
+};
+
+/** Chooses the right template for the module raising the assignment. */
+const buildAssignmentWhatsAppBody = ({ user, type, title, message, data, module, recordId, url }) => {
+  const name = user.name;
+  const assignedBy = data.assignedByName || data.createdByName || "";
+
+  if (module === "hazards" || type === "hazard") {
+    return templates.hazardAssignment({
+      name,
+      hazardNo: data.hazardNo || data.referenceId || (recordId ? `HZ-${String(recordId).slice(-8).toUpperCase()}` : ""),
+      category: data.category || "",
+      location: data.location || "",
+      riskLevel: data.riskLevel || data.severity || "",
+      assignedBy,
+      action: data.action || "Review this hazard and record the corrective action.",
+      recordId
+    });
+  }
+
+  if (module === "complaints" || type === "complaint") {
+    return templates.complaintAssignment({
+      name,
+      complaintNo: data.complaintNo || data.referenceId || (recordId ? String(recordId).slice(-8).toUpperCase() : ""),
+      subject: data.subject || title,
+      location: data.location || "",
+      assignedBy,
+      action: data.action || "Review this complaint and record the action taken.",
+      recordId
+    });
+  }
+
+  return templates.genericAssignment({
+    name,
+    title,
+    message,
+    moduleLabel: module,
+    assignedBy,
+    url: url || templates.portalUrl(module || "")
+  });
+};
+
 const createNotification = async ({
   userId,
   type,
@@ -544,8 +664,13 @@ const createNotification = async ({
 }) => {
   const users = await getUsersByIds([userId]);
   if (!users.length) return null;
+  const user = users[0];
+  const resolvedModule = module || type || "";
+  const resolvedRecordId =
+    relatedRecordId || data.workId || data.hazardId || data.complaintId || data.trainingId || null;
+
   return createEnterpriseNotification({
-    user: users[0],
+    user,
     type,
     title,
     message,
@@ -553,10 +678,30 @@ const createNotification = async ({
     priority,
     icon: icon || "bell",
     color: color || (priority === "high" || priority === "urgent" ? "orange" : "blue"),
-    module: module || type || "",
-    relatedRecordId: relatedRecordId || data.workId || data.hazardId || data.trainingId || null,
+    module: resolvedModule,
+    relatedRecordId: resolvedRecordId,
     url: url || "",
-    createdBy
+    createdBy,
+    // Only assignment-style notifications go out on WhatsApp. A routine
+    // status update does not warrant a message on someone's personal phone,
+    // and treating every notification as WhatsApp-worthy is how a useful
+    // channel becomes one people mute.
+    whatsapp: isAssignmentNotification({ type, title })
+      ? {
+          event: `${type}_assigned`,
+          body: buildAssignmentWhatsAppBody({
+            user,
+            type,
+            title,
+            message,
+            data,
+            module: resolvedModule,
+            recordId: resolvedRecordId,
+            url
+          }),
+          templateName: env.whatsapp.assignmentTemplate || ""
+        }
+      : undefined
   });
 };
 

@@ -178,6 +178,24 @@ const refreshToken = async () => {
   return refreshPromise;
 };
 
+// Endpoints where a 401 is the server's verdict on the credential the user just
+// supplied - a wrong password, a wrong one-time code - and not an expired
+// access token. Refreshing and replaying those is actively harmful: the OTP
+// routes count failed attempts and lock the account for 15 minutes, so a silent
+// retry spends two of the user's attempts on every single code they mistype.
+const CREDENTIAL_VERDICT_ROUTES = [
+  "/auth/login",
+  "/auth/register",
+  "/auth/refresh",
+  "/auth/otp/request",
+  "/auth/otp/verify",
+  "/auth/verify-otp",
+  "/auth/resend-otp"
+];
+
+const isCredentialVerdictUrl = (url) =>
+  CREDENTIAL_VERDICT_ROUTES.some((route) => String(url || "").includes(route));
+
 client.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -224,8 +242,7 @@ client.interceptors.response.use(
       status === 401 &&
       original &&
       !original?._retry &&
-      !original?.url?.includes("/auth/login") &&
-      !original?.url?.includes("/auth/refresh")
+      !isCredentialVerdictUrl(original?.url)
     ) {
       original._retry = true;
       try {
@@ -241,4 +258,4 @@ client.interceptors.response.use(
   }
 );
 
-export { client, setSession, clearSession, getStoredUser, ACCESS_TOKEN_KEY };
+export { client, setSession, clearSession, getStoredUser, ACCESS_TOKEN_KEY, isCredentialVerdictUrl };
