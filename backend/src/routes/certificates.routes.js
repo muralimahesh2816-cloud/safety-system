@@ -27,7 +27,7 @@ const router = express.Router();
 const MANAGE_ROLES = ["safety_manager", "admin", "super_admin"];
 
 const buildVerifyUrl = (verificationCode) =>
-  `${(env.frontendUrl || "").replace(/\/+$/, "")}/verify?code=${verificationCode}`;
+  `${(env.publicAppUrl || "").replace(/\/+$/, "")}/verify?code=${verificationCode}`;
 
 const findCompletion = (training, userId) =>
   training.completions.find((completion) => completion.user?.toString() === String(userId));

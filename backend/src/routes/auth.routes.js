@@ -9,8 +9,11 @@ const {
   registerSchema,
   loginSchema,
   otpSchema,
-  resendOtpSchema
+  resendOtpSchema,
+  mobileOtpRequestSchema,
+  mobileOtpVerifySchema
 } = require("../validators/auth.validators");
+const { maskPhone, requirePhone } = require("../utils/phone");
 const User = require("../models/User");
 const SessionToken = require("../models/SessionToken");
 const CompanySettings = require("../models/CompanySettings");
@@ -29,7 +32,7 @@ const {
   parseExpiryToDate
 } = require("../utils/tokens");
 const { issueCsrfToken } = require("../middleware/csrf.middleware");
-const { authRateLimiter } = require("../middleware/rateLimit.middleware");
+const { authRateLimiter, otpRequestRateLimiter } = require("../middleware/rateLimit.middleware");
 const { setOtpForUser, verifyOtpForUser } = require("../services/auth.service");
 
 const router = express.Router();
@@ -381,6 +384,155 @@ router.get(
         permissions: pagePermissions,
         permissionMatrix: toActionPermissions(pagePermissions, user?.role)
       }
+    });
+  })
+);
+
+/* ------------------------------------------------- mobile number + OTP ---- */
+
+/**
+ * Resolves a typed mobile number to a user.
+ *
+ * Matches on the normalised E.164 form first — that is the indexed, unique
+ * identity. The legacy free-text `mobile` field is checked as a fallback so
+ * users who were created before normalisation existed can still sign in
+ * without an administrator having to touch their record first; when one is
+ * found that way, the normalised value is backfilled so the next sign-in takes
+ * the fast path.
+ */
+const findUserByMobile = async (e164, national) => {
+  const byNormalised = await User.findOne({ mobileNumber: e164 });
+  if (byNormalised) return byNormalised;
+
+  // Only shapes a human plausibly typed into the old free-text field.
+  const legacy = await User.findOne({
+    mobileNumber: { $in: [null, ""] },
+    mobile: { $in: [e164, national, `0${national}`, e164.replace("+", "")] }
+  });
+  if (legacy) {
+    legacy.mobileNumber = e164;
+    await legacy.save().catch(() => {});
+  }
+  return legacy;
+};
+
+/**
+ * Step 1 — send a one-time code to a registered mobile number.
+ *
+ * The response is deliberately uniform whether or not the number exists in
+ * terms of *timing and shape*, but it does tell an unregistered caller that the
+ * number is not registered. That is a considered trade-off: this is a closed
+ * corporate portal where accounts are created by an administrator, so the
+ * enumeration risk is low, and a silent "code sent" for a number that will
+ * never receive one is a support call every time somebody mistypes a digit.
+ */
+router.post(
+  "/otp/request",
+  authRateLimiter,
+  otpRequestRateLimiter,
+  validate(mobileOtpRequestSchema),
+  asyncHandler(async (req, res) => {
+    const phone = requirePhone(req.body.mobile);
+    const user = await findUserByMobile(phone.e164, phone.national);
+
+    if (!user) {
+      await audit(req, "otp_request_unknown_mobile", "auth", { mobile: maskPhone(phone.e164) }, null);
+      throw new ApiError(
+        404,
+        "This mobile number is not registered. Please contact your Safety Management System administrator.",
+        null,
+        "MOBILE_NOT_REGISTERED"
+      );
+    }
+
+    // An account that cannot sign in must not receive a code either — sending
+    // one would tell a blocked user their number is still live and give them
+    // something to brute-force against.
+    if (user.status !== "active") {
+      await audit(req, "otp_request_blocked_account", "auth", { mobile: maskPhone(phone.e164) }, user._id);
+      throw new ApiError(
+        403,
+        "Your account is inactive. Please contact your Safety Management System administrator.",
+        null,
+        "USER_BLOCKED"
+      );
+    }
+
+    if (user.loginLockedUntil && user.loginLockedUntil > new Date()) {
+      throw new ApiError(423, "Too many attempts. Please try again later.", null, "LOGIN_LOCKED");
+    }
+
+    const otpResponse = await setOtpForUser(user, { channel: "whatsapp" });
+    await audit(
+      req,
+      "otp_requested",
+      "auth",
+      { mobile: maskPhone(phone.e164), deliveredVia: otpResponse.deliveredVia },
+      user._id
+    );
+
+    res.json({
+      success: true,
+      pendingOtp: true,
+      expiresInSeconds: otpResponse.expiresInSeconds,
+      resendAfterSeconds: otpResponse.resendAfterSeconds,
+      maskedMobile: otpResponse.maskedMobile || maskPhone(phone.e164),
+      deliveredVia: otpResponse.deliveredVia
+    });
+  })
+);
+
+/**
+ * Step 2 — verify the code and issue the normal session.
+ *
+ * Deliberately reuses `verifyOtpForUser` and `createSession`: the same attempt
+ * counting, the same lockout, the same JWT + refresh-token + CSRF issuance as
+ * every other way into this system. Mobile OTP is a new front door, not a
+ * second security model.
+ */
+router.post(
+  "/otp/verify",
+  // Per-IP only. The send-budget limiter deliberately does not apply here:
+  // mistyping a code twice must not consume a user's ability to request one,
+  // and brute force on this endpoint is already bounded per account by
+  // verifyOtpForUser's attempt counter and 15-minute lockout.
+  authRateLimiter,
+  validate(mobileOtpVerifySchema),
+  asyncHandler(async (req, res) => {
+    const phone = requirePhone(req.body.mobile);
+    const user = await findUserByMobile(phone.e164, phone.national);
+
+    if (!user || user.status !== "active") {
+      // No distinction here — at the verify step, telling a caller whether the
+      // number exists would hand them an oracle the request step's rate limit
+      // is meant to protect.
+      throw new ApiError(401, "The OTP is incorrect. Please try again.", null, "OTP_INVALID");
+    }
+
+    try {
+      await verifyOtpForUser(user, req.body.otp);
+    } catch (error) {
+      await audit(req, "otp_failed", "auth", { mobile: maskPhone(phone.e164) }, user._id);
+      throw error;
+    }
+
+    user.failedLoginAttempts = 0;
+    user.lockedUntil = null;
+    user.lastLoginAt = new Date();
+    user.mobileVerifiedAt = new Date();
+    if (!user.mobileNumber) user.mobileNumber = phone.e164;
+    appendLoginHistory(user, req, true);
+    await user.save();
+
+    const { accessToken, csrfToken } = await createSession(user, req, res);
+    await audit(req, "otp_verification", "auth", { mobile: maskPhone(phone.e164) }, user._id);
+    await audit(req, "login", "auth", { mobile: maskPhone(phone.e164), method: "mobile_otp" }, user._id);
+
+    res.json({
+      success: true,
+      token: accessToken,
+      csrfToken,
+      user: buildUserResponse(user)
     });
   })
 );

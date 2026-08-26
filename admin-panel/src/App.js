@@ -76,7 +76,7 @@ const ModuleGuard = ({ user, moduleKey, children }) => {
 };
 
 const AppContent = () => {
-  const { user, loading, isAuthenticated, login, verifyOtp, resendOtp, logout } = useAuth();
+  const { user, loading, isAuthenticated, login, verifyOtp, resendOtp, requestMobileOtp, verifyMobileOtp, logout } = useAuth();
   const [activeModule, setActiveModule] = useState(moduleFromPath);
   const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(30);
   const { sidebarLocked, setSidebarLocked } = useSidebarPreference();
@@ -352,7 +352,15 @@ const AppContent = () => {
   }
 
   if (!isAuthenticated) {
-    return <LoginPage onLogin={login} onVerifyOtp={verifyOtp} onResendOtp={resendOtp} />;
+    return (
+      <LoginPage
+        onRequestMobileOtp={requestMobileOtp}
+        onVerifyMobileOtp={verifyMobileOtp}
+        onLogin={login}
+        onVerifyOtp={verifyOtp}
+        onResendOtp={resendOtp}
+      />
+    );
   }
 
   const sidebarExpanded = sidebarLocked || (hoverCapable && sidebarHoverExpanded);

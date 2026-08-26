@@ -59,6 +59,10 @@ const Hazard = require("../src/models/Hazard");
 const Training = require("../src/models/Training");
 const User = require("../src/models/User");
 const { createTrainingSchema } = require("../src/validators/training.validators");
+const { normalizePhone, maskPhone, toWhatsAppRecipient } = require("../src/utils/phone");
+const OutboundMessage = require("../src/models/OutboundMessage");
+const { BACKOFF_MS, MAX_ATTEMPTS } = require("../src/services/outbound-queue.service");
+const templates = require("../src/services/message-templates");
 const WorkAttendance = require("../src/models/WorkAttendance");
 const {
   buildQrPayload,
@@ -591,13 +595,137 @@ test("the worker code is uniquely indexed so two workers cannot share a badge", 
 
   assert.ok(guard, "expected a workerCode index");
   assert.equal(guard[1].unique, true);
-  // Sparse: the many users who have never been issued a badge all have no
-  // code, and must not collide with each other on that absence.
-  assert.equal(guard[1].sparse, true);
+  // PARTIAL, not sparse. `workerCode` defaults to "" and a sparse index still
+  // indexes a stored "", so a sparse unique index made it impossible to create
+  // a second user who had not been issued a badge.
+  assert.ok(guard[1].partialFilterExpression, "workerCode uniqueness must be partial, not sparse");
+  assert.equal(guard[1].sparse, undefined);
 });
 
 test("the worker code is never returned by an ordinary user query", () => {
   // `select: false` keeps the badge identity out of /users, user detail and
   // every other response that did not explicitly ask for it.
   assert.equal(User.schema.paths.workerCode.options.select, false);
+});
+
+
+test("every way a person types their number resolves to one identity", () => {
+  // If these diverge, the unique index is meaningless and OTP login silently
+  // fails for anyone whose number was stored in a different shape.
+  const variants = [
+    "9876543210", "+91 98765 43210", "+919876543210", "09876543210",
+    "0091 9876543210", "919876543210", "98765-43210", "(98765) 43210"
+  ];
+  const resolved = new Set(variants.map((v) => normalizePhone(v).e164));
+  assert.equal(resolved.size, 1, `expected one identity, got ${[...resolved]}`);
+  assert.equal([...resolved][0], "+919876543210");
+});
+
+test("invalid mobile numbers are rejected rather than stored", () => {
+  [
+    ["1234567890", "NOT_A_MOBILE"],      // valid length, invalid Indian prefix
+    ["98765", "INVALID_LENGTH"],
+    ["abcdefghij", "INVALID_CHARACTERS"],
+    ["", "EMPTY"],
+    ["+9998765432101", "UNSUPPORTED_COUNTRY"]
+  ].forEach(([input, reason]) => {
+    const result = normalizePhone(input);
+    assert.equal(result.ok, false, `${input} should be rejected`);
+    assert.equal(result.reason, reason);
+  });
+});
+
+test("a mobile number is never exposed in full", () => {
+  const masked = maskPhone("+919876543210");
+  assert.ok(masked.endsWith("3210"), "last four digits identify the number to its owner");
+  assert.ok(!masked.includes("98765"), "the rest must not be disclosed");
+  assert.equal(masked, "+91 ******3210");
+  // WhatsApp wants it without the "+", and that is the only place the full
+  // number is reconstructed.
+  assert.equal(toWhatsAppRecipient("+919876543210"), "919876543210");
+});
+
+test("assignment messages carry no credentials and no auth-bearing link", () => {
+  const body = templates.workAssignment({
+    name: "Ravi Kumar",
+    approvalNo: "WA-2026-000123",
+    workType: "Road Work",
+    location: "Plaza A",
+    chainage: "CH 5+000 to CH 5+400",
+    role: "safety officer",
+    assignedBy: "Site Engineer",
+    action: "Check this work approval",
+    recordId: "6a8c138e223dc30a31377010"
+  });
+
+  assert.ok(body.includes("WA-2026-000123"));
+  assert.ok(body.includes("Ravi Kumar"));
+  // A forwarded WhatsApp message must never be a way into someone's account.
+  [/token=/i, /jwt/i, /Bearer /i, /otp/i, /password/i, /[?&]auth/i].forEach((pattern) => {
+    assert.ok(!pattern.test(body), `assignment message leaked ${pattern}`);
+  });
+});
+
+test("the OTP message warns against sharing and carries only the code", () => {
+  const body = templates.loginOtp({ name: "Ravi", otp: "123456", expiresInMinutes: 5 });
+  assert.ok(body.includes("123456"));
+  assert.ok(/never ask you for it/i.test(body));
+  assert.ok(!/password/i.test(body));
+});
+
+test("outbound delivery is retried with bounded exponential backoff", () => {
+  // Bounded on purpose: a permanently bad number must end as a visible
+  // `failed` row that someone can act on, not an endless retry loop.
+  assert.equal(MAX_ATTEMPTS, 3);
+  assert.deepEqual(BACKOFF_MS, [60000, 300000, 900000]);
+  for (let i = 1; i < BACKOFF_MS.length; i += 1) {
+    assert.ok(BACKOFF_MS[i] > BACKOFF_MS[i - 1], "backoff must increase");
+  }
+});
+
+test("outbound messages record the full delivery lifecycle", () => {
+  const paths = OutboundMessage.schema.paths;
+  ["recipient", "recipientPhone", "event", "status", "attempts", "providerMessageId",
+   "sentAt", "failureReason", "nextAttemptAt", "relatedModule", "relatedRecordId"].forEach((field) => {
+    assert.ok(paths[field], `expected delivery field ${field}`);
+  });
+  assert.deepEqual(paths.status.enumValues, ["pending", "sending", "sent", "failed", "skipped"]);
+
+  // The queue claim query must be indexed — it runs on every poll.
+  const claim = OutboundMessage.schema.indexes()
+    .find(([fields]) => fields.status === 1 && fields.nextAttemptAt === 1);
+  assert.ok(claim, "expected a (status, nextAttemptAt) index for the queue claim");
+});
+
+test("the mobile number is uniquely indexed so one number is one account", () => {
+  const guard = User.schema.indexes()
+    .find(([fields]) => Object.keys(fields).length === 1 && fields.mobileNumber === 1);
+  assert.ok(guard, "expected a mobileNumber index");
+  assert.equal(guard[1].unique, true);
+  // Partial for the same reason as workerCode: the default is null, and a
+  // sparse index indexes null, so every user without a number would collide.
+  assert.deepEqual(guard[1].partialFilterExpression, { mobileNumber: { $type: "string" } });
+  assert.equal(guard[1].sparse, undefined);
+});
+
+test("user-facing links use one origin even when FRONTEND_URL lists several", () => {
+  // FRONTEND_URL is a CORS allow-list and legitimately holds several origins
+  // (app domain + custom domain). Building a link from the whole value produced
+  // "https://a.com,https://b.com/work?record=1" in every WhatsApp assignment
+  // message and every certificate verification URL.
+  const { resolvePublicAppUrl } = require("../src/config/env");
+
+  assert.equal(
+    resolvePublicAppUrl("https://app.example.com,https://safety.example.com"),
+    "https://app.example.com"
+  );
+  assert.equal(resolvePublicAppUrl("https://app.example.com"), "https://app.example.com");
+  // Whitespace around the separator is normal in a hand-edited .env.
+  assert.equal(
+    resolvePublicAppUrl(" https://app.example.com , https://safety.example.com "),
+    "https://app.example.com"
+  );
+  assert.equal(resolvePublicAppUrl(""), "http://localhost:3000");
+  assert.equal(resolvePublicAppUrl(undefined), "http://localhost:3000");
+  assert.ok(!resolvePublicAppUrl("https://a.com,https://b.com").includes(","));
 });
